@@ -1,0 +1,81 @@
+name: Claude Scan
+
+# 1 日 1 回、専用スキャンを走らせる。
+# design-review と adr-hygiene は auto-scan を付けて claude.yml が自動で PR を出す。
+# research-trend は proposal のみ（自動 PR しない）。
+on:
+  schedule:
+    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: '回すスキャン。all は 3 種類まとめて'
+        type: choice
+        options: [all, design-review, adr-hygiene, research-trend]
+        default: all
+      dry_run:
+        description: 'issue を作らず、見つけた内容をログに出すだけ'
+        type: boolean
+        default: true
+
+concurrency:
+  group: claude-scan-${{ github.event.inputs.scan_type || 'all' }}
+  cancel-in-progress: false
+
+jobs:
+  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        run: |
+          set -euo pipefail
+          requested="${{ github.event.inputs.scan_type || 'all' }}"
+          if [ "$requested" = "all" ]; then
+            echo 'matrix=["design-review","adr-hygiene","research-trend"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=[\"${requested}\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  scan:
+    needs: pick
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scan_type: ${{ fromJSON(needs.pick.outputs.matrix) }}
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          SCAN_TYPE: ${{ matrix.scan_type }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            対象は ${{ github.repository }}。スキャン種別は ${{ matrix.scan_type }}。
+            環境変数 DRY_RUN は "${{ github.event.inputs.dry_run || 'false' }}"。
+
+            次の 2 ファイルを Read し、そこに書いてある指示だけに従え。
+            書いてない種類の問題は、見つけても今は出さない。
+
+            - `.github/claude-scans/shared.md`
+            - `.github/claude-scans/${{ matrix.scan_type }}.md`
+
+            最後に、作った issue の番号と URL を一覧する。
+            0 件なら、何を調べてなぜ出さなかったかを出力する。無言で終了しない。
+          claude_args: |
+            --allowedTools "Bash,Read,Grep,Glob,WebSearch,WebFetch"

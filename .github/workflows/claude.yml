@@ -1,0 +1,140 @@
+name: Claude
+
+# issue が open された時点で自動着手し、dev 向けに PR を出す。
+# issue / PR のコメントで @claude と書いた時にも反応する。
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # issue の open は無条件で着手する。コメント経由は @claude が要る。
+    # bot 起因のイベントには反応しない（自分のコメントで無限に走らせないため）。
+    # ただし定期スキャンが立てた issue だけは bot 作成でも着手する
+    # （auto-scan ラベルで判別。スキャン自身は issue を作るだけでコメントしないので、
+    # ここから無限ループにはならない）。
+    if: |
+      (
+        github.event.sender.type != 'Bot' ||
+        (github.event_name == 'issues' &&
+         contains(github.event.issue.labels.*.name, 'auto-scan'))
+      ) && (
+        github.event_name == 'issues' ||
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # ブランチを作って push する
+      pull-requests: write # PR を作る
+      issues: write # issue にコメントする
+      id-token: write
+      actions: read # CI の結果を読む
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Record time before Claude runs
+        # 実行前の時刻を基準に、後段で「このジョブがコメントを残したか」を判定する。
+        id: before_claude
+        run: echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        # action は Claude の実行環境に GH_TOKEN を渡さないので、`gh pr create` /
+        # `gh issue comment` を使わせるためにここで入れる。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # ブランチは dev から切る。pr-target.yml が base=dev 以外の PR を
+          # 自動クローズするため、ここを外すと PR が即閉じられる。
+          base_branch: dev
+          # ジョブの if は auto-scan issue（claude[bot] 作成）を通すが、
+          # action 側にも bot 拒否がある。ここを空のままにすると
+          # 「Workflow initiated by non-human actor: claude」で即死する。
+          # `*` は使わない（外部 App が issue を開いて起動できてしまう）。
+          allowed_bots: claude
+          additional_permissions: |
+            actions: read
+          prompt: |
+            対象は ${{ github.repository }} の
+            #${{ github.event.issue.number || github.event.pull_request.number }} です。
+            内容は `gh issue view ${{ github.event.issue.number || github.event.pull_request.number }} --comments`
+            で読めます。この issue / コメントの内容に対応してください。
+
+            このリポジトリは現在**設計フェーズ**で、実装コードはまだ無い。
+            中身はアーキテクチャ決定記録 (ADR) と README のみ。
+
+            守ること:
+            - `docs/adr/README.md` と関連する ADR を必ず読んでから着手する
+            - 作業ブランチは dev から切り、PR の base は必ず `dev`（main へは出さない）
+            - 変更は issue で求められた範囲に留める
+            - **ADR に記録済みの決定に反する変更をしてはいけない**。
+              決定そのものを覆すべきだと考えた場合は、勝手に実装を変えず、
+              新しい ADR の追加を提案する PR にするか issue でその旨を述べる
+            - 特に次の原則は破らない: 未公開の研究データはローカルに留める
+              （実験データ・実験ノート・投稿前の原稿をクラウドに送る設計にしない）
+            - ADR を新規追加する場合は `docs/adr/README.md` の一覧にも追記する
+
+            変更を伴う issue では、調べて終わりにせず必ず最後まで実行すること:
+            1. `git checkout -b <branch> dev` で dev から作業ブランチを切る
+            2. 変更を入れる
+            3. `git commit` して `git push -u origin <branch>`
+            4. `gh pr create --base dev` で PR を出す
+            5. 出した PR の URL を
+               `gh issue comment ${{ github.event.issue.number || github.event.pull_request.number }} --body "..."`
+               で報告する
+
+            issue の内容が変更を伴わない場合（質問・議論・報告のみ）は、
+            PR を作らず `gh issue comment` で回答するだけに留めてください。
+            いずれの場合も必ず issue にコメントを残すこと（無言で終了しない）。
+          # `prompt` を渡すと action は agent mode になり、トラッキングコメントを
+          # 作らない。そのため mcp__github_comment__update_claude_comment は
+          # CLAUDE_COMMENT_ID 未設定で必ず失敗する。issue へのコメントは
+          # Bash の `gh issue comment` で書かせること。
+          claude_args: |
+            --allowedTools "Bash,Read,Edit,Write,Grep,Glob"
+
+      - name: Guarantee a response (fallback for silent runs)
+        # プロンプトは必ず gh issue comment で締めるよう指示しているが、モデルが
+        # 手順を最後まで実行しない・action 自体が途中で失敗/キャンセルされる、
+        # といったケースでは無言のまま終わることがある。
+        # このジョブ開始後に claude[bot] が本 issue/PR にコメントしていなければ、
+        # 「無言で終わった」ことだけでも分かるようにフォールバックのコメントを残す。
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          number="${{ github.event.issue.number || github.event.pull_request.number }}"
+          since="${{ steps.before_claude.outputs.time }}"
+          if [ -z "$number" ]; then
+            echo "No issue/PR number; skip fallback"
+            exit 0
+          fi
+          # since が空（記録ステップ自体が走らなかった）なら、このジョブのコメントは無いとみなす。
+          # comments API はデフォルト30件なので since クエリでページネーション漏れを避ける。
+          if [ -n "$since" ]; then
+            count=$(gh api "repos/${{ github.repository }}/issues/${number}/comments?since=${since}&per_page=100" \
+              --jq "[.[] | select(.user.login == \"claude[bot]\")] | length")
+          else
+            count=0
+          fi
+          if [ "$count" -eq 0 ]; then
+            run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            gh issue comment "$number" --repo "${{ github.repository }}" \
+              --body "⚠️ 自動処理がコメントを残さずに終了しました(エラー・タイムアウト・キャンセル、またはモデルが手順を完了しなかった可能性があります)。ログ: ${run_url}"
+          fi
