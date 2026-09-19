@@ -113,6 +113,7 @@ LLM 呼び出しは単一の OpenAI 互換エンドポイントに統一して�
 | [0010](docs/adr/0010-data-classification-for-llm-calls.md) | LLM に送るデータを分類し、分類ごとに経路と統制を変える |
 | [0011](docs/adr/0011-degradation-and-resilience.md) | 障害時は段階的に縮退させ、無言で失敗しない |
 | [0012](docs/adr/0012-config-driven-embedding-spaces.md) | 埋め込み空間を設定駆動にする |
+| [0013](docs/adr/0013-manuscript-input-adapters-and-factcheck-pipeline.md) | 原稿入力をアダプタ化し (.tex/.md/.typ)、ファクトチェックを 2 段 LLM で行う |
 
 ADR-0002・0003・0004 は相互に依存しているため一体で読むこと。
 未公開データの扱いについては ADR-0003・0007・0008・0010 も一体で読むこと。
@@ -120,7 +121,6 @@ ADR-0002・0003・0004 は相互に依存しているため一体で読むこと
 
 ## 未決事項
 
-- 原稿ファクトチェックの入力方式 (ローカルファイル監視 / Overleaf git bridge / 手動)
 - Zotero 連携の方式 (ローカル API か Web API)
 - ローカル LLM による C3 (機密データ) 処理 — ADR-0010 で将来の選択肢として余地を残した
 - 論文ソースアダプタの実装優先順位
