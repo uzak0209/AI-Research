@@ -5,13 +5,10 @@
 
 ## コンテキスト
 
-執筆中原稿のファクトチェックは要件の 1 つであり、README の未決事項として
-入力方式が残っていた。ADR-0010 でこの機能は **C3（機密）** に分類済みである。
+ゴール成功条件 4: 執筆中原稿の主張を検査できる（`FR-04` / `FR-07`）。
+分類は C3（`C-03` / `C-04`、ADR-0010）。外部 LLM 利用は成功条件 5 の一部。
 
-決めるべきことが 2 つある。
-
-1. **どの原稿形式を扱うか**
-2. **検査対象の「主張文」をどう抽出するか**
+決めること: (1) 原稿形式 (2) 主張文の抽出方法。
 
 ### 主張文とは
 
@@ -220,6 +217,7 @@ ADR-0010 の未決事項として既に余地を残してあり、本 ADR では
 
 ## 参考
 
+- [FR-04](../requirements/01-functional.md) / [FR-07](../requirements/01-functional.md) / [C-04](../requirements/02-constraints.md)
 - <https://github.com/siefkenj/unified-latex>
 - <https://www.npmjs.com/package/@typstmate/typst-syntax>
 - <https://remark.js.org>

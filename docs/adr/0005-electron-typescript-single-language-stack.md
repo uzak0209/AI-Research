@@ -5,7 +5,9 @@
 
 ## コンテキスト
 
-デスクトップアプリのフレームワークとして Tauri (Rust)、Electron (TypeScript)、Python + PySide/Flet を検討した。
+デスクトップが担う成功条件（2〜4, 6）とローカル埋め込み（ADR-0003）を、
+配布可能な一つのアプリに載せる（`NFR-05`）。Tauri / Electron / Python GUI を比較した。
+Node でローカル埋め込みは可能（Transformers.js）という前提で選ぶ。
 
 当初の見立てでは「ローカル埋め込み推論には Python か Rust の推論環境が必要」と考えていた。これは**誤り**だった。Node でローカル埋め込みは問題なく実行できる。
 
