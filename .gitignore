@@ -1,0 +1,47 @@
+# 依存
+node_modules/
+.pnp/
+.pnp.js
+
+# ビルド成果物
+dist/
+build/
+out/
+*.asar
+
+# 環境変数・シークレット
+.env
+.env.*
+!.env.example
+.dev.vars
+wrangler.toml.local
+
+# ローカル RAG のデータ（未公開の研究データを含む。絶対にコミットしない）
+data/
+*.lance/
+lancedb/
+vectors/
+.rag-cache/
+
+# 埋め込みモデルのキャッシュ（サイズが大きい）
+models/
+.cache/
+*.onnx
+
+# 研究データ・原稿（未公開）
+manuscripts/
+notes/
+papers-pdf/
+
+# OS / エディタ
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ログ
+*.log
+npm-debug.log*
+logs/
