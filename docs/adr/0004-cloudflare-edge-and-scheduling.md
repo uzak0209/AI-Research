@@ -24,42 +24,84 @@
 
 ### 全体構成
 
+アイコンは [cf-icons](https://cf-icons.pages.dev/)（`https://cf-icons.pages.dev/<name>.svg`）。
+
 ```mermaid
 flowchart TB
     subgraph client["デスクトップ / CLI"]
-        app["Electron / CLI<br/>ローカル SQLite"]
+        app["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='40' height='40' /><br/>Electron / CLI<br/>ローカル SQLite"]
     end
 
-    subgraph edge["Cloudflare ゾーン（Free）"]
-        ddos["DDoS 防御<br/>常時・設定不要"]
-        waf["WAF Free Managed<br/>+ カスタム 5 本"]
-        rl["レート制限 1 本<br/>IP・10 秒窓"]
+    subgraph zone["Cloudflare ゾーン（Free）"]
+        dns["<img src='https://cf-icons.pages.dev/dns.svg' width='36' height='36' /><br/>Custom Domain"]
+        ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='36' height='36' /><br/>DDoS"]
+        waf["<img src='https://cf-icons.pages.dev/waf.svg' width='36' height='36' /><br/>WAF Free<br/>+ カスタム 5"]
+        rl["<img src='https://cf-icons.pages.dev/rules.svg' width='36' height='36' /><br/>Rate Limit<br/>IP・10s ×1"]
     end
 
-    subgraph worker["Worker（api.example）"]
-        auth["認証 / JWT 検証"]
-        sync["同期 API<br/>GET /runs"]
-        bff["BFF endpoint<br/>機能ごと C1/C2/C3"]
-        cron["cron: 収集投入"]
+    subgraph worker["Workers（HTTP + cron 同居）"]
+        auth["<img src='https://cf-icons.pages.dev/ssl.svg' width='36' height='36' /><br/>JWT 検証"]
+        sync["<img src='https://cf-icons.pages.dev/api.svg' width='36' height='36' /><br/>同期 API<br/>GET /runs"]
+        bff["<img src='https://cf-icons.pages.dev/workers.svg' width='36' height='36' /><br/>BFF<br/>C1/C2/C3"]
+        cron["<img src='https://cf-icons.pages.dev/time-services.svg' width='36' height='36' /><br/>cron<br/>収集投入のみ"]
     end
 
-    subgraph store["ストレージ"]
-        d1[("D1<br/>公開データのみ")]
-        kv[("KV<br/>冪等キー")]
+    subgraph store["ストレージ・分散"]
+        d1["<img src='https://cf-icons.pages.dev/d1.svg' width='40' height='40' /><br/>D1<br/>公開データのみ"]
+        kv["<img src='https://cf-icons.pages.dev/kv.svg' width='40' height='40' /><br/>KV<br/>冪等キー"]
+        q["<img src='https://cf-icons.pages.dev/queues.svg' width='40' height='40' /><br/>Queues<br/>1 msg = 1 収集単位"]
     end
 
-    q[["Queues<br/>1 メッセージ = 1 収集単位"]]
-    src["論文ソース API<br/>アダプタ"]
-    llm["OrcaRouter → 上流 LLM"]
+    src["<img src='https://cf-icons.pages.dev/api.svg' width='36' height='36' /><br/>論文ソース API"]
+    secrets["<img src='https://cf-icons.pages.dev/security-fingerprint-privacy.svg' width='36' height='36' /><br/>Workers Secrets"]
+    llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='36' height='36' /><br/>OrcaRouter → 上流 LLM"]
+    obs["<img src='https://cf-icons.pages.dev/analytics.svg' width='36' height='36' /><br/>Workers 観測<br/>本文は残さない"]
 
-    app -->|HTTPS| ddos --> waf --> rl --> auth
+    app -->|HTTPS| dns --> ddos --> waf --> rl --> auth
     auth --> sync & bff
     sync --> d1
-    bff -->|Workers Secrets| llm
+    bff --> secrets --> llm
     bff --> d1
-    cron --> q --> src
+    cron --> q
+    q --> src
     q --> d1
     cron --> kv
+    worker -.-> obs
+```
+
+#### リクエスト経路（同期 / BFF）
+
+```mermaid
+flowchart LR
+    app["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='32' height='32' /><br/>Client"]
+    ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='32' height='32' /><br/>DDoS"]
+    waf["<img src='https://cf-icons.pages.dev/waf.svg' width='32' height='32' /><br/>WAF"]
+    rl["<img src='https://cf-icons.pages.dev/rules.svg' width='32' height='32' /><br/>Rate Limit"]
+    w["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>Worker<br/>JWT → 入力 → 上限"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1"]
+    llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='32' height='32' /><br/>LLM<br/>via Secrets"]
+
+    app --> ddos --> waf --> rl --> w
+    w -->|GET /runs| d1
+    w -->|BFF| llm
+    w -->|usage 加算| d1
+```
+
+#### 日次収集経路（cron → Queues）
+
+```mermaid
+flowchart LR
+    cron["<img src='https://cf-icons.pages.dev/time-services.svg' width='32' height='32' /><br/>cron<br/>投入のみ"]
+    kv["<img src='https://cf-icons.pages.dev/kv.svg' width='32' height='32' /><br/>KV<br/>冪等"]
+    q["<img src='https://cf-icons.pages.dev/queues.svg' width='32' height='32' /><br/>Queues"]
+    cons["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>Consumer<br/>1 msg / 10ms"]
+    src["<img src='https://cf-icons.pages.dev/api.svg' width='32' height='32' /><br/>論文ソース"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1<br/>runs / papers"]
+
+    cron --> kv
+    cron --> q --> cons
+    cons --> src
+    cons --> d1
 ```
 
 ### 構成要素と選定理由
@@ -97,10 +139,26 @@ flowchart TB
 - 失敗と 0 件は `runs.status`、ソース単位の失敗は `failed_sources_json`（FR-08）
 - **cron はアカウントで 5 本まで（Free）**。使うのは収集投入の 1 本だけで、プロジェクトごとに cron を増やす設計にしない
 
-### 同期 API（FR-02）
+### 同期 API（FR-02 のクラウド側）
 
 - ローカルの `last_run_id` より後の `runs` と `run_papers` を返すだけ（ADR-0001）
 - **プル専用**。クラウドへの書き戻し経路を作らない。判定結果は未公開データ由来のため外に出さない（C-01）
+- Electron 起動時の「未取得確認 → 取込 → **ローカル**埋め込み＋ローカル LLM で競合／重複検査」は [ADR-0001](0001-runtime-local-data-extensibility.md) の工程。クラウドは候補の受け渡しまで
+
+#### 起動時プル（クラウドが見る範囲）
+
+```mermaid
+flowchart LR
+    app["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='32' height='32' /><br/>Electron 起動"]
+    sync["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>同期 API"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1"]
+    local["<img src='https://cf-icons.pages.dev/server-database.svg' width='32' height='32' /><br/>ローカルへ取込"]
+    judge["<img src='https://cf-icons.pages.dev/workers-ai.svg' width='32' height='32' /><br/>ローカル判定<br/>（ADR-0001）"]
+
+    app --> sync --> d1
+    d1 -->|未取得 runs あり| local --> judge
+    d1 -->|なし| app
+```
 
 ### BFF（FR-10, C-04）
 
