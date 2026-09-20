@@ -55,4 +55,13 @@ export class CloudClient {
     }
     return res;
   }
+
+  /** C1 トレンド。本文に手元論文や原稿を載せない（C-09） */
+  trends(topic: string): Promise<Response> {
+    return this.fetch('/bff/trends', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ topic }),
+    });
+  }
 }

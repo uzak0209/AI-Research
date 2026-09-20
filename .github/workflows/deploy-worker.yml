@@ -145,6 +145,27 @@ jobs:
       - name: Deploy
         run: npx wrangler deploy --env dev
 
+      # 手元 wrangler は別アカウントを見ることがある。CI と同じ token で載せる。
+      # 未設定なら飛ばす（C-07: 無い鍵で動いたふりをしない。Worker 側は 501）
+      - name: Put Worker secrets
+        env:
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          put() {
+            local name="$1"
+            local value="${2:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name が未設定のため Worker Secret を飛ばした"
+              return 0
+            fi
+            echo "::add-mask::$value"
+            printf '%s' "$value" | npx wrangler secret put "$name" --env dev
+          }
+          put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
+          put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
+
       # deploy が通っても Worker が起動しないことがあるので、実際に叩いて確かめる
       - name: Smoke test
         env:
@@ -218,6 +239,25 @@ jobs:
 
       - name: Deploy
         run: npx wrangler deploy --env prod
+
+      - name: Put Worker secrets
+        env:
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          put() {
+            local name="$1"
+            local value="${2:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name が未設定のため Worker Secret を飛ばした"
+              return 0
+            fi
+            echo "::add-mask::$value"
+            printf '%s' "$value" | npx wrangler secret put "$name" --env prod
+          }
+          put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
+          put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
 
       - name: Smoke test
         env:

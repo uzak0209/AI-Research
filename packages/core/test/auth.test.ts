@@ -119,4 +119,22 @@ describe('CloudClient', () => {
     expect(runs).toBe(2);
     expect(auth.getAccessToken()).toBe('fresh');
   });
+
+  it('trends は POST /bff/trends に topic だけ送る', async () => {
+    const { auth } = session();
+    auth.setAccessToken('access-1');
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ topic: 'DPDK' }));
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe('Bearer access-1');
+      return new Response(JSON.stringify({ classification: 'C1', summary: null, papers: [] }), {
+        status: 200,
+      });
+    });
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    const res = await client.trends('DPDK');
+    expect(res.status).toBe(200);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/bff/trends');
+  });
 });
