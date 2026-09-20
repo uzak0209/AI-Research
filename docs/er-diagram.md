@@ -178,7 +178,7 @@ erDiagram
 |---|---|---|
 | `auth.user_id` | クラウド `users.user_id`。ローカルとクラウドの対応づけ | — |
 | `auth.account_label` | 表示名（複数アカウントの判別用。不要なら省く） | — |
-| `auth.refresh_token_enc` | 更新用トークン。`encrypted=true` | **秘密** |
+| `auth.refresh_token_enc` | 更新用トークン。`encrypted=true`（OS 保護領域 / `safeStorage`） | **秘密** |
 | `auth.expires_at` | 有効期限 | — |
 | `sync.endpoint` | BFF の接続先 | — |
 | `sync.last_synced_at` | 最終同期時刻（失敗表示用） | — |
@@ -187,7 +187,7 @@ erDiagram
 | `export.bib_path` | 引用ファイルの書き出し先。**未設定なら書き出さない**（FR-12） | — |
 | `export.format` | `bibtex` / `hayagriva` | — |
 
-- アクセストークンは保存しない（メモリのみ）
+- アクセストークンは保存しない（メモリのみ。メインプロセス）
 - 同期位置は `projects.last_run_id` に持つので `settings` には置かない
 
 ### 各表の意味

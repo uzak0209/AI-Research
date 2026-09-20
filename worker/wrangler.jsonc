@@ -28,7 +28,8 @@
       "name": "ai-research-api-dev",
       "vars": {
         "ENVIRONMENT": "dev",
-        "CONSENT_VERSION": "1"
+        "CONSENT_VERSION": "1",
+        "LLM_DAILY_CALL_LIMIT": "20"
       },
       "observability": { "enabled": true },
       "d1_databases": [
@@ -62,7 +63,8 @@
       "name": "ai-research-api",
       "vars": {
         "ENVIRONMENT": "prod",
-        "CONSENT_VERSION": "1"
+        "CONSENT_VERSION": "1",
+        "LLM_DAILY_CALL_LIMIT": "20"
       },
       "observability": { "enabled": true },
       // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。

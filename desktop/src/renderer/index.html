@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>AI-Research</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>AI-Research</h1>
+      <div id="status" class="status"></div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2>プロジェクト</h2>
+        <label>概要（クラウドに出る唯一の情報）</label>
+        <textarea id="summary" rows="4"></textarea>
+        <label>自分の主張（1 行 1 つ。ローカルから出ない）</label>
+        <textarea id="claims" rows="8"></textarea>
+        <div class="row">
+          <button id="save">保存して採点し直す</button>
+          <button id="score">採点する</button>
+          <button id="cancel" disabled>中止</button>
+        </div>
+        <p class="note">
+          概要や主張を変えると採点の前提が変わるため、採点済みの印を落として採点し直します。
+        </p>
+      </section>
+
+      <section class="panel grow">
+        <h2>関連度順</h2>
+        <p class="note">
+          順位だけを出します。有効／除外の断定はしません（実データで閾値が引けなかったため）。
+          <strong>上位には競合論文が混ざります。</strong>
+        </p>
+        <div id="list"></div>
+      </section>
+    </main>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

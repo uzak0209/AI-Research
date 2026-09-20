@@ -70,16 +70,61 @@ describe('HTTP', () => {
     await expect(res.json()).resolves.toMatchObject({ ok: true });
   });
 
-  it('未実装の同期 API は 501。空配列で「0 件」に見せかけない（C-07）', async () => {
+  it('同期 API は Bearer 無しなら 401。空配列で「0 件」に見せかけない（C-07）', async () => {
     const res = await handleFetch(new Request('https://api.test/runs'), env);
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('unauthorized');
+  });
+
+  it('同期 API は access が通っても中身は 501', async () => {
+    const { signAccessToken } = await import('../src/auth/jwt');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const res = await handleFetch(
+      new Request('https://api.test/runs', { headers: { Authorization: `Bearer ${token}` } }),
+      env,
+    );
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('not_implemented');
   });
 
-  it('BFF は分類決定まで 501（自由プロキシを作らない。ADR-0002）', async () => {
+  it('refresh から新しい access を出せる', async () => {
+    const { signRefreshToken, verifyToken } = await import('../src/auth/jwt');
+    const refresh = await signRefreshToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const res = await handleFetch(
+      new Request('https://api.test/auth/refresh', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { access_token: string; token_type: string };
+    expect(body.token_type).toBe('bearer');
+    const payload = await verifyToken(env.JWT_SIGNING_KEY!, body.access_token);
+    expect(payload.sub).toBe('sub-1');
+    expect(payload.typ).toBe('access');
+  });
+
+  it('access を refresh に使うと 401', async () => {
+    const { signAccessToken } = await import('../src/auth/jwt');
+    const access = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const res = await handleFetch(
+      new Request('https://api.test/auth/refresh', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refresh_token: access }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('BFF の未実装経路は Bearer 無しなら 401（自由プロキシを作らない。ADR-0002）', async () => {
     const res = await handleFetch(new Request('https://api.test/bff/themes'), env);
-    expect(res.status).toBe(501);
+    expect(res.status).toBe(401);
   });
 
   it('知らない経路は 404 で落とす', async () => {

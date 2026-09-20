@@ -74,8 +74,9 @@ jobs:
         run: npx tsc --noEmit
 
       # Workers ランタイム上で走らせる。Node で動かすと D1 の挙動がずれる
+      # coverage は v8 不可（Workers に inspector が無い）。istanbul を使う
       - name: Test
-        run: npx vitest run
+        run: npx vitest run --coverage
 
       # 認証情報なしで設定とビルドの妥当性を見る
       - name: Dry run (dev)
@@ -104,24 +105,70 @@ jobs:
 
       - run: npm ci
 
+      # Secret に改行や空白が混入していると wrangler が
+      # "Invalid account ID" で落ちる。ここで落として原因を明示する。
+      # トリムした値は後続のステップへ GITHUB_ENV 経由で渡す。
+      - name: Normalize Cloudflare credentials
+        env:
+          RAW_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RAW_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]')"
+          account="$(printf '%s' "$RAW_ACCOUNT" | tr -d '[:space:]')"
+
+          if [ -z "$token" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          if [ -z "$account" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          case "$account" in
+            *[!a-zA-Z0-9_-]*)
+              echo "::error::CLOUDFLARE_ACCOUNT_ID に英数字・ハイフン・アンダースコア以外が含まれる。改行や空白が混入していないか確認すること。"
+              exit 1
+              ;;
+          esac
+
+          # トリム後の値は元の Secret と文字列が違うため自動マスクが効かない
+          echo "::add-mask::$token"
+          echo "CLOUDFLARE_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$account" >> "$GITHUB_ENV"
+          echo "認証情報を正規化した（account ID の長さ: ${#account}）"
+
       # スキーマを先に当てる。コードが新しい列を読むのに列が無い状態を作らない
       - name: Apply D1 migrations
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler d1 migrations apply ai-research-dev --remote --env dev
 
       - name: Deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --env dev
+
+      # 手元 wrangler は別アカウントを見ることがある。CI と同じ token で載せる。
+      # 未設定なら飛ばす（C-07: 無い鍵で動いたふりをしない。Worker 側は 501）
+      - name: Put Worker secrets
+        env:
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          put() {
+            local name="$1"
+            local value="${2:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name が未設定のため Worker Secret を飛ばした"
+              return 0
+            fi
+            echo "::add-mask::$value"
+            printf '%s' "$value" | npx wrangler secret put "$name" --env dev
+          }
+          put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
+          put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
 
       # deploy が通っても Worker が起動しないことがあるので、実際に叩いて確かめる
       - name: Smoke test
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           HEALTH_URL: ${{ vars.DEV_HEALTH_URL }}
         run: |
           set -euo pipefail
@@ -154,17 +201,63 @@ jobs:
 
       - run: npm ci
 
-      - name: Apply D1 migrations
+      # Secret に改行や空白が混入していると wrangler が
+      # "Invalid account ID" で落ちる。ここで落として原因を明示する。
+      # トリムした値は後続のステップへ GITHUB_ENV 経由で渡す。
+      - name: Normalize Cloudflare credentials
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RAW_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RAW_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]')"
+          account="$(printf '%s' "$RAW_ACCOUNT" | tr -d '[:space:]')"
+
+          if [ -z "$token" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          if [ -z "$account" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          case "$account" in
+            *[!a-zA-Z0-9_-]*)
+              echo "::error::CLOUDFLARE_ACCOUNT_ID に英数字・ハイフン・アンダースコア以外が含まれる。改行や空白が混入していないか確認すること。"
+              exit 1
+              ;;
+          esac
+
+          # トリム後の値は元の Secret と文字列が違うため自動マスクが効かない
+          echo "::add-mask::$token"
+          echo "CLOUDFLARE_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$account" >> "$GITHUB_ENV"
+          echo "認証情報を正規化した（account ID の長さ: ${#account}）"
+
+      - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply ai-research-prod --remote --env prod
 
       - name: Deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npx wrangler deploy --env prod
+
+      - name: Put Worker secrets
+        env:
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          put() {
+            local name="$1"
+            local value="${2:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name が未設定のため Worker Secret を飛ばした"
+              return 0
+            fi
+            echo "::add-mask::$value"
+            printf '%s' "$value" | npx wrangler secret put "$name" --env prod
+          }
+          put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
+          put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
 
       - name: Smoke test
         env:
@@ -182,9 +275,6 @@ jobs:
       # 失敗したら直前のバージョンへ戻す手順をログに残す（自動では戻さない）
       - name: Rollback hint
         if: failure()
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           echo "::error::prod の deploy に失敗した。戻す場合は次を手で実行する:"
           echo "  cd worker && npx wrangler rollback --env prod"

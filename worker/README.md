@@ -8,16 +8,24 @@ HTTP と cron を 1 つの Worker に同居させる。
 | 経路 | 状態 |
 |---|---|
 | `GET /health` | 動く。CI の疎通確認に使う |
-| `GET /runs`（同期 API・FR-02） | **501**。認証の上流 IdP と署名鍵の入れ替えが未決 |
-| `POST /bff/*`（FR-10） | **501**。分類（C1/C2/C3）決定後に足す |
+| `GET /doc` | OpenAPI |
+| `POST /auth/refresh` | refresh JWT → 新しい access |
+| `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501**（IdP のあとで足す） |
+| `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（`orcarouter/auto`）で要約 |
+| `GET`/`POST` `/bff/{name}`（C2/C3） | Bearer 必須。同意・プレビュー未実装のため **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |
 
 ## 構成
 
-| 要素 | 使うもの | 理由（ADR-0004） |
+| 要素 | 使うもの | 理由 |
 |---|---|---|
-| 実行 | Workers（HTTP と cron を同居） | ランタイムを増やさない。分けると設定と型が二重になる |
+| HTTP | Hono + `@hono/zod-openapi` | 経路と OpenAPI を同じ定義から出す |
+| 入力 | Zod | 境界で一回だけ検証する |
+| SQL | Kysely（compile のみ）+ D1 `batch` | 1 実行 50 クエリに収める。kysely-d1 は使わない |
+| 型 | `kysely-codegen`（`npm run codegen`） | 正本は migrations |
+| JWT | `jose`。Worker は `Authorization: Bearer` のみ | トークン置き場はクライアント（ADR-0001） |
+| 実行 | Workers（HTTP と cron を同居） | ランタイムを増やさない |
 | 保存 | D1（`dev` / `prod` で分ける） | 公開データのみで量が小さい |
 | 分散 | Queues（1 メッセージ = 1 プロジェクト × ソース） | CPU 10ms/実行 の回避 |
 | 冪等 | KV | cron・Queues とも at-least-once |
@@ -46,6 +54,8 @@ Settings → Secrets and variables → Actions。**Secret と Variable はタブ
 |---|---|---|
 | Secret | `CLOUDFLARE_API_TOKEN` | 下の権限を持つ API トークン |
 | Secret | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID（`npx wrangler whoami` で出る） |
+| Secret | `JWT_SIGNING_KEY` | Worker の HS256 署名鍵。CI が `wrangler secret put` する |
+| Secret | `ORCAROUTER_API_KEY` | OrcaRouter の `sk-orca-…`。CI が `wrangler secret put` する |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
 
@@ -76,14 +86,24 @@ Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDF
 
 `prod` は Environment で承認を必須にできる。誤 deploy を止める最後の砦。
 
-### Workers Secrets は今のところ不要
+### Workers Secrets
 
-`wrangler secret put` で入れる秘密は、**現在のコードが 1 つも参照していない**。
-`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` は `/runs` と `/bff/*` が 501 の間は使われない。
-認証と BFF を実装する時点で入れる。
+`JWT_SIGNING_KEY` と `ORCAROUTER_API_KEY` は **GitHub Secrets に置き、deploy が Worker へ載せる。**
+手元 `wrangler login` と CI のアカウントが違うと、ローカルの `secret put` は別 Worker を作る。
 
-Worker が実際に読むのは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE`（バインディング）と
-`ENVIRONMENT` / `CONSENT_VERSION`（`wrangler.jsonc` の `vars`）だけ。
+```bash
+gh secret set JWT_SIGNING_KEY
+gh secret set ORCAROUTER_API_KEY
+```
+
+未設定なら認証系と C1 は 501。OAuth の IdP はまだ未決。
+`ORCAROUTER_API_KEY` は C1（interactive）用。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
+
+クライアントは refresh を OS 保護領域（`safeStorage`）、access をメモリに置く（ADR-0001）。
+Worker は Cookie を出さない。
+
+Worker が読むバインディングは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE` と
+`ENVIRONMENT` / `CONSENT_VERSION` / `LLM_DAILY_CALL_LIMIT`（vars）。秘密は Secrets のみ。
 
 ## CI/CD
 
@@ -116,12 +136,16 @@ Worker が実際に読むのは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE`（バイ�
 cd worker && npx wrangler rollback --env prod
 ```
 
+`JWT_SIGNING_KEY` は `/auth/refresh` と Bearer 検証で使う。IdP は未決。
+
 ## ローカル
 
 ```bash
 npm run dev                          # wrangler dev
 npx wrangler dev --test-scheduled    # cron を叩く: /__scheduled
-npx wrangler d1 migrations apply ai-research-dev --local
+npx wrangler d1 migrations apply ai-research-dev --local --env dev
+npm run codegen                      # migrations から Kysely の型
+npm run test:coverage
 ```
 
 ## Free 枠で効く制約（ADR-0004）
@@ -138,6 +162,6 @@ npx wrangler d1 migrations apply ai-research-dev --local
 
 - **WAF・レート制限がコード管理になっていない。** ADR-0004 は「wrangler / Terraform で
   コード管理」としているが、これらはゾーンの設定で wrangler では扱えない。Terraform が要る
-- 認証（OAuth + PKCE、JWT 検証、署名鍵の入れ替え）
-- BFF endpoint と OrcaRouter 連携
+- 認証（OAuth + PKCE、署名鍵の入れ替え）
+- C2 テーマ候補・C3 ファクトチェック（同意・プレビュー）
 - `runs` / `run_papers` の保持期間の削除処理

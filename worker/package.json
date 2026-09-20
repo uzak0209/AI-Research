@@ -9,12 +9,24 @@
     "deploy:dev": "wrangler deploy --env dev",
     "deploy:prod": "wrangler deploy --env prod",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "codegen": "bash scripts/codegen.sh"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@vitest/coverage-istanbul": "^4.1.11",
+    "better-sqlite3": "^12.11.1",
+    "kysely-codegen": "^0.20.0",
     "typescript": "^5",
     "vitest": "4.1.11",
     "wrangler": "^4"
+  },
+  "dependencies": {
+    "@hono/zod-openapi": "^1.6.3",
+    "hono": "^4.13.8",
+    "jose": "^6.2.12",
+    "kysely": "^0.29.6",
+    "zod": "^4.6.5"
   }
 }
