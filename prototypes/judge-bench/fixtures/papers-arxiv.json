@@ -1,0 +1,6 @@
+{
+  "_note": "実在の arXiv 論文。tier は取得クエリ由来の区分（A=明確に関連 / B=境界 / C=明確に無関係）。expected はまだ入っていない。label-arxiv で付けてから計測すること。",
+  "_fetched_at": "2026-09-20T03:42:22.257Z",
+  "summary": "We develop graph neural networks for molecular property prediction, focusing on the low-data regime. Our main interest is transfer learning and pretraining strategies that let a model trained on large public molecule corpora adapt to small proprietary assay datasets (hundreds of labeled molecules), together with calibrated uncertainty estimates so that chemists know when to distrust a prediction.",
+  "papers": []
+}

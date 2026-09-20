@@ -1,0 +1,812 @@
+{
+  "stats": {
+    "model": "Xenova/bge-small-en-v1.5",
+    "score_mode": "summary",
+    "n": 50,
+    "load_ms": 376,
+    "embed_total_ms": 4305,
+    "embed_per_item_ms": 86
+  },
+  "rows": [
+    {
+      "id": "r02",
+      "title": "Transfer learning with graph neural networks for improved molecular property prediction in the multi-fidelity setting",
+      "score": 0.8823977457027962,
+      "sim_summary": 0.8823977457027962,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8103615922702587,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s41467-024-45566-8",
+      "rank": 1
+    },
+    {
+      "id": "r07",
+      "title": "Chain-aware graph neural networks for molecular property prediction",
+      "score": 0.8515095202798052,
+      "sim_summary": 0.8515095202798052,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8050672322703538,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1093/bioinformatics/btae574",
+      "rank": 2
+    },
+    {
+      "id": "r04",
+      "title": "Explainable AI in drug discovery: self-interpretable graph neural network for molecular property prediction using concept whitening",
+      "score": 0.8472955122539918,
+      "sim_summary": 0.8472955122539918,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7937640682232389,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1007/s10994-023-06369-y",
+      "rank": 3
+    },
+    {
+      "id": "r03",
+      "title": "Kolmogorov–Arnold graph neural networks for molecular property prediction",
+      "score": 0.8428020154694809,
+      "sim_summary": 0.8428020154694809,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8078140788913037,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1038/s42256-025-01087-7",
+      "rank": 4
+    },
+    {
+      "id": "r01",
+      "title": "Chemistry-intuitive explanation of graph neural networks for molecular property prediction with substructure masking",
+      "score": 0.8357643781564636,
+      "sim_summary": 0.8357643781564636,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8291232707528351,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1038/s41467-023-38192-3",
+      "rank": 5
+    },
+    {
+      "id": "r09",
+      "title": "Chemprop: A Machine Learning Package for Chemical Property Prediction",
+      "score": 0.8183637307066778,
+      "sim_summary": 0.8183637307066778,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7625316991247072,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.3c01250",
+      "rank": 6
+    },
+    {
+      "id": "r08",
+      "title": "Fingerprint-enhanced hierarchical molecular graph neural networks for property prediction",
+      "score": 0.814059502324481,
+      "sim_summary": 0.814059502324481,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7754732398562333,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.jpha.2025.101242",
+      "rank": 7
+    },
+    {
+      "id": "r11",
+      "title": "Accurate Predictions of Molecular Properties of Proteins via Graph Neural Networks and Transfer Learning",
+      "score": 0.812042308221169,
+      "sim_summary": 0.812042308221169,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7517096240879428,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1021/acs.jctc.4c01682",
+      "rank": 8
+    },
+    {
+      "id": "r12",
+      "title": "Enhancing Molecular Property Prediction through Task-Oriented Transfer Learning: Integrating Universal Structural Insights and Domain-Specific Knowledge",
+      "score": 0.8072101533195355,
+      "sim_summary": 0.8072101533195355,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7678497965926713,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1021/acs.jmedchem.4c00692",
+      "rank": 9
+    },
+    {
+      "id": "r14",
+      "title": "Enhancing drug property prediction with dual-channel transfer learning based on molecular fragment",
+      "score": 0.8047036222176642,
+      "sim_summary": 0.8047036222176642,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7647408898499403,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1186/s12859-023-05413-x",
+      "rank": 10
+    },
+    {
+      "id": "r06",
+      "title": "Graph Neural Networks and Structural Information on Ionic Liquids: A Cheminformatics Study on Molecular Physicochemical Property Prediction",
+      "score": 0.8021080201753747,
+      "sim_summary": 0.8021080201753747,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7495677219361966,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jpcb.3c05521",
+      "rank": 11
+    },
+    {
+      "id": "r10",
+      "title": "Transferring a Molecular Foundation Model for Polymer Property Predictions",
+      "score": 0.7964450532756497,
+      "sim_summary": 0.7964450532756497,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7376847452074364,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.3c01650",
+      "rank": 12
+    },
+    {
+      "id": "r05",
+      "title": "DGCL: dual-graph neural networks contrastive learning for molecular property prediction",
+      "score": 0.7879204996835564,
+      "sim_summary": 0.7879204996835564,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7469343867024562,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1093/bib/bbae474",
+      "rank": 13
+    },
+    {
+      "id": "r13",
+      "title": "Improved GNNs for Log D 7.4 Prediction by Transferring Knowledge from Low-Fidelity Data",
+      "score": 0.786814709563461,
+      "sim_summary": 0.786814709563461,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7600431062268092,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.2c01564",
+      "rank": 14
+    },
+    {
+      "id": "r33",
+      "title": "Scalable Parallel Algorithm for Graph Neural Network Interatomic Potentials in Molecular Dynamics Simulations",
+      "score": 0.7469039732428673,
+      "sim_summary": 0.7469039732428673,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7695015951414738,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1021/acs.jctc.4c00190",
+      "rank": 15
+    },
+    {
+      "id": "r19",
+      "title": "Explainable artificial intelligence and domain adaptation for predicting HIV infection with graph neural networks",
+      "score": 0.7334488398299976,
+      "sim_summary": 0.7334488398299976,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6816339197189168,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1080/07853890.2024.2407063",
+      "rank": 16
+    },
+    {
+      "id": "r18",
+      "title": "Discrete-time graph neural networks for transaction prediction in Web3 social platforms",
+      "score": 0.7317306925704858,
+      "sim_summary": 0.7317306925704858,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6833402947306904,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1007/s10994-024-06579-y",
+      "rank": 17
+    },
+    {
+      "id": "r37",
+      "title": "Few-Shot Prediction of Toxicity of Ionic Liquids Supported by Attentive Model-Agnostic Meta-Learning",
+      "score": 0.7272534509490982,
+      "sim_summary": 0.7272534509490982,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6967766467251243,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "useful",
+      "year": 2026,
+      "doi": "https://doi.org/10.1021/acs.chemrestox.6c00022",
+      "rank": 18
+    },
+    {
+      "id": "r32",
+      "title": "Uncertainty-driven dynamics for active learning of interatomic potentials",
+      "score": 0.7236841494564834,
+      "sim_summary": 0.7236841494564834,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.7051042600392824,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1038/s43588-023-00406-5",
+      "rank": 19
+    },
+    {
+      "id": "r38",
+      "title": "A Small-Sample Graph Neural Network Approach for Predicting Sortie Mission Reliability of Shipborne Vehicle Layouts",
+      "score": 0.7131970211774307,
+      "sim_summary": 0.7131970211774307,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6672113229550457,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2026,
+      "doi": "https://doi.org/10.3390/jmse14070599",
+      "rank": 20
+    },
+    {
+      "id": "r31",
+      "title": "Efficient Molecular Dynamics Simulations of Deep Eutectic Solvents with First-Principles Accuracy Using Machine Learning Interatomic Potentials",
+      "score": 0.7080047439040394,
+      "sim_summary": 0.7080047439040394,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6790381867398366,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jctc.3c00944",
+      "rank": 21
+    },
+    {
+      "id": "r27",
+      "title": "Augmenting large language models with chemistry tools",
+      "score": 0.705447757606088,
+      "sim_summary": 0.705447757606088,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7102338274666326,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s42256-024-00832-8",
+      "rank": 22
+    },
+    {
+      "id": "r15",
+      "title": "Counterfactual Graph Learning for Anomaly Detection on Attributed Networks",
+      "score": 0.6938050137782226,
+      "sim_summary": 0.6938050137782226,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6869744226044641,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1109/tkde.2023.3250523",
+      "rank": 23
+    },
+    {
+      "id": "r16",
+      "title": "Dual Variational Graph Reconstruction Learning for Social Recommendation",
+      "score": 0.6887853157559319,
+      "sim_summary": 0.6887853157559319,
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.6589430827893539,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1109/tkde.2024.3386895",
+      "rank": 24
+    },
+    {
+      "id": "r26",
+      "title": "Large language models for drug discovery and development",
+      "score": 0.6858913629917187,
+      "sim_summary": 0.6858913629917187,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6738644720349769,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.patter.2025.101346",
+      "rank": 25
+    },
+    {
+      "id": "r30",
+      "title": "Machine learning interatomic potential for molecular dynamics simulation of the ferroelectric KNb O 3 perovskite",
+      "score": 0.6724217375345521,
+      "sim_summary": 0.6724217375345521,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6319464522842316,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1103/physrevb.107.014101",
+      "rank": 26
+    },
+    {
+      "id": "r17",
+      "title": "Bi-Directional Transfer Graph Contrastive Learning for Social Recommendation",
+      "score": 0.6691634548942392,
+      "sim_summary": 0.6691634548942392,
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.6435939908171926,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1109/tbdata.2024.3387340",
+      "rank": 27
+    },
+    {
+      "id": "r34",
+      "title": "Atomistic modeling of the mechanical properties: the rise of machine learning interatomic potentials",
+      "score": 0.6677720924833306,
+      "sim_summary": 0.6677720924833306,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6331971831195159,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1039/d3mh00125c",
+      "rank": 28
+    },
+    {
+      "id": "r25",
+      "title": "Artificial intelligence enabled ChatGPT and large language models in drug target discovery, drug discovery, and development",
+      "score": 0.6666485721122195,
+      "sim_summary": 0.6666485721122195,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6450557997707236,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.omtn.2023.08.009",
+      "rank": 29
+    },
+    {
+      "id": "r29",
+      "title": "AI-enabled language models (LMs) to large language models (LLMs) and multimodal large language models (MLLMs) in drug discovery and development",
+      "score": 0.6595809510782518,
+      "sim_summary": 0.6595809510782518,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.646372183924132,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.jare.2025.02.011",
+      "rank": 30
+    },
+    {
+      "id": "r47",
+      "title": "The neural machine translation models for the low-resource Kazakh–English language pair",
+      "score": 0.6594629215642314,
+      "sim_summary": 0.6594629215642314,
+      "nearest_claim": {
+        "id": "c06",
+        "sim": 0.6691203862782026,
+        "text": "We claim that curating the pretraining corpus by chemical-space overlap with the downstream task matters more for transfer than increasing the size of the pretraining corpus."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.7717/peerj-cs.1224",
+      "rank": 31
+    },
+    {
+      "id": "r24",
+      "title": "A Deep Learning-Based Framework for Uncertainty Quantification in Medical Imaging Using the DropWeak Technique: An Empirical Study with Baresnet",
+      "score": 0.6553514617567546,
+      "sim_summary": 0.6553514617567546,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6917509751372675,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.3390/diagnostics13040800",
+      "rank": 32
+    },
+    {
+      "id": "r28",
+      "title": "Large Language Models and Their Applications in Drug Discovery and Development: A Primer",
+      "score": 0.6444162114485539,
+      "sim_summary": 0.6444162114485539,
+      "nearest_claim": {
+        "id": "c08",
+        "sim": 0.6210378121918457,
+        "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1111/cts.70205",
+      "rank": 33
+    },
+    {
+      "id": "r20",
+      "title": "Leveraging Bayesian deep learning and ensemble methods for uncertainty quantification in image classification: A ranking-based approach",
+      "score": 0.6361827379441494,
+      "sim_summary": 0.6361827379441494,
+      "nearest_claim": {
+        "id": "c04",
+        "sim": 0.7445541696025615,
+        "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1016/j.heliyon.2024.e24188",
+      "rank": 34
+    },
+    {
+      "id": "r35",
+      "title": "Learning to Learn Task-Adaptive Hyperparameters for Few-Shot Learning",
+      "score": 0.6361181800823088,
+      "sim_summary": 0.6361181800823088,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.720256436896999,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1109/tpami.2023.3261387",
+      "rank": 35
+    },
+    {
+      "id": "r23",
+      "title": "Uncertainty aware training to improve deep learning model calibration for classification of cardiac MR images",
+      "score": 0.6346974445127997,
+      "sim_summary": 0.6346974445127997,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.7174452699255038,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.media.2023.102861",
+      "rank": 36
+    },
+    {
+      "id": "r50",
+      "title": "Scaling neural machine translation to 200 languages",
+      "score": 0.6300559247941101,
+      "sim_summary": 0.6300559247941101,
+      "nearest_claim": {
+        "id": "c06",
+        "sim": 0.6908332664254399,
+        "text": "We claim that curating the pretraining corpus by chemical-space overlap with the downstream task matters more for transfer than increasing the size of the pretraining corpus."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s41586-024-07335-x",
+      "rank": 37
+    },
+    {
+      "id": "r36",
+      "title": "Evaluating Machine Learning Techniques for Brain Tumor Detection with Emphasis on Few-Shot Learning Using MAML",
+      "score": 0.6293617021267343,
+      "sim_summary": 0.6293617021267343,
+      "nearest_claim": {
+        "id": "c08",
+        "sim": 0.670261310264096,
+        "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.3390/a18100624",
+      "rank": 38
+    },
+    {
+      "id": "r49",
+      "title": "Neural Machine Translation for Low-Resource Languages from a Chinese-centric Perspective: A Survey",
+      "score": 0.6259887648394497,
+      "sim_summary": 0.6259887648394497,
+      "nearest_claim": {
+        "id": "c06",
+        "sim": 0.662951842151146,
+        "text": "We claim that curating the pretraining corpus by chemical-space overlap with the downstream task matters more for transfer than increasing the size of the pretraining corpus."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1145/3665244",
+      "rank": 39
+    },
+    {
+      "id": "r22",
+      "title": "Calibrating ensembles for scalable uncertainty quantification in deep learning-based medical image segmentation",
+      "score": 0.6204435865651878,
+      "sim_summary": 0.6204435865651878,
+      "nearest_claim": {
+        "id": "c04",
+        "sim": 0.7685656794238465,
+        "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.compbiomed.2023.107096",
+      "rank": 40
+    },
+    {
+      "id": "r21",
+      "title": "AUQantO: Actionable Uncertainty Quantification Optimization in deep learning architectures for medical image classification",
+      "score": 0.6176045942531558,
+      "sim_summary": 0.6176045942531558,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6837372627267393,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.asoc.2023.110666",
+      "rank": 41
+    },
+    {
+      "id": "r48",
+      "title": "Improving neural machine translation for low resource languages through non-parallel corpora: a case study of Egyptian dialect to modern standard Arabic translation",
+      "score": 0.6107607848487437,
+      "sim_summary": 0.6107607848487437,
+      "nearest_claim": {
+        "id": "c06",
+        "sim": 0.666154538860419,
+        "text": "We claim that curating the pretraining corpus by chemical-space overlap with the downstream task matters more for transfer than increasing the size of the pretraining corpus."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s41598-023-51090-4",
+      "rank": 42
+    },
+    {
+      "id": "r42",
+      "title": "Morphological classification of radio galaxies with Wasserstein generative adversarial network-supported augmentation",
+      "score": 0.6042538730254667,
+      "sim_summary": 0.6042538730254667,
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.610215183041009,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1093/rasti/rzad016",
+      "rank": 43
+    },
+    {
+      "id": "r43",
+      "title": "A Survey on Deep Reinforcement Learning Algorithms for Robotic Manipulation",
+      "score": 0.57863158661613,
+      "sim_summary": 0.57863158661613,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6172930991410666,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.3390/s23073762",
+      "rank": 44
+    },
+    {
+      "id": "r45",
+      "title": "A Task-Adaptive Deep Reinforcement Learning Framework for Dual-Arm Robot Manipulation",
+      "score": 0.5757069691587775,
+      "sim_summary": 0.5757069691587775,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6149332874323754,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1109/tase.2024.3352584",
+      "rank": 45
+    },
+    {
+      "id": "r40",
+      "title": "An extended catalogue of galaxy morphology using deep learning in southern photometric local universe survey data release 3",
+      "score": 0.574276885971201,
+      "sim_summary": 0.574276885971201,
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.5762230918556512,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1093/mnras/stad3956",
+      "rank": 46
+    },
+    {
+      "id": "r44",
+      "title": "Precise and dexterous robotic manipulation via human-in-the-loop reinforcement learning",
+      "score": 0.5471102505477261,
+      "sim_summary": 0.5471102505477261,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6188125514197225,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1126/scirobotics.ads5033",
+      "rank": 47
+    },
+    {
+      "id": "r39",
+      "title": "Morpheus Reveals Distant Disk Galaxy Morphologies with JWST: The First AI/ML Analysis of JWST Images",
+      "score": 0.5402440093980694,
+      "sim_summary": 0.5402440093980694,
+      "nearest_claim": {
+        "id": "c09",
+        "sim": 0.6024628232705466,
+        "text": "We propose a latent-space distance diagnostic that predicts when the uncertainty estimates of the model will lose coverage, and use it as a gate before committing screening resources."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.3847/2041-8213/aca086",
+      "rank": 48
+    },
+    {
+      "id": "r46",
+      "title": "Sim-to-Real Surgical Robot Learning and Autonomous Planning for Internal Tissue Points Manipulation Using Reinforcement Learning",
+      "score": 0.5254407128502744,
+      "sim_summary": 0.5254407128502744,
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6200952512091283,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1109/lra.2023.3254860",
+      "rank": 49
+    },
+    {
+      "id": "r41",
+      "title": "COSMOS2025: The COSMOS-Web galaxy catalog of photometry, morphology, redshifts, and physical parameters from JWST, HST, and ground-based imaging",
+      "score": 0.4844529098926746,
+      "sim_summary": 0.4844529098926746,
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.5293606417322159,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "C",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1051/0004-6361/202555799",
+      "rank": 50
+    }
+  ]
+}

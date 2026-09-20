@@ -1,0 +1,47 @@
+{
+  "_note": "★仮のプロフィール。ここを自分の研究に差し替えて使う。★ claims は「執筆中原稿から抽出した自分の主張」を模したもので、ADR-0001 の chunks に相当する。競合判定はこの claims と論文を突き合わせて行うため、ここが空だと競合は検出できない（類似度による話題の近さしか出ない）。",
+  "_replace_me": "summary は 3〜5 行でプロジェクトの狙いを。claims は自分が論文で主張する（予定の）ことを 1 つ 1 文で 5〜15 個。未公開でよい。このファイルはローカルから出ない。",
+  "summary": "We develop graph neural networks for molecular property prediction, focusing on the low-data regime. Our main interest is transfer learning and pretraining strategies that let a model trained on large public molecule corpora adapt to small proprietary assay datasets (hundreds of labeled molecules), together with calibrated uncertainty estimates so that chemists know when to distrust a prediction.",
+  "claims": [
+    {
+      "id": "c01",
+      "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+    },
+    {
+      "id": "c02",
+      "text": "We fine-tune the pretrained encoder on proprietary assay sets containing between 200 and 800 labels using low-rank adapters, updating under two percent of the parameters rather than the full backbone."
+    },
+    {
+      "id": "c03",
+      "text": "We claim that adapter-based fine-tuning helps mainly by reducing variance across random seeds, and that its improvement in mean absolute error is smaller than previously reported."
+    },
+    {
+      "id": "c04",
+      "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+    },
+    {
+      "id": "c05",
+      "text": "We show that deep ensembles remain systematically overconfident under scaffold split unless they are conformalized, which we argue is the dominant failure mode in deployment."
+    },
+    {
+      "id": "c06",
+      "text": "We claim that curating the pretraining corpus by chemical-space overlap with the downstream task matters more for transfer than increasing the size of the pretraining corpus."
+    },
+    {
+      "id": "c07",
+      "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+    },
+    {
+      "id": "c08",
+      "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+    },
+    {
+      "id": "c09",
+      "text": "We propose a latent-space distance diagnostic that predicts when the uncertainty estimates of the model will lose coverage, and use it as a gate before committing screening resources."
+    },
+    {
+      "id": "c10",
+      "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+    }
+  ]
+}

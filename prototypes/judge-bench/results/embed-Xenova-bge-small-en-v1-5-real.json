@@ -1,0 +1,438 @@
+{
+  "measured_at": "2026-09-20T03:46:06.830Z",
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i5-1334U",
+    "logical_cores": 12,
+    "node": "v22.23.2"
+  },
+  "config": {
+    "model": "Xenova/bge-small-en-v1.5",
+    "input": "fixtures/papers-real.json",
+    "n": 50
+  },
+  "load_ms": 430,
+  "embed_total_ms": 4573,
+  "embed_per_item_ms": 91,
+  "mean_sim_useful": 0.8088,
+  "mean_sim_excluded": 0.6404,
+  "gap": 0.1684,
+  "min_sim_useful": 0.7237,
+  "max_sim_excluded": 0.7469,
+  "separable": false,
+  "n_useful": 16,
+  "precision_at_n_useful": 0.875,
+  "recall_at_n_useful": 0.875,
+  "precision_at_2n": 0.5,
+  "recall_at_2n": 1,
+  "k_for_full_recall": 19,
+  "k_for_full_recall_ratio": 0.38,
+  "tier_b": {
+    "n": 24,
+    "n_useful": 2,
+    "mean_sim_useful": 0.7255,
+    "mean_sim_excluded": 0.6735,
+    "separable": false
+  },
+  "rows": [
+    {
+      "id": "r02",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8823977457027962,
+      "ms": 97.71069999999997
+    },
+    {
+      "id": "r07",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8515095202798052,
+      "ms": 76.15609999999992
+    },
+    {
+      "id": "r04",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8472955122539918,
+      "ms": 124.38329999999996
+    },
+    {
+      "id": "r03",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8428020154694809,
+      "ms": 111.56100000000004
+    },
+    {
+      "id": "r01",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8357643781564636,
+      "ms": 89.0249
+    },
+    {
+      "id": "r09",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8183637307066778,
+      "ms": 143.98379999999997
+    },
+    {
+      "id": "r08",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.814059502324481,
+      "ms": 81.7623000000001
+    },
+    {
+      "id": "r11",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.812042308221169,
+      "ms": 79.53399999999988
+    },
+    {
+      "id": "r12",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8072101533195355,
+      "ms": 61.007699999999886
+    },
+    {
+      "id": "r14",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8047036222176642,
+      "ms": 74.91450000000032
+    },
+    {
+      "id": "r06",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.8021080201753747,
+      "ms": 114.77430000000004
+    },
+    {
+      "id": "r10",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.7964450532756497,
+      "ms": 61.4045000000001
+    },
+    {
+      "id": "r05",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.7879204996835564,
+      "ms": 142.91419999999994
+    },
+    {
+      "id": "r13",
+      "expected": "useful",
+      "tier": "A",
+      "label_confidence": "high",
+      "sim": 0.786814709563461,
+      "ms": 154.04359999999997
+    },
+    {
+      "id": "r33",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.7469039732428673,
+      "ms": 89.07789999999977
+    },
+    {
+      "id": "r19",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.7334488398299976,
+      "ms": 73.9704999999999
+    },
+    {
+      "id": "r18",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.7317306925704858,
+      "ms": 102.83089999999993
+    },
+    {
+      "id": "r37",
+      "expected": "useful",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.7272534509490982,
+      "ms": 103.67800000000034
+    },
+    {
+      "id": "r32",
+      "expected": "useful",
+      "tier": "B",
+      "label_confidence": "low",
+      "sim": 0.7236841494564834,
+      "ms": 60.69890000000032
+    },
+    {
+      "id": "r38",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.7131970211774307,
+      "ms": 89.88980000000038
+    },
+    {
+      "id": "r31",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.7080047439040394,
+      "ms": 66.91629999999986
+    },
+    {
+      "id": "r27",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.705447757606088,
+      "ms": 58.109500000000025
+    },
+    {
+      "id": "r15",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.6938050137782226,
+      "ms": 70.20059999999967
+    },
+    {
+      "id": "r16",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.6887853157559319,
+      "ms": 75.8719000000001
+    },
+    {
+      "id": "r26",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6858913629917187,
+      "ms": 38.94979999999987
+    },
+    {
+      "id": "r30",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6724217375345521,
+      "ms": 128.2572
+    },
+    {
+      "id": "r17",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6691634548942392,
+      "ms": 70.72440000000006
+    },
+    {
+      "id": "r34",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.6677720924833306,
+      "ms": 72.30439999999999
+    },
+    {
+      "id": "r25",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6666485721122195,
+      "ms": 47.089600000000246
+    },
+    {
+      "id": "r29",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6595809510782518,
+      "ms": 154.54649999999992
+    },
+    {
+      "id": "r47",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.6594629215642314,
+      "ms": 110.37199999999939
+    },
+    {
+      "id": "r24",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.6553514617567546,
+      "ms": 69.86290000000008
+    },
+    {
+      "id": "r28",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6444162114485539,
+      "ms": 47.99229999999989
+    },
+    {
+      "id": "r20",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6361827379441494,
+      "ms": 81.96759999999995
+    },
+    {
+      "id": "r35",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "low",
+      "sim": 0.6361181800823088,
+      "ms": 77.68209999999999
+    },
+    {
+      "id": "r23",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6346974445127997,
+      "ms": 117.74039999999968
+    },
+    {
+      "id": "r50",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.6300559247941101,
+      "ms": 125.04399999999987
+    },
+    {
+      "id": "r36",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "high",
+      "sim": 0.6293617021267343,
+      "ms": 99.67460000000028
+    },
+    {
+      "id": "r49",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.6259887648394497,
+      "ms": 74.20989999999983
+    },
+    {
+      "id": "r22",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6204435865651878,
+      "ms": 72.21410000000014
+    },
+    {
+      "id": "r21",
+      "expected": "excluded",
+      "tier": "B",
+      "label_confidence": "medium",
+      "sim": 0.6176045942531558,
+      "ms": 98.37960000000021
+    },
+    {
+      "id": "r48",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.6107607848487437,
+      "ms": 91.2502999999997
+    },
+    {
+      "id": "r42",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.6042538730254667,
+      "ms": 67.44440000000031
+    },
+    {
+      "id": "r43",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.57863158661613,
+      "ms": 96.20870000000014
+    },
+    {
+      "id": "r45",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.5757069691587775,
+      "ms": 115.3765999999996
+    },
+    {
+      "id": "r40",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.574276885971201,
+      "ms": 80.24290000000019
+    },
+    {
+      "id": "r44",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.5471102505477261,
+      "ms": 130.08480000000054
+    },
+    {
+      "id": "r39",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.5402440093980694,
+      "ms": 83.75810000000001
+    },
+    {
+      "id": "r46",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.5254407128502744,
+      "ms": 64.92070000000058
+    },
+    {
+      "id": "r41",
+      "expected": "excluded",
+      "tier": "C",
+      "label_confidence": "high",
+      "sim": 0.4844529098926746,
+      "ms": 117.76080000000002
+    }
+  ]
+}
