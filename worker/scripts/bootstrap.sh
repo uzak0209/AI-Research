@@ -31,10 +31,22 @@ echo "=== ${ENV_NAME} のリソースを作る ==="
 echo "先に 'npx wrangler login' を済ませておくこと。"
 echo
 
-# 既にあれば作らない。bootstrap を二度走らせても壊れないようにする
+# 既にあれば作らない。bootstrap を二度走らせても壊れないようにする。
+#
+# 名前の判定は**完全一致**で行う。部分一致にすると
+# "ai-research-collect-dev" があるせいで "ai-research-collect" を
+# 作成済みと誤判定する（実際にそれで prod のキューが作られなかった）。
 create_if_absent() {
-  local kind="$1" name="$2" cmd="$3"
-  if eval "$4" | grep -q -- "$name"; then
+  local kind="$1" name="$2" cmd="$3" list_cmd="$4"
+  # 出力は表（queues）と JSON（d1 / kv）が混ざる。
+  # 罫線・引用符・カンマを落としてから、語として完全一致するか見る
+  if eval "$list_cmd" 2>/dev/null       | tr -s ' │|	",' '
+
+
+
+
+
+'       | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'       | grep -qx -- "$name"; then
     echo "[skip] ${kind} ${name} は既にある"
   else
     echo "[create] ${kind} ${name}"

@@ -35,12 +35,12 @@
         {
           "binding": "DB",
           "database_name": "ai-research-dev",
-          "database_id": "PLACEHOLDER_DEV_D1_ID",
+          "database_id": "a379335e-6c93-4d84-87b2-34be95717e2e",
           "migrations_dir": "./migrations"
         }
       ],
       // 収集実行の冪等キー。cron・Queues とも at-least-once のため
-      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "PLACEHOLDER_DEV_KV_ID" }],
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "88e7f74ecbe34e5eb8b6bd1871ea39c5" }],
       "queues": {
         "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect-dev" }],
         "consumers": [
@@ -66,18 +66,17 @@
       },
       "observability": { "enabled": true },
       // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。
-      // ドメインを決めるまではこの行をコメントのままにしておくと workers.dev に出てしまうので、
-      // prod デプロイの前に必ず実ホスト名へ置き換える。
-      "routes": [{ "pattern": "PLACEHOLDER_API_HOSTNAME", "custom_domain": true }],
+      // custom_domain: true はデプロイ時に DNS レコードも作る。
+      "routes": [{ "pattern": "api.streeeak.link", "custom_domain": true }],
       "d1_databases": [
         {
           "binding": "DB",
           "database_name": "ai-research-prod",
-          "database_id": "PLACEHOLDER_PROD_D1_ID",
+          "database_id": "91955c65-86a1-4cae-937b-5128971e4353",
           "migrations_dir": "./migrations"
         }
       ],
-      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "PLACEHOLDER_PROD_KV_ID" }],
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "413fe15c2bf7447abe41168e812c50eb" }],
       "queues": {
         "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect" }],
         "consumers": [

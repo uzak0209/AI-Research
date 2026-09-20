@@ -40,16 +40,50 @@ npx wrangler login
 
 ### GitHub 側
 
+Settings → Secrets and variables → Actions。**Secret と Variable はタブが違う。**
+
 | 種別 | 名前 | 中身 |
 |---|---|---|
-| Secret | `CLOUDFLARE_API_TOKEN` | Workers / D1 / KV / Queues の編集権限 |
-| Secret | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID |
+| Secret | `CLOUDFLARE_API_TOKEN` | 下の権限を持つ API トークン |
+| Secret | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID（`npx wrangler whoami` で出る） |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
 
-`*_HEALTH_URL` は任意。未設定なら疎通確認は警告を出して飛ばす（deploy 自体は成功扱い）。
+`*_HEALTH_URL` は秘密ではないので Variable。未設定なら疎通確認は警告を出して飛ばす
+（deploy 自体は成功扱い）。
 
-`prod` は GitHub の Environment で承認を必須にできる。誤 deploy を止める最後の砦。
+#### API トークンの権限
+
+**既定テンプレート「Edit Cloudflare Workers」だけでは足りない。**
+CI が `d1 migrations apply` と Queues のバインディング解決を行うため。
+
+| 種別 | 権限 | 要る理由 |
+|---|---|---|
+| Account | Workers Scripts : Edit | `wrangler deploy` |
+| Account | D1 : Edit | `d1 migrations apply --remote` |
+| Account | Queues : Edit | Queue バインディングの解決 |
+| Account | Workers KV Storage : Edit | KV バインディングの解決 |
+| Account | Account Settings : Read | アカウントの解決 |
+| Zone | Workers Routes : Edit | **prod のみ。**独自ドメイン（`custom_domain`） |
+
+#### 環境ごとに分ける（推奨）
+
+ワークフローは `environment: dev` / `environment: prod` を使うので、
+**Environment 単位で別の Secret を持てる**。dev 用トークンに prod を触らせない構成にできる。
+
+Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDFLARE_API_TOKEN` を置く。
+リポジトリ全体の Secret より優先される。
+
+`prod` は Environment で承認を必須にできる。誤 deploy を止める最後の砦。
+
+### Workers Secrets は今のところ不要
+
+`wrangler secret put` で入れる秘密は、**現在のコードが 1 つも参照していない**。
+`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` は `/runs` と `/bff/*` が 501 の間は使われない。
+認証と BFF を実装する時点で入れる。
+
+Worker が実際に読むのは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE`（バインディング）と
+`ENVIRONMENT` / `CONSENT_VERSION`（`wrangler.jsonc` の `vars`）だけ。
 
 ## CI/CD
 
