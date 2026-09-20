@@ -16,6 +16,7 @@ import * as pdfjs from 'pdfjs-dist';
 // vite がワーカーを別ファイルとして出す
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import { toPathData, type NormPoint } from './ink-path.js';
+import { mergeRects, type NormRect } from './rects.js';
 
 pdfjs.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -31,13 +32,6 @@ export interface Annotation {
   quote: string | null;
   color: string | null;
   comment: string | null;
-}
-
-interface NormRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
 }
 
 export interface PdfViewerHost {
@@ -361,7 +355,8 @@ export class PdfViewer {
   }
 
   private paintHighlight(layer: HTMLElement, a: Annotation, w: number, h: number): void {
-    for (const r of parseRects(a)) {
+    // 以前に保存した重なりのある矩形も、描くときにまとめて濃さを均一にする
+    for (const r of mergeRects(parseRects(a))) {
       const box = document.createElement('div');
       box.className = 'pdf-anno';
       box.style.left = `${r.x * w}px`;
@@ -430,10 +425,13 @@ export class PdfViewer {
         h: r.height / base.height,
       });
     }
-    if (rects.length === 0) return;
+    // 文字の断片ごとの矩形をそのまま塗ると、重なった所だけ濃くなって縞になる。
+    // 行ごとにひとつながりへまとめてから保存する
+    const merged = mergeRects(rects);
+    if (merged.length === 0) return;
 
     const near = clientRects.at(-1) ?? base;
-    this.openSelectionPopup(page, rects, quote, near);
+    this.openSelectionPopup(page, merged, quote, near);
     sel.removeAllRanges();
   }
 
