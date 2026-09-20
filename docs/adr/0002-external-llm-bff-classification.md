@@ -26,5 +26,6 @@ Electron ──(ユーザー OAuth+PKCE)──→ BFF ──(Workers Secrets)─
 | その他 | | | 機能ごと完全オフ可。`fail_open: false` |
 
 分類は BFF が機能で決める。新機能は分類決定後に endpoint。
+**競合／重複検査（FR-02）はローカル LLM**（ADR-0001）。手元論文を BFF に載せない。
 
 却下: キー同梱 / ゼロ保持 alone で C3 許可 / **採点 endpoint を BFF に置く**（`C-09`）
