@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.3.0",
+    "pdfjs-dist": "^6.3.289",
     "sqlite-vec": "^0.1.9"
   }
 }

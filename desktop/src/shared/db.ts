@@ -68,7 +68,82 @@ export function openDb(opts: OpenOptions): Db {
     );
   }
 
+  migrate(db);
+
   return db;
+}
+
+/**
+ * 既にある DB に後から足した列を埋める。
+ * `CREATE TABLE IF NOT EXISTS` は既存テーブルに列を足さないので、
+ * これが無いと「開発中に作った DB だけ列が無い」という状態が静かに残る。
+ */
+function migrate(db: Db): void {
+  const added: [table: string, column: string, ddl: string][] = [
+    ['reference_items', 'venue', 'TEXT'],
+    ['reference_items', 'abstract', 'TEXT'],
+    ['reference_items', 'item_type', "TEXT NOT NULL DEFAULT 'article'"],
+    ['reference_items', 'starred', 'INTEGER NOT NULL DEFAULT 0'],
+    ['reference_items', 'read_status', "TEXT NOT NULL DEFAULT 'unread'"],
+    ['reference_items', 'updated_at', 'TEXT'],
+    // ペン書き込みとコメントのために後から足した列
+    ['annotations', 'kind', "TEXT NOT NULL DEFAULT 'highlight'"],
+    ['annotations', 'path_json', 'TEXT'],
+    ['annotations', 'stroke_width', 'REAL'],
+    ['annotations', 'updated_at', 'TEXT'],
+  ];
+
+  for (const [table, column, ddl] of added) {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as { name: string }[];
+    if (!cols.length) continue; // テーブル自体が無ければ schema.sql が作る
+    if (cols.some((c) => c.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+
+  rebuildNotesIfLegacy(db);
+}
+
+/**
+ * `notes` を「1 文献 1 本」に作り直す。
+ *
+ * 旧版は note_id を主キーにしていたため 1 文献に複数のメモが入り得た。
+ * `CREATE TABLE IF NOT EXISTS` は既存テーブルの形を変えないので、
+ * これが無いと**既存の DB でだけ** saveNote の ON CONFLICT(reference_id) が失敗する。
+ */
+function rebuildNotesIfLegacy(db: Db): void {
+  const cols = db.prepare('PRAGMA table_info(notes)').all() as unknown as {
+    name: string;
+    pk: number;
+  }[];
+  if (!cols.length) return;
+
+  const pk = cols.filter((c) => c.pk).map((c) => c.name);
+  if (pk.length === 1 && pk[0] === 'reference_id') return; // 既に新しい形
+
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE notes_new (
+        reference_id TEXT PRIMARY KEY REFERENCES reference_items(reference_id) ON DELETE CASCADE,
+        body         TEXT NOT NULL DEFAULT '',
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `);
+    // 1 文献に複数あった場合は新しい方を残す。黙って先頭を採らない
+    db.exec(`
+      INSERT INTO notes_new (reference_id, body, updated_at)
+      SELECT reference_id, body, updated_at FROM notes
+      WHERE rowid IN (
+        SELECT MAX(rowid) FROM notes GROUP BY reference_id
+      )
+    `);
+    db.exec('DROP TABLE notes');
+    db.exec('ALTER TABLE notes_new RENAME TO notes');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 type SqliteVec = { load: (db: unknown) => void; getLoadablePath: () => string };
