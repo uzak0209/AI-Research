@@ -6,5 +6,6 @@ declare module 'cloudflare:test' {
     TEST_MIGRATIONS: D1Migration[];
     JWT_SIGNING_KEY: string;
     ORCAROUTER_API_KEY: string;
+    OPENALEX_API_KEY: string;
   }
 }

@@ -158,9 +158,10 @@ app.openapi(
 
     let papers;
     try {
-      papers = await fetchPublicPapers(topic);
-    } catch {
-      fail(502, { error: 'source_failed', detail: 'openalex' });
+      papers = await fetchPublicPapers(topic, { apiKey: c.env.OPENALEX_API_KEY });
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : 'openalex';
+      fail(502, { error: 'source_failed', detail });
     }
 
     // 公開論文が 0 件なら LLM を呼ばない。トレンドを捏造しない（C-07）

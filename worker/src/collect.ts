@@ -62,7 +62,7 @@ export async function handleQueueMessage(msg: CollectMessage, env: Env): Promise
   let failure: string | null = null;
 
   try {
-    papers = await fetchFromSource(msg.source, msg.summary);
+    papers = await fetchFromSource(msg.source, msg.summary, { apiKey: env.OPENALEX_API_KEY });
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }

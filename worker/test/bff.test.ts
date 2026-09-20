@@ -115,6 +115,7 @@ describe('POST /bff/trends（C1）', () => {
     expect(res.status).toBe(502);
     const body = (await res.json()) as { error: string; detail?: string };
     expect(body.error).toBe('source_failed');
+    expect(body.detail).toBe('openalex status=503');
     expect(JSON.stringify(body)).not.toContain('test-orca-key');
   });
 
@@ -160,6 +161,11 @@ describe('POST /bff/trends（C1）', () => {
     expect(body.classification).toBe('C1');
     expect(body.summary).toContain('DPDK');
     expect(body.papers[0]?.title).toContain('DPDK');
+
+    const oa = calls.find((c) => c.url.includes('openalex.org'));
+    expect(oa?.url).toContain('search=DPDK');
+    expect(oa?.url).toContain('api_key=test-openalex-key');
+    expect(oa?.url).not.toContain('title_and_abstract.search');
 
     const orca = calls.find((c) => c.url.includes('orcarouter.ai'));
     expect(orca).toBeTruthy();

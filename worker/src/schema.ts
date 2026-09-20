@@ -37,13 +37,13 @@ export const collectMessageSchema = z.object({
 export const openAlexWorkSchema = z.object({
   id: z.string(),
   doi: z.string().nullable().optional(),
-  display_name: z.string().optional(),
-  publication_date: z.string().optional(),
+  display_name: z.string().nullable().optional(),
+  publication_date: z.string().nullable().optional(),
   abstract_inverted_index: z.record(z.string(), z.array(z.number())).nullable().optional(),
 });
 
 export const openAlexResponseSchema = z.object({
-  results: z.array(openAlexWorkSchema).optional(),
+  results: z.array(z.unknown()).optional(),
 });
 
 export const TrendBodySchema = z
