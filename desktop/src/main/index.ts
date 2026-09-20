@@ -5,23 +5,54 @@
 //   - レンダラに Node を渡さない。contextIsolation を切らない
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
-import { BrowserWindow, app, ipcMain, utilityProcess, type UtilityProcess } from 'electron';
-import { appendFileSync } from 'node:fs';
+import { BrowserWindow, app, dialog, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron';
+import { appendFileSync, readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { EOL } from 'node:os';
 import { join } from 'node:path';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
-  addToLibrary,
   countUnscored,
   createProject,
   listChunks,
-  listLibrary,
   listProjects,
   listRanked,
   setManuscript,
   updateSummary,
   upsertPapers,
 } from '../shared/repo.js';
+import {
+  addAttachment,
+  addReference,
+  addTag,
+  deleteReference,
+  getNote,
+  getReference,
+  libraryCounts,
+  listAttachments,
+  listReferences,
+  listTags,
+  removeAttachment,
+  removeTag,
+  saveNote,
+  setReadStatus,
+  setStarred,
+  updateReference,
+  type LibraryFilter,
+  type ReadStatus,
+  type ReferenceInput,
+} from '../shared/library.js';
+import {
+  addHighlight,
+  addInk,
+  countAnnotations,
+  listAnnotations as listAnnos,
+  removeAnnotation,
+  setComment,
+  type HighlightInput,
+  type InkInput,
+} from '../shared/annotations.js';
+import { extractFromPdf, lookupByDoi } from '../shared/pdf-import.js';
 import type { ScoreEvent, ScoreRequest } from './score-worker.js';
 
 const DEFAULT_MODEL = 'Xenova/bge-small-en-v1.5';
@@ -146,11 +177,140 @@ function registerIpc(): void {
     scorer?.postMessage({ type: 'cancel' });
   });
 
-  ipcMain.handle('library:list', (_e, projectId: string) => listLibrary(db, projectId));
-
-  ipcMain.handle('library:add', (_e, projectId: string, item: Parameters<typeof addToLibrary>[2]) =>
-    addToLibrary(db, projectId, item),
+  // --- ライブラリ（FR-05 / FR-14） ---
+  ipcMain.handle('lib:list', (_e, projectId: string, filter: LibraryFilter) =>
+    listReferences(db, projectId, filter ?? {}),
   );
+  ipcMain.handle('lib:get', (_e, referenceId: string) => getReference(db, referenceId));
+  ipcMain.handle('lib:counts', (_e, projectId: string) => libraryCounts(db, projectId));
+  ipcMain.handle('lib:tags', (_e, projectId: string) => listTags(db, projectId));
+
+  ipcMain.handle('lib:add', (_e, projectId: string, item: ReferenceInput) =>
+    addReference(db, projectId, item),
+  );
+  ipcMain.handle('lib:update', (_e, referenceId: string, patch: Partial<ReferenceInput>) =>
+    updateReference(db, referenceId, patch),
+  );
+  ipcMain.handle('lib:delete', (_e, referenceId: string) => deleteReference(db, referenceId));
+
+  ipcMain.handle('lib:star', (_e, referenceId: string, starred: boolean) =>
+    setStarred(db, referenceId, starred),
+  );
+  ipcMain.handle('lib:readStatus', (_e, referenceId: string, status: ReadStatus) =>
+    setReadStatus(db, referenceId, status),
+  );
+
+  ipcMain.handle('lib:addTag', (_e, projectId: string, referenceId: string, name: string) =>
+    addTag(db, projectId, referenceId, name),
+  );
+  ipcMain.handle('lib:removeTag', (_e, referenceId: string, name: string) =>
+    removeTag(db, referenceId, name),
+  );
+
+  ipcMain.handle('lib:getNote', (_e, referenceId: string) => getNote(db, referenceId));
+  ipcMain.handle('lib:saveNote', (_e, referenceId: string, body: string) =>
+    saveNote(db, referenceId, body),
+  );
+
+  ipcMain.handle('lib:attachments', (_e, referenceId: string) => listAttachments(db, referenceId));
+  ipcMain.handle('lib:removeAttachment', (_e, attachmentId: string) =>
+    removeAttachment(db, attachmentId),
+  );
+
+  // ファイル選択はメイン側でしかできない。パスだけを保持し、実体は動かさない（C-08）
+  ipcMain.handle('lib:attachFile', async (_e, referenceId: string) => {
+    const r = await dialog.showOpenDialog({
+      title: 'PDF を添付',
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      properties: ['openFile'],
+    });
+    if (r.canceled || r.filePaths.length === 0) return null;
+    return addAttachment(db, referenceId, r.filePaths[0]!);
+  });
+
+  ipcMain.handle('lib:openExternally', async (_e, path: string) => {
+    const err = await shell.openPath(path);
+    // 開けなかったことを黙って握りつぶさない（C-07）
+    return err || null;
+  });
+
+  // --- PDF から文献を作る ---
+
+  /**
+   * PDF を選んで取り込む。1 ファイル = 1 文献。
+   * 書誌はローカルだけで取れる範囲を埋め、**取れなかったものは空のままにする**（C-07）。
+   * PDF の実体は移動もコピーもしない。選ばれた場所のパスを覚えるだけ（C-08）。
+   */
+  ipcMain.handle('pdf:import', async (_e, projectId: string) => {
+    const picked = await dialog.showOpenDialog({
+      title: 'PDF を取り込む',
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (picked.canceled || picked.filePaths.length === 0) return { imported: [], failed: [] };
+
+    const imported: { reference_id: string; title: string; path: string; guessed: boolean; doi: string | null }[] = [];
+    const failed: { path: string; error: string }[] = [];
+
+    for (const file of picked.filePaths) {
+      try {
+        const meta = await extractFromPdf(new Uint8Array(readFileSync(file)));
+        // 表題が取れなければファイル名を使う。推測であることは guessed で示す
+        const title = meta.title ?? basename(file).replace(/\.pdf$/i, '');
+        const refId = addReference(db, projectId, {
+          title,
+          authors: meta.authors,
+          year: meta.year,
+          doi: meta.doi,
+        });
+        addAttachment(db, refId, file);
+        imported.push({
+          reference_id: refId,
+          title,
+          path: file,
+          guessed: meta.sources.title !== 'info',
+          doi: meta.doi,
+        });
+      } catch (e) {
+        // 1 件失敗しても残りは続ける。ただし失敗を隠さない
+        failed.push({ path: file, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    return { imported, failed };
+  });
+
+  /** 添付 PDF の中身をレンダラへ渡す。レンダラに fs を渡さないため */
+  ipcMain.handle('pdf:read', (_e, attachmentId: string) => {
+    const row = db
+      .prepare('SELECT path FROM attachments WHERE attachment_id = ?')
+      .get(attachmentId) as { path: string } | undefined;
+    if (!row) throw new Error('添付が見つからない');
+    // ファイルが移動・削除されていれば例外になる。空を返して「0 ページ」に見せない
+    const buf = readFileSync(row.path);
+    return { path: row.path, data: new Uint8Array(buf) };
+  });
+
+  /** DOI から書誌を引く。**DOI が外部 API に出る。**呼ぶかは UI 側で利用者が選ぶ */
+  ipcMain.handle('pdf:lookupDoi', async (_e, doi: string) => lookupByDoi(doi));
+
+  // --- 書き込み（ハイライト・ペン・コメント） ---
+
+  ipcMain.handle('anno:list', (_e, attachmentId: string) => listAnnos(db, attachmentId));
+
+  ipcMain.handle('anno:addHighlight', (_e, attachmentId: string, a: HighlightInput) =>
+    addHighlight(db, attachmentId, a),
+  );
+
+  ipcMain.handle('anno:addInk', (_e, attachmentId: string, a: InkInput) => addInk(db, attachmentId, a));
+
+  ipcMain.handle('anno:comment', (_e, annotationId: string, comment: string) =>
+    setComment(db, annotationId, comment),
+  );
+
+  ipcMain.handle('anno:remove', (_e, annotationId: string) => removeAnnotation(db, annotationId));
+
+  ipcMain.handle('anno:counts', (_e, referenceId: string) => countAnnotations(db, referenceId));
 }
 
 // --- 起動 --------------------------------------------------------------------

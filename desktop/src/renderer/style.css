@@ -1,44 +1,1011 @@
+/* デジタル庁デザインシステム（DADS）の規定に沿う。
+ *
+ *   文字     : 本文・UI は 16px 以上。14px は領域制約があるときだけ。14px 未満は使わない
+ *   行間     : 一覧など情報量優先は 130%、読む文章は 150〜170%
+ *   コントラスト: 文字は大きさに関わらず 4.5:1 以上、非テキストは 3:1 以上
+ *   ターゲット : ボタンは 44×44 px 以上。届かない場合は上下に余白で確保
+ *   角丸     : S=16 / M=20 / L=24（ここでは面の大きさに合わせて S を主に使う）
+ *   ブレークポイント: 768px 以上をデスクトップ
+ *
+ * 色はデザインシステムの数値が画像内にあり取得できなかったため、
+ * 上のコントラスト要件を満たす値をこちらで定義している（DADS の配色そのものではない）。
+ */
+
 :root {
-  --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --line: #e3e3e3;
-  --accent: #2f6f4f; --warn: #8a5a00;
+  /* ニュートラル */
+  --gray-50: #f6f7f8;
+  --gray-100: #eceef0;
+  --gray-300: #c9cdd2;
+  --gray-420: #949aa1; /* 白に対して 3:1。非テキスト要素の下限 */
+  --gray-536: #6b7178; /* 白に対して 4.5:1。文字の下限 */
+  --gray-700: #454b52;
+  --gray-900: #1a1d21;
+
+  /* キーカラー */
+  --primary: #1a5490; /* 白に対して 7.3:1 */
+  --primary-hover: #134070;
+  --primary-bg: #eaf1f8;
+
+  /* セマンティック */
+  --success: #1d6b47;
+  --error: #b3261e;
+  --warning-fg: #6b4a00; /* 警告の文字。白に対して 4.5:1 以上 */
+  --warning-bg: #fdf3d8;
+
+  /* フォーカス（DADS は黄＋黒の組み合わせ） */
+  --focus-yellow: #f5c518;
+  --focus-black: #1a1d21;
+
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --fg: var(--gray-900);
+  --fg-muted: var(--gray-536);
+  --line: var(--gray-300);
+  --line-subtle: var(--gray-100);
+
+  --radius-s: 16px;
+  --radius-control: 8px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
 }
+
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #16181c; --fg: #e8e8e8; --muted: #9aa0a6; --line: #2c3038; --accent: #7fbf9a; --warn: #d9a441; }
+  :root:not([data-theme='light']) {
+    --bg: #14171a;
+    --surface: #1b1f23;
+    --fg: #e9ecef;
+    --fg-muted: #a8b0b8; /* 暗背景に対して 4.5:1 以上 */
+    --line: #343a41;
+    --line-subtle: #23282d;
+    --primary: #7cb3e8;
+    --primary-hover: #a4cbf0;
+    --primary-bg: #1d2b3a;
+    --success: #6fc79a;
+    --error: #f2857d;
+    --warning-fg: #f0c460;
+    --warning-bg: #2e2716;
+    --gray-50: #1b1f23;
+    --gray-100: #23282d;
+  }
 }
-* { box-sizing: border-box; }
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 14px/1.6 system-ui, "Segoe UI", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+  height: 100%;
+  margin: 0;
 }
-header {
-  display: flex; align-items: baseline; gap: 16px;
-  padding: 12px 20px; border-bottom: 1px solid var(--line);
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  /* 本文 16px。DADS の下限 */
+  font: 400 16px/1.5 system-ui, 'Segoe UI', 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-h1 { font-size: 16px; margin: 0; }
-h2 { font-size: 13px; margin: 0 0 8px; color: var(--muted); font-weight: 600; }
-.status { font-size: 12px; color: var(--muted); }
-.status.error { color: #c0392b; }
-main { display: flex; gap: 16px; padding: 16px 20px; align-items: flex-start; }
-.panel { border: 1px solid var(--line); border-radius: 8px; padding: 14px; min-width: 340px; }
-.panel.grow { flex: 1; }
-label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+
+/* フォーカスは黄＋黒の二重リングで、どの背景でも見えるようにする */
+:focus-visible {
+  outline: 3px solid var(--focus-yellow);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 5px var(--focus-black);
+  border-radius: var(--radius-control);
+}
+
+/* --- ヘッダー ------------------------------------------------------------- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: 0 0 auto;
+}
+
+.app-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: var(--space-4);
+}
+
+.tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 16px;
+  padding: 0 var(--space-4);
+  /* ターゲット領域 44px（DADS） */
+  min-height: 44px;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+}
+
+.tab:hover {
+  background: var(--gray-50);
+  color: var(--fg);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--primary);
+  font-weight: 700;
+  border-bottom-color: var(--primary);
+}
+
+.status {
+  margin-left: auto;
+  font-size: 14px; /* 付随情報のため 14px（DADS が許す下限） */
+  color: var(--fg-muted);
+  line-height: 1.3;
+  max-width: 44ch;
+}
+
+.status[data-tone='error'] {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.status[data-tone='busy'] {
+  color: var(--warning-fg);
+}
+
+/* --- レイアウト ------------------------------------------------------------ */
+
+.view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: none;
+}
+
+.view[data-active='true'] {
+  display: flex;
+}
+
+.sidebar {
+  flex: 0 0 240px;
+  border-right: 1px solid var(--line);
+  padding: var(--space-4);
+  overflow-y: auto;
+  background: var(--surface);
+}
+
+.list-pane {
+  flex: 1 1 420px;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-pane {
+  flex: 1 1 460px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-5);
+  background: var(--surface);
+}
+
+.pane-head {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-subtle);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.scroll {
+  overflow-y: auto;
+  flex: 1 1 auto;
+}
+
+/* 768px 未満では詳細を隠し、一覧を優先する（DADS のブレークポイント） */
+@media (width < 768px) {
+  .sidebar {
+    display: none;
+  }
+  .detail-pane {
+    display: none;
+  }
+}
+
+/* --- サイドバー ------------------------------------------------------------ */
+
+.side-group {
+  margin-bottom: var(--space-5);
+}
+
+.side-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg-muted);
+  margin: 0 0 var(--space-2);
+  line-height: 1.3;
+}
+
+.side-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-item:hover {
+  background: var(--gray-50);
+}
+
+.side-item[aria-pressed='true'] {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.side-count {
+  margin-left: auto;
+  font-size: 14px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.side-item[aria-pressed='true'] .side-count {
+  color: var(--primary);
+}
+
+/* --- 一覧 ------------------------------------------------------------------ */
+
+.row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--line-subtle);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  /* 一覧は情報量優先なので 130%（DADS） */
+  line-height: 1.3;
+}
+
+.row:hover {
+  background: var(--gray-50);
+}
+
+.row[aria-current='true'] {
+  background: var(--primary-bg);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.row-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: var(--space-1);
+  display: block;
+}
+
+.row-meta {
+  font-size: 14px;
+  color: var(--fg-muted);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.row-marks {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+  margin-left: auto;
+}
+
+/* --- チップ ---------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 14px;
+  line-height: 1.3;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--fg-muted);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.chip[data-tone='tag'] {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.chip[data-tone='read'] {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.chip[data-tone='reading'] {
+  border-color: var(--warning-fg);
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+}
+
+.chip[data-tone='score'] {
+  font-variant-numeric: tabular-nums;
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.chip button {
+  all: unset;
+  cursor: pointer;
+  padding: 0 2px;
+  min-width: 24px; /* リンク要素の下限 24px（DADS） */
+  min-height: 24px;
+  text-align: center;
+}
+
+/* --- ボタン（DADS の 3 階層） ------------------------------------------------ */
+
+.btn {
+  appearance: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  min-height: 44px; /* Medium 48 に近い。ターゲット領域を満たす */
+  min-width: 96px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* 塗り = プライマリー（重要度 高） */
+.btn[data-variant='primary'] {
+  background: var(--primary);
+  color: #ffffff;
+  border: 1px solid var(--primary);
+  font-weight: 700;
+}
+
+.btn[data-variant='primary']:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+/* アウトライン = セカンダリー（重要度 中） */
+.btn[data-variant='secondary'] {
+  background: var(--surface);
+  color: var(--primary);
+  border: 1px solid var(--primary);
+}
+
+.btn[data-variant='secondary']:hover:not(:disabled) {
+  background: var(--primary-bg);
+}
+
+/* テキスト = ターシャリー（重要度 低） */
+.btn[data-variant='tertiary'] {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid transparent;
+  text-decoration: underline;
+  min-width: 0;
+}
+
+.btn[data-variant='tertiary']:hover:not(:disabled) {
+  background: var(--primary-bg);
+}
+
+.btn[data-variant='danger'] {
+  background: var(--surface);
+  color: var(--error);
+  border: 1px solid var(--error);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* アイコンだけの小さいボタンも 44px のターゲットを確保する */
+.icon-btn {
+  all: unset;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  font-size: 18px;
+  color: var(--fg-muted);
+}
+
+.icon-btn:hover {
+  background: var(--gray-50);
+  color: var(--fg);
+}
+
+.icon-btn[aria-pressed='true'] {
+  color: var(--warning-fg);
+}
+
+/* デスクトップではプライマリーを右端に置く（DADS） */
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actions[data-align='end'] {
+  justify-content: flex-end;
+}
+
+.actions .spacer {
+  flex: 1 1 auto;
+}
+
+/* --- フォーム --------------------------------------------------------------- */
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field > label {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: var(--space-1);
+  line-height: 1.5;
+}
+
+.field .hint {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  margin: 0 0 var(--space-2);
+}
+
+input[type='text'],
+input[type='number'],
+input[type='search'],
+textarea,
+select {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--gray-420);
+  border-radius: var(--radius-control);
+  padding: 10px var(--space-3);
+  min-height: 44px;
+}
+
 textarea {
-  width: 100%; background: transparent; color: var(--fg);
-  border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical;
+  resize: vertical;
+  line-height: 1.6;
 }
-.row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-button {
-  font: inherit; padding: 6px 12px; border-radius: 6px;
-  border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer;
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--fg-muted);
 }
-button:hover:not(:disabled) { border-color: var(--accent); }
-button:disabled { opacity: .45; cursor: default; }
-.note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
-.item { border-top: 1px solid var(--line); padding: 10px 0; }
-.item:first-child { border-top: none; }
-.item .rank { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 8px; }
-.item .score { color: var(--accent); font-variant-numeric: tabular-nums; }
-.item .title { font-weight: 600; }
-.item .near { font-size: 12px; color: var(--muted); margin-top: 4px; }
-.empty { color: var(--muted); padding: 12px 0; }
-.pending { color: var(--warn); font-size: 12px; margin-bottom: 8px; }
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3);
+}
+
+/* --- 詳細 ------------------------------------------------------------------ */
+
+.detail-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.4;
+  margin: 0 0 var(--space-2);
+}
+
+.detail-meta {
+  font-size: 16px;
+  color: var(--fg-muted);
+  line-height: 1.6;
+  margin: 0 0 var(--space-4);
+}
+
+.detail-section {
+  border-top: 1px solid var(--line-subtle);
+  padding-top: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.detail-section h3 {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 var(--space-2);
+}
+
+.abstract {
+  /* 読む文章なので 170%（DADS） */
+  line-height: 1.7;
+  margin: 0;
+}
+
+.attachment {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line-subtle);
+  font-size: 14px;
+}
+
+.attachment .path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  direction: rtl; /* 長いパスは末尾（ファイル名）を残す */
+  text-align: left;
+}
+
+/* --- 空・注意表示 ----------------------------------------------------------- */
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--fg-muted);
+  line-height: 1.6;
+  text-align: center;
+}
+
+.callout {
+  border-left: 4px solid var(--warning-fg);
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0 0 var(--space-3);
+}
+
+.callout strong {
+  font-weight: 700;
+}
+
+.note-info {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+  margin: var(--space-2) 0 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- PDF ビューア（FR-14） -------------------------------------------------- */
+
+.pdf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--line-subtle);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+  flex-wrap: wrap;
+}
+
+.pdf-info {
+  font-size: 14px;
+  color: var(--fg-muted);
+  line-height: 1.3;
+}
+
+.pdf-colors {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* 色ボタンも 44px のターゲットを確保する（DADS） */
+.pdf-color {
+  all: unset;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  box-sizing: border-box;
+  /* 見た目 24px のまま、当たり判定を 44px にする */
+  outline-offset: 2px;
+  position: relative;
+}
+
+.pdf-color::after {
+  content: '';
+  position: absolute;
+  inset: -10px;
+}
+
+.pdf-color[aria-pressed='true'] {
+  border-color: var(--fg);
+  box-shadow: 0 0 0 2px var(--surface) inset;
+}
+
+/* 本文と右の余白（付箋）。Word / Google ドキュメントと同じ並び */
+.pdf-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  position: relative;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  background: var(--gray-50);
+  flex: 1 1 auto;
+  /* min-width:0 が無いと、ページの実寸で押し広げられて枠から溢れる */
+  min-width: 0;
+  /* 倍率を上げて溢れたときは横に流す。切り落とさない */
+  overflow-x: auto;
+}
+
+/* align-items:center だと、溢れたときに左側が画面外へ出て触れなくなる。
+   margin で中央に寄せると溢れても左端が残る */
+.pdf-page {
+  margin-inline: auto;
+}
+
+.pdf-margin {
+  /* 付箋は元の位置の高さに合わせて絶対配置する */
+  position: relative;
+  flex: 0 0 260px;
+  align-self: stretch;
+}
+
+.pdf-margin-empty {
+  position: sticky;
+  top: var(--space-4);
+}
+
+/* 画面が狭いときは付箋を隠す。本文を読めることを優先する */
+@media (width < 900px) {
+  .pdf-margin {
+    display: none;
+  }
+}
+
+.pdf-card {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+  transition: top 0.15s ease;
+}
+
+.pdf-card.is-focused {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-bg);
+}
+
+.pdf-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.pdf-card-btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--primary);
+  text-decoration: underline;
+  min-height: 24px;
+  padding: 0 2px;
+}
+
+.pdf-card-btn:hover {
+  color: var(--primary-hover);
+}
+
+.pdf-card-head .pdf-card-btn:nth-of-type(1) {
+  margin-left: auto;
+}
+
+.pdf-card-quote {
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-2);
+  border-left: 3px solid var(--line);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  max-height: 5em;
+  overflow: hidden;
+}
+
+.pdf-card textarea {
+  min-height: 0;
+  font-size: 14px;
+  padding: 6px 8px;
+}
+
+.pdf-note-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+/* 選択直後などに出す小窓 */
+.pdf-popup {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.2);
+  white-space: nowrap;
+}
+
+/* 道具の切り替え */
+.pdf-tools {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.pdf-tool {
+  appearance: none;
+  font: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.pdf-tool[aria-pressed='true'] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.pdf-zoom {
+  min-width: 4ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.pdf-hint {
+  padding: 0 var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.pdf-page {
+  position: relative;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.18);
+}
+
+.pdf-page canvas {
+  display: block;
+}
+
+/* 文字を選べるようにする層。見た目には出さない */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.25;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 1;
+}
+
+.pdf-text-layer span,
+.pdf-text-layer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.pdf-text-layer ::selection {
+  background: rgb(0 90 200 / 0.35);
+}
+
+.pdf-anno-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.pdf-anno {
+  position: absolute;
+  mix-blend-mode: multiply;
+  opacity: 0.45;
+  border-radius: 2px;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.pdf-anno:hover {
+  opacity: 0.7;
+  outline: 2px solid var(--fg);
+}
+
+/* 取り込み結果の表示 */
+.import-result {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.import-result li {
+  margin-bottom: var(--space-1);
+}
+
+.import-result .failed {
+  color: var(--error);
+  font-weight: 700;
+}
+
+/* ペンの下書き。確定するまでここに描く */
+.pdf-ink-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  /* 選択モードでは触らせない。文字選択の邪魔になる */
+  pointer-events: none;
+  touch-action: none;
+}
+
+.pdf-body[data-tool='pen'] .pdf-ink-layer {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+
+/* ペンモードでは文字を選ばせない */
+.pdf-body[data-tool='pen'] .pdf-text-layer {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 確定した線 */
+.pdf-ink-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pdf-ink-path {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.pdf-ink-path:hover {
+  opacity: 0.7;
+}
+
+/* コメントが付いているものは分かるようにする */
+.pdf-anno.has-comment {
+  outline: 2px solid var(--fg);
+  outline-offset: -1px;
+}
+
+.pdf-ink-path.has-comment {
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 2px var(--fg));
+}
+
+/* ビューアの見出し行。タイトルが長くてもボタンを押せるようにする */
+.viewer-head {
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+}
+
+.viewer-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+/* 付箋から「本文へ」で飛んだときの点滅 */
+.pdf-anno.is-flash,
+.pdf-ink-path.is-flash {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* PDF を読んでいる間は本文に幅を回す。
+   詳細ペインが 460px のままだと、ページが縮みすぎて読めない */
+#view-library[data-reading='true'] .sidebar {
+  flex: 0 0 180px;
+}
+
+#view-library[data-reading='true'] .list-pane {
+  flex: 0 1 300px;
+}
+
+#view-library[data-reading='true'] .detail-pane {
+  flex: 1 1 auto;
+  padding: var(--space-3);
+}

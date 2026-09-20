@@ -2,42 +2,140 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
     <title>AI-Research</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <header>
-      <h1>AI-Research</h1>
-      <div id="status" class="status"></div>
+    <header class="app-header">
+      <h1 class="app-title">AI-Research</h1>
+
+      <div class="tabs" role="tablist" aria-label="画面の切り替え">
+        <button class="tab" role="tab" id="tab-library" aria-selected="true" aria-controls="view-library">
+          ライブラリ
+        </button>
+        <button class="tab" role="tab" id="tab-feed" aria-selected="false" aria-controls="view-feed">
+          新着候補
+        </button>
+        <button class="tab" role="tab" id="tab-project" aria-selected="false" aria-controls="view-project">
+          プロジェクト
+        </button>
+      </div>
+
+      <!-- 状態は読み上げにも届くようにする -->
+      <p class="status" id="status" role="status" aria-live="polite"></p>
     </header>
 
-    <main>
-      <section class="panel">
-        <h2>プロジェクト</h2>
-        <label>概要（クラウドに出る唯一の情報）</label>
-        <textarea id="summary" rows="4"></textarea>
-        <label>自分の主張（1 行 1 つ。ローカルから出ない）</label>
-        <textarea id="claims" rows="8"></textarea>
-        <div class="row">
-          <button id="save">保存して採点し直す</button>
-          <button id="score">採点する</button>
-          <button id="cancel" disabled>中止</button>
+    <!-- ================= ライブラリ ================= -->
+    <div class="view" id="view-library" role="tabpanel" aria-labelledby="tab-library" data-active="true">
+      <nav class="sidebar" aria-label="ライブラリの絞り込み">
+        <div class="side-group">
+          <p class="side-label">すべて</p>
+          <button class="side-item" data-filter="all" aria-pressed="true">
+            <span>すべての文献</span><span class="side-count" id="count-all">0</span>
+          </button>
+          <button class="side-item" data-filter="starred" aria-pressed="false">
+            <span>★ 重要</span><span class="side-count" id="count-starred">0</span>
+          </button>
         </div>
-        <p class="note">
-          概要や主張を変えると採点の前提が変わるため、採点済みの印を落として採点し直します。
-        </p>
+
+        <div class="side-group">
+          <p class="side-label">読んだか</p>
+          <button class="side-item" data-filter="unread" aria-pressed="false">
+            <span>未読</span><span class="side-count" id="count-unread">0</span>
+          </button>
+          <button class="side-item" data-filter="reading" aria-pressed="false">
+            <span>読んでいる</span><span class="side-count" id="count-reading">0</span>
+          </button>
+          <button class="side-item" data-filter="read" aria-pressed="false">
+            <span>読んだ</span><span class="side-count" id="count-read">0</span>
+          </button>
+        </div>
+
+        <div class="side-group">
+          <p class="side-label">タグ</p>
+          <div id="tag-list"></div>
+        </div>
+      </nav>
+
+      <section class="list-pane" aria-label="文献の一覧">
+        <div class="pane-head">
+          <label class="visually-hidden" for="lib-search">文献を検索</label>
+          <input
+            type="search"
+            id="lib-search"
+            placeholder="タイトル・著者・メモを検索"
+            style="flex: 1 1 200px"
+          />
+          <label class="visually-hidden" for="lib-sort">並び順</label>
+          <select id="lib-sort" style="flex: 0 0 auto; width: auto; min-width: 140px">
+            <option value="added">追加が新しい順</option>
+            <option value="year">出版年が新しい順</option>
+            <option value="title">タイトル順</option>
+          </select>
+          <button class="btn" data-variant="secondary" id="lib-new">手で入力</button>
+          <button class="btn" data-variant="primary" id="lib-import-pdf">PDF から取り込む</button>
+        </div>
+        <div class="scroll" id="lib-list"></div>
       </section>
 
-      <section class="panel grow">
-        <h2>関連度順</h2>
-        <p class="note">
-          順位だけを出します。有効／除外の断定はしません（実データで閾値が引けなかったため）。
-          <strong>上位には競合論文が混ざります。</strong>
-        </p>
-        <div id="list"></div>
+      <section class="detail-pane" id="lib-detail" aria-label="文献の詳細" aria-live="polite">
+        <p class="empty">左の一覧から文献を選んでください。</p>
       </section>
-    </main>
+    </div>
+
+    <!-- ================= 新着候補 ================= -->
+    <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="false">
+      <section class="list-pane" aria-label="関連度順の新着候補">
+        <div class="pane-head">
+          <div class="actions" style="flex: 1 1 auto">
+            <button class="btn" data-variant="secondary" id="feed-cancel" disabled>採点を中止</button>
+            <span class="spacer"></span>
+            <button class="btn" data-variant="primary" id="feed-score">採点する</button>
+          </div>
+        </div>
+        <div class="scroll" id="feed-list"></div>
+      </section>
+
+      <section class="detail-pane" id="feed-detail" aria-label="候補の詳細" aria-live="polite">
+        <p class="empty">左の一覧から候補を選んでください。</p>
+      </section>
+    </div>
+
+    <!-- ================= プロジェクト ================= -->
+    <div class="view" id="view-project" role="tabpanel" aria-labelledby="tab-project" data-active="false">
+      <section class="detail-pane" style="flex: 1 1 auto; max-width: 860px">
+        <h2 class="detail-title">プロジェクト</h2>
+
+        <div class="field">
+          <label for="summary">概要</label>
+          <p class="hint">
+            収集の判断材料であり、<strong>クラウドに出る唯一の情報</strong>です。英語で 3〜5 行。
+          </p>
+          <textarea id="summary" rows="5"></textarea>
+        </div>
+
+        <div class="field">
+          <label for="claims">自分の主張</label>
+          <p class="hint">
+            1 行に 1 つ。未公開で構いません。<strong>ローカルから出ません。</strong>
+            各候補が「どの主張に近いか」の判定に使います。
+          </p>
+          <textarea id="claims" rows="10"></textarea>
+        </div>
+
+        <div class="callout">
+          概要や主張を変えると採点の前提が変わるため、<strong>採点済みの印を落として採点し直し</strong>になります。
+        </div>
+
+        <div class="actions" data-align="end">
+          <button class="btn" data-variant="primary" id="proj-save">保存する</button>
+        </div>
+      </section>
+    </div>
 
     <script type="module" src="./main.ts"></script>
   </body>
