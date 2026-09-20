@@ -15,10 +15,13 @@
 | FR-02 重複・活用の報告 | 候補論文＋判定 | `run_papers` / `papers` |
 | FR-03 手元データ検索 | 本文断片＋ベクトル | ローカル `chunks` / `vec_chunks` |
 | FR-04 ファクトチェック | 原稿（結果保存は未決） | ローカル `documents` |
+| FR-05 参考文献ライブラリ | 書誌＋整理 | ローカル `references` / `collections` |
 | FR-06 プロジェクト切替 | プロジェクト | 両方 `projects` |
 | FR-07 原稿取り込み | 原稿ファイル | ローカル `documents` |
+| FR-08 欠損≠成功 | 実行状態と欠けた依存 | クラウド `runs` |
 | FR-09 テーマ候補 | 候補の元 | `papers` から都度生成（保存しない） |
 | FR-10 統制下の LLM | 表は不要（BFF の経路で担保） | — |
+| FR-11 CLI | GUI と同一ストア（新表なし） | ローカル全表 |
 | C-03 機能の完全オフ | 設定 | ローカル `settings` |
 
 ## クラウド（D1）
@@ -70,6 +73,10 @@ erDiagram
 erDiagram
     projects ||--o{ papers : pulled
     projects ||--o{ documents : has
+    projects ||--o{ references : library
+    papers |o--o| references : saved_as
+    references ||--o{ collection_items : in
+    collections ||--o{ collection_items : has
     documents ||--o{ chunks : split
     chunks ||--|| vec_chunks : embedded
 
@@ -88,7 +95,26 @@ erDiagram
         real coarse_score
         text judgment "重複|活用|無関係"
         text note
-        text zotero_status "未保存|保存済|失敗"
+        bool in_library "ライブラリ収録済みか"
+    }
+    references {
+        text reference_id PK
+        text project_id FK
+        text paper_id FK "日次候補由来なら"
+        text title
+        text authors
+        int year
+        text doi
+        text bibtex_key
+    }
+    collections {
+        text collection_id PK
+        text project_id FK
+        text name
+    }
+    collection_items {
+        text collection_id FK
+        text reference_id FK
     }
     documents {
         text document_id PK
@@ -109,7 +135,7 @@ erDiagram
         float_array embedding
     }
     settings {
-        text key PK "接続|機能オフ|同意|Zotero"
+        text key PK "接続|機能オフ|同意"
         text value
         bool encrypted "safeStorageで暗号化済みか"
     }
@@ -127,7 +153,6 @@ erDiagram
 | `sync.last_synced_at` | 最終同期時刻（失敗表示用） | — |
 | `feature.*` | 機能の完全オフ（C-03） | — |
 | `consent.*` | 外部 LLM への同意とバージョン | — |
-| `zotero.mode` | `local` / `web` | — |
 
 - アクセストークンは保存しない（メモリのみ）
 - 同期位置は `projects.last_run_id` に持つので `settings` には置かない
@@ -135,11 +160,13 @@ erDiagram
 ### 各表の意味
 
 - **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）
-- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`judgment` が FR-02 の中身、`note` はその根拠、`zotero_status` は保存の再試行用
+- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`judgment` が FR-02 の中身、`note` はその根拠、`in_library` はライブラリ収録済みかの目印
+- **`references`**: アプリ内参考文献ライブラリの本体（FR-05）。日次候補から入れた場合は `paper_id` で辿れる。手で足した文献は `paper_id` が空。GUI と CLI が同じこの表を読み書きする（FR-11）
+- **`collections` / `collection_items`**: コレクション相当の整理。1 文献を複数コレクションに入れられるよう中間表にする
 - **`documents`**: 手元のファイル 1 つ。`kind=data`（研究データ）と `kind=manuscript`（執筆中原稿）を同じ表に置くのは、読み込み・分割・検索の扱いが同じため。`hash` は変更時のみ再索引するために使う
 - **`chunks`**: 検索できる大きさに切った文章。`section` は根拠提示に使う
 - **`vec_chunks`**: `chunks` と 1 対 1 のベクトル。sqlite-vec により同一ファイル・同一トランザクションで扱え、片方だけ更新される食い違いが起きない。中身は外に出さない（C-01）
-- **`settings`**: キーと値。クラウド接続（ユーザー識別とトークン）、機能の完全オフ（C-03）、同意、Zotero 接続方法。秘密の値は Electron `safeStorage` で暗号化して入れ、`encrypted` で示す。追加のネイティブ依存を増やさないため（NFR-05）
+- **`settings`**: キーと値。クラウド接続（ユーザー識別とトークン）、機能の完全オフ（C-03）、同意。秘密の値は Electron `safeStorage` で暗号化して入れ、`encrypted` で示す。追加のネイティブ依存を増やさないため（NFR-05）
   - DB ファイル自体は暗号化されない。`safeStorage` は「ファイルを見ただけでは読めない」保護であり、同じ PC の同じユーザー権限で動くプログラムからは復号できる
 
 ## 流れ
@@ -147,7 +174,8 @@ erDiagram
 1. 未起動でもクラウドが `projects.summary` を見て収集し、`runs` / `run_papers` に溜める
 2. 起動時、`last_run_id` より後をローカル `papers` に取り込む
 3. `chunks` / `vec_chunks` と照らして `judgment` を付ける
-4. 結果から Zotero 保存やテーマ候補の生成を行う
+4. 結果からライブラリ追加（`references`）やテーマ候補の生成を行う
+5. CLI は 2〜4 のローカル側と同じストアを直接読み書きする（FR-11）
 
 ## 持たない表と代償
 
@@ -157,14 +185,14 @@ erDiagram
 | クラウド `llm_usage` | Workers 側のログ | 利用上限を数えるなら表が必要 |
 | `themes` | `papers` から都度生成 | 過去の候補を見返せない |
 | `fc_claims` | 保存しない（要件で未決） | 検査結果は画面で見るだけ |
-| `zotero_queue` | `papers.zotero_status` | 1 論文 1 リクエストなら足りる |
+| 保存キュー表 | `papers.in_library` | ライブラリはローカルなので再試行が要らない |
 | `embedding_spaces` | `projects.embed_model` | モデル変更時は再索引 |
 
 ## 未決 / 要確認
 
-- 成功条件 3（Zotero 保存）に対応する FR が要件表にない。`papers.zotero_status` はこれを見込んだ仮置き
-- ADR-0001 が現存しない ID（FR-08, C-07, NFR-03）を参照している
-- ファクトチェック結果の保存可否
+- ファクトチェック結果の保存可否（`fc_claims` の要否）
 - 同意をクラウドに持たないため、BFF の同意判定方法（例: クライアントが同意バージョンを送る）
-- ADR-0003 は「取得キーは OS secure storage」。本図はトークンを `safeStorage` 暗号化で `settings` に置くため、Zotero キーも同じ方式に揃えるなら ADR-0003 の修正が必要
+- ライブラリの深さ: PDF 添付・ノート・引用スタイルをどこまで持つか
+- BibTeX/CSL 書き出しと他マネージャからの移行（`bibtex_key` は見込みの仮置き）
+- CLI のコマンド粒度（ライブラリのみか、FC／テーマまで出すか）
 - sqlite-vec の Electron 読込と各 OS 配布、件数増加時の検索速度

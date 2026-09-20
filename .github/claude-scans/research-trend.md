@@ -8,7 +8,7 @@
 
 1. **ADR-0001**: Transformers.js / e5・bge-m3、LanceDB Node、Workers/D1/Cron の制約、ソース配布埋め込み（例: S2 specter2）の継続
 2. **ADR-0002**: OrcaRouter のゼロ保持範囲・スコープ付きキー・Routing DSL・`fail_open`・価格。上流の保持ポリシー（OpenAI/Anthropic 等）
-3. **ADR-0003**: Zotero local API / OAuth、`remark-parse` / `@unified-latex` / `@typstmate/typst-syntax` の供給
+3. **ADR-0003**: ローカル参考文献ストア、`remark-parse` / `@unified-latex` / `@typstmate/typst-syntax` の供給
 
 ## issue
 
