@@ -1,0 +1,43 @@
+{
+  "measured_at": "2026-09-20T02:39:15.427Z",
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i5-1334U",
+    "logical_cores": 12,
+    "total_mem_gb": 15.7,
+    "node": "v22.23.2",
+    "platform": "win32 10.0.26200"
+  },
+  "config": {
+    "model": "onnx-community/Qwen2.5-1.5B-Instruct",
+    "dtype": "q4",
+    "max_new_tokens": 96,
+    "n": 1,
+    "input": "fixtures/papers.json"
+  },
+  "load_ms": 9239,
+  "warmup_ms": 26012,
+  "per_item_ms": {
+    "min": 27045,
+    "median": 27045,
+    "mean": 27045,
+    "max": 27045
+  },
+  "total_ms": 27045,
+  "total_with_load_ms": 36284,
+  "throughput_tok_per_s": 1.89,
+  "json_parse_rate": 1,
+  "label_agreement": 1,
+  "rows": [
+    {
+      "id": "p01",
+      "expected": "useful",
+      "elapsed_ms": 27045.1115,
+      "prompt_tokens": 342,
+      "output_tokens": 51,
+      "raw": "```json\n{\n  \"verdict\": \"useful\",\n  \"reason\": \"The paper discusses transfer learning techniques specifically designed for molecular property prediction in the context of low-data scenarios, which aligns well with the research project's focus.\"\n}\n```",
+      "ok": true,
+      "verdict": "useful",
+      "reason": "The paper discusses transfer learning techniques specifically designed for molecular property prediction in the context of low-data scenarios, which aligns well with the research project's focus."
+    }
+  ]
+}

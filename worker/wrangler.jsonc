@@ -1,0 +1,95 @@
+// ADR-0004 のクラウド構成をコードで持つ。手動のダッシュボード設定を正にしない。
+//
+// 注意 1: wrangler の名前付き環境は**上位の設定を引き継がない**。
+//         vars もバインディングも env ごとに書く。省くと本番で undefined になる。
+// 注意 2: wrangler の設定ファイルに `${VAR}` の展開は無い。ID は直接書く。
+//         D1 / KV / Queue の ID は**秘密ではない**ので、そのままコミットしてよい。
+//         秘密は Workers Secrets のみ（`C-06`）。
+// 注意 3: リソースの作成は `scripts/bootstrap.sh` で一度だけ行う。
+//         CI ではインフラを作らない（毎回の push で作ると事故が戻せない）。
+//
+// 前提（ADR-0004）:
+//   - HTTP と cron を 1 つの Worker に同居させる（分けると設定と型が二重になる）
+//   - cron はアカウントで 5 本まで（Free）。使うのは収集投入の 1 本だけ
+//   - dev / prod で D1 を分ける（Free で 10 DB まで）
+//   - 公開面はゾーン配下の独自ドメイン。workers.dev は防御の前提にしない
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ai-research-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+
+  // 既定環境は置かない。必ず --env dev / --env prod を指定する。
+  // ここに書いた値は env に引き継がれないので、下の env が実体。
+
+  "env": {
+    "dev": {
+      "name": "ai-research-api-dev",
+      "vars": {
+        "ENVIRONMENT": "dev",
+        "CONSENT_VERSION": "1"
+      },
+      "observability": { "enabled": true },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ai-research-dev",
+          "database_id": "a379335e-6c93-4d84-87b2-34be95717e2e",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      // 収集実行の冪等キー。cron・Queues とも at-least-once のため
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "88e7f74ecbe34e5eb8b6bd1871ea39c5" }],
+      "queues": {
+        "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect-dev" }],
+        "consumers": [
+          {
+            "queue": "ai-research-collect-dev",
+            // 1 メッセージ = 1（プロジェクト × ソース）。CPU 10ms 枠をメッセージごとに使う
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "ai-research-collect-dev-dlq"
+          }
+        ]
+      },
+      // UTC のみ。夏時間の影響を受けない時刻を選ぶ（ADR-0004）
+      "triggers": { "crons": ["0 20 * * *"] }
+    },
+
+    "prod": {
+      "name": "ai-research-api",
+      "vars": {
+        "ENVIRONMENT": "prod",
+        "CONSENT_VERSION": "1"
+      },
+      "observability": { "enabled": true },
+      // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。
+      // custom_domain: true はデプロイ時に DNS レコードも作る。
+      "routes": [{ "pattern": "api.streeeak.link", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ai-research-prod",
+          "database_id": "91955c65-86a1-4cae-937b-5128971e4353",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "413fe15c2bf7447abe41168e812c50eb" }],
+      "queues": {
+        "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect" }],
+        "consumers": [
+          {
+            "queue": "ai-research-collect",
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "ai-research-collect-dlq"
+          }
+        ]
+      },
+      "triggers": { "crons": ["0 20 * * *"] }
+    }
+  }
+}

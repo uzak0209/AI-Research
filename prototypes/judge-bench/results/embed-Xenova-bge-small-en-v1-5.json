@@ -1,0 +1,147 @@
+{
+  "measured_at": "2026-09-20T02:39:27.560Z",
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i5-1334U",
+    "logical_cores": 12,
+    "node": "v22.23.2"
+  },
+  "config": {
+    "model": "Xenova/bge-small-en-v1.5",
+    "input": "fixtures/papers.json",
+    "n": 20
+  },
+  "load_ms": 533,
+  "embed_total_ms": 1638,
+  "embed_per_item_ms": 82,
+  "mean_sim_useful": 0.7968,
+  "mean_sim_excluded": 0.5887,
+  "gap": 0.2081,
+  "min_sim_useful": 0.6585,
+  "max_sim_excluded": 0.6417,
+  "separable": true,
+  "precision_at_10": 1,
+  "precision_at_12": 0.833,
+  "k_for_full_recall": 10,
+  "rows": [
+    {
+      "id": "p01",
+      "expected": "useful",
+      "sim": 0.9072980745904582,
+      "ms": 108.17129999999997
+    },
+    {
+      "id": "p07",
+      "expected": "useful",
+      "sim": 0.8434780317157161,
+      "ms": 76.1449
+    },
+    {
+      "id": "p04",
+      "expected": "useful",
+      "sim": 0.8391684259044431,
+      "ms": 79.84289999999987
+    },
+    {
+      "id": "p08",
+      "expected": "useful",
+      "sim": 0.827203320080347,
+      "ms": 84.04129999999986
+    },
+    {
+      "id": "p06",
+      "expected": "useful",
+      "sim": 0.811861507170404,
+      "ms": 71.46659999999997
+    },
+    {
+      "id": "p03",
+      "expected": "useful",
+      "sim": 0.8110115432481184,
+      "ms": 130.33439999999996
+    },
+    {
+      "id": "p05",
+      "expected": "useful",
+      "sim": 0.7686719176405483,
+      "ms": 85.1594
+    },
+    {
+      "id": "p02",
+      "expected": "useful",
+      "sim": 0.7626318273846264,
+      "ms": 107.42949999999996
+    },
+    {
+      "id": "p09",
+      "expected": "useful",
+      "sim": 0.7385062891962638,
+      "ms": 77.19230000000016
+    },
+    {
+      "id": "p10",
+      "expected": "useful",
+      "sim": 0.6584690523001007,
+      "ms": 71.91059999999993
+    },
+    {
+      "id": "p15",
+      "expected": "excluded",
+      "sim": 0.6416928612531064,
+      "ms": 56.68220000000019
+    },
+    {
+      "id": "p11",
+      "expected": "excluded",
+      "sim": 0.626554284298057,
+      "ms": 78.50500000000011
+    },
+    {
+      "id": "p18",
+      "expected": "excluded",
+      "sim": 0.6220092042325166,
+      "ms": 61.13070000000016
+    },
+    {
+      "id": "p17",
+      "expected": "excluded",
+      "sim": 0.6178068793831348,
+      "ms": 66.85690000000022
+    },
+    {
+      "id": "p20",
+      "expected": "excluded",
+      "sim": 0.6057081661968495,
+      "ms": 80.50229999999965
+    },
+    {
+      "id": "p13",
+      "expected": "excluded",
+      "sim": 0.5703370644744726,
+      "ms": 72.41739999999982
+    },
+    {
+      "id": "p16",
+      "expected": "excluded",
+      "sim": 0.56692615116085,
+      "ms": 70.49800000000005
+    },
+    {
+      "id": "p19",
+      "expected": "excluded",
+      "sim": 0.552991717653726,
+      "ms": 57.99310000000014
+    },
+    {
+      "id": "p14",
+      "expected": "excluded",
+      "sim": 0.5513348145327651,
+      "ms": 75.99070000000029
+    },
+    {
+      "id": "p12",
+      "expected": "excluded",
+      "sim": 0.5320408832173733,
+      "ms": 71.23289999999997
+    }
+  ]
+}

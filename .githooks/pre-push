@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# push の前に検査を走らせ、落ちたら push させない。
+#
+# 有効化（クローンごとに 1 回必要。git はフックを共有しないため）:
+#   git config core.hooksPath .githooks
+#
+# 緊急時の迂回:
+#   git push --no-verify
+#   （迂回してもリモートのブランチ保護は通らない。あちらが本命の砦）
+
+set -uo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+ZERO='0000000000000000000000000000000000000000'
+
+fail() {
+  echo ""
+  echo "  ✗ $1"
+  echo "  push を中止した。直してからもう一度。"
+  echo "  どうしても通す必要があるときだけ: git push --no-verify"
+  echo ""
+  exit 1
+}
+
+# git は push される ref を stdin で渡す:
+#   <local ref> <local sha> <remote ref> <remote sha>
+# ここから「今回 push される範囲」を正確に出す。
+# 作業ツリーの変更は push されないので見ない。
+changed_files=''
+pushing_anything=false
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ -z "${local_ref:-}" ] && continue
+
+  # ブランチ削除の push。検査するものが無い
+  if [ "$local_sha" = "$ZERO" ]; then
+    continue
+  fi
+
+  if [ "$remote_ref" = "refs/heads/main" ]; then
+    fail "main への直 push は禁止（AGENTS.md）。dev へ向けて PR を出すこと。"
+  fi
+
+  pushing_anything=true
+
+  if [ "$remote_sha" = "$ZERO" ]; then
+    # リモートに無いブランチ。分岐元からの全コミットを見る。
+    # 分岐元が取れないときは安全側に倒し、全ファイルを対象にする
+    base="$(git merge-base "$local_sha" origin/dev 2>/dev/null \
+         || git merge-base "$local_sha" origin/main 2>/dev/null || true)"
+    if [ -n "$base" ]; then
+      range="$base..$local_sha"
+    else
+      range=''
+    fi
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  if [ -n "$range" ]; then
+    files="$(git diff --name-only "$range" 2>/dev/null || true)"
+  else
+    files="$(git ls-tree -r --name-only "$local_sha" 2>/dev/null || true)"
+  fi
+  changed_files="$changed_files
+$files"
+done
+
+if [ "$pushing_anything" = false ]; then
+  exit 0
+fi
+
+if ! printf '%s\n' "$changed_files" | grep -q '^worker/'; then
+  echo "  push される範囲に worker/ の変更なし。検査を飛ばす。"
+  exit 0
+fi
+
+echo "  worker/ に変更あり。検査する…"
+cd worker
+
+if [ ! -d node_modules ]; then
+  fail "worker/node_modules が無い。'cd worker && npm ci' を先に。"
+fi
+
+# リソース ID の置き忘れ。存在しないリソースへ deploy させない
+if grep -q 'PLACEHOLDER_' wrangler.jsonc; then
+  fail "wrangler.jsonc に PLACEHOLDER_ が残っている。scripts/bootstrap.sh の出力で置き換えること。"
+fi
+
+echo "  [1/3] 型検査"
+npx tsc --noEmit || fail "型検査に失敗した。"
+
+echo "  [2/3] テスト"
+npx vitest run || fail "テストが失敗した。"
+
+echo "  [3/3] デプロイ設定の検証（dry-run）"
+npx wrangler deploy --env dev --dry-run >/dev/null || fail "dev の dry-run に失敗した。"
+npx wrangler deploy --env prod --dry-run >/dev/null || fail "prod の dry-run に失敗した。"
+
+echo "  ✓ 検査を通過した。push する。"
