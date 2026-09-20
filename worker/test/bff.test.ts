@@ -27,7 +27,7 @@ async function authed(path: string, init: RequestInit = {}, bindings: typeof env
   return handleFetch(new Request(`https://api.test${path}`, { ...init, headers }), bindings);
 }
 
-function orcaBody(content: string, model = 'orcarouter/auto') {
+function orcaBody(content: string, model = 'openai/gpt-4o-mini') {
   return {
     model,
     choices: [{ message: { role: 'assistant', content } }],
@@ -40,6 +40,7 @@ function mockUpstream(opts: {
   openalexStatus?: number;
   orca?: unknown;
   orcaStatus?: number;
+  orcaHeaders?: HeadersInit;
 }) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -51,7 +52,10 @@ function mockUpstream(opts: {
     }
     if (url.startsWith(ORCA_CHAT_URL) || url.includes('orcarouter.ai')) {
       const status = opts.orcaStatus ?? 200;
-      return new Response(JSON.stringify(opts.orca ?? orcaBody('trend summary')), { status });
+      return new Response(JSON.stringify(opts.orca ?? orcaBody('trend summary')), {
+        status,
+        headers: opts.orcaHeaders,
+      });
     }
     return new Response('unexpected fetch', { status: 500 });
   });
@@ -84,7 +88,7 @@ describe('POST /bff/trends（C1）', () => {
     const res = await authed(
       '/bff/trends',
       { method: 'POST', body: JSON.stringify({ topic: 'DPDK' }) },
-      { ...env, ORCAROUTER_API_KEY: undefined },
+      { ...env, ORCAROUTER_API_KEY: undefined, ORCAROUTER_API_KEY_INTERACTIVE: undefined },
     );
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error: string };
@@ -159,6 +163,7 @@ describe('POST /bff/trends（C1）', () => {
       papers: { title: string }[];
     };
     expect(body.classification).toBe('C1');
+    expect(body.model).toBe('openai/gpt-4o-mini');
     expect(body.summary).toContain('DPDK');
     expect(body.papers[0]?.title).toContain('DPDK');
 
@@ -171,11 +176,19 @@ describe('POST /bff/trends（C1）', () => {
     expect(orca).toBeTruthy();
     const headers = new Headers(orca?.init?.headers);
     expect(headers.get('authorization')).toBe('Bearer test-orca-key');
+    expect(headers.get('x-orcarouter-include-cost')).toBe('true');
     const sent = JSON.parse(String(orca?.init?.body)) as {
       model: string;
+      temperature: number;
+      extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
-    expect(sent.model).toBe('orcarouter/auto');
+    expect(sent.model).toBe('openai/gpt-4o-mini');
+    expect(sent.temperature).toBe(0);
+    expect(sent.extra_body).toEqual({
+      route: 'fallback',
+      models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
     const user = sent.messages.find((m) => m.content.includes('Topic: DPDK'));
     expect(user?.content).toContain('DPDK architecture for 100Gbps');
     expect(user?.content).not.toContain('unpublished');
@@ -191,14 +204,45 @@ describe('POST /bff/trends（C1）', () => {
       endpoint: '/bff/trends',
       calls: 1,
       tokens: 30,
+      model: 'openai/gpt-4o-mini',
     });
     expect(JSON.stringify(usage)).not.toContain('100Gbps 向け');
+  });
+
+  it('INTERACTIVE キーがあれば ORCAROUTER_API_KEY なしでも呼べる', async () => {
+    const calls = mockUpstream({
+      papers: [{ id: 'W1', display_name: 'x' }],
+      orca: orcaBody('ok'),
+    });
+    const res = await authed(
+      '/bff/trends',
+      { method: 'POST', body: JSON.stringify({ topic: 'DPDK' }) },
+      { ...env, ORCAROUTER_API_KEY: undefined, ORCAROUTER_API_KEY_INTERACTIVE: 'interactive-key' },
+    );
+    expect(res.status).toBe(200);
+    const orca = calls.find((c) => c.url.includes('orcarouter.ai'));
+    expect(new Headers(orca?.init?.headers).get('authorization')).toBe('Bearer interactive-key');
+  });
+
+  it('fallback で当たったモデルを usage に残す', async () => {
+    mockUpstream({
+      papers: [{ id: 'W1', display_name: 'x' }],
+      orca: orcaBody('ok', 'openai/gpt-4o-mini'),
+      orcaHeaders: { 'X-Orca-Fallback-Model': 'google/gemini-2.5-flash' },
+    });
+    const res = await authed('/bff/trends', {
+      method: 'POST',
+      body: JSON.stringify({ topic: 'DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { model: string };
+    expect(body.model).toBe('google/gemini-2.5-flash');
   });
 
   it('上限に達していたら Orca の前に 429（NFR-04）', async () => {
     await env.DB.prepare(
       `INSERT INTO llm_usage (user_id, usage_date, endpoint, classification, model, calls, tokens)
-       VALUES (?, ?, '/bff/trends', 'C1', 'orcarouter/auto', 20, 0)`,
+       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', 20, 0)`,
     )
       .bind(PROJECT_USER, utcDate())
       .run();

@@ -12,6 +12,8 @@ import {
   TrendResponseSchema,
 } from './schema';
 import { TREND_ENDPOINT, fetchPublicPapers, summarizeTrend, toTrendPapers } from './trend';
+import { orcaKey } from './orca';
+import { ORCA_POLICY } from './orca-policy';
 import { dailyCallCount, dailyCallLimit, ensureUserId, recordLlmUsage } from './usage';
 
 export type AppEnv = { Bindings: Env };
@@ -142,7 +144,7 @@ app.openapi(
     const auth = await requireAccess(c.env, c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const apiKey = c.env.ORCAROUTER_API_KEY;
+    const apiKey = orcaKey(c.env, ORCA_POLICY.C1.slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
     }

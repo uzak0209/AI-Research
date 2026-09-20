@@ -11,7 +11,7 @@ HTTP と cron を 1 つの Worker に同居させる。
 | `GET /doc` | OpenAPI |
 | `POST /auth/refresh` | refresh JWT → 新しい access |
 | `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501**（IdP のあとで足す） |
-| `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（`orcarouter/auto`）で要約 |
+| `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（gpt-4o-mini → gemini-2.5-flash → haiku、`fail_open: false`）で要約 |
 | `GET`/`POST` `/bff/{name}`（C2/C3） | Bearer 必須。同意・プレビュー未実装のため **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |
@@ -55,7 +55,7 @@ Settings → Secrets and variables → Actions。**Secret と Variable はタブ
 | Secret | `CLOUDFLARE_API_TOKEN` | 下の権限を持つ API トークン |
 | Secret | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID（`npx wrangler whoami` で出る） |
 | Secret | `JWT_SIGNING_KEY` | Worker の HS256 署名鍵。CI が `wrangler secret put` する |
-| Secret | `ORCAROUTER_API_KEY` | OrcaRouter の `sk-orca-…`。CI が `wrangler secret put` する |
+| Secret | `ORCAROUTER_API_KEY` | OrcaRouter の `sk-orca-…`（C1 interactive）。CI が `wrangler secret put` する |
 | Secret | `OPENALEX_API_KEY` | OpenAlex の無料 API キー。Workers 共有 IP では無鍵が落ちる |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
@@ -101,7 +101,8 @@ gh secret set OPENALEX_API_KEY
 OpenAlex のキーは [openalex.org/settings/api](https://openalex.org/settings/api) で無料発行。2026-02 以降、Workers のような共有 IP からの無鍵呼び出しは落ちる。
 
 未設定なら認証系と C1 は 501。OAuth の IdP はまだ未決。
-`ORCAROUTER_API_KEY` は C1（interactive）用。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
+`ORCAROUTER_API_KEY` は C1（interactive）用。`ORCAROUTER_API_KEY_INTERACTIVE` があればそちらを優先。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
+C1 の model / fallback / temperature は `src/orca-policy.ts`。ダッシュボードの named router に依存しない。
 
 クライアントは refresh を OS 保護領域（`safeStorage`）、access をメモリに置く（ADR-0001）。
 Worker は Cookie を出さない。
