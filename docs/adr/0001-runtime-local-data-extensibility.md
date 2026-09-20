@@ -15,10 +15,42 @@
 同期は起動時プルのみ。Python は実行時必須にしない。Workers と型・スキーマ共有。
 GUI と CLI は共有コア越しに同一データを触る（二重管理しない）。
 
+### 起動時同期 → 競合／重複検査（成功条件 2 / FR-02）
+
+Electron（または同等のデスクトップ起動）で次を順に行う。**未取得の `runs` が無いときはプルも判定もスキップ。**
+クラウドへ判定結果を書き戻さない（`C-01`）。手元論文の本文・埋め込みは端末内だけ。
+
+```mermaid
+flowchart LR
+    boot["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='32' height='32' /><br/>Electron 起動"]
+    edge["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='28' height='28' /><br/>ゾーン防御"]
+    sync["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>GET /runs<br/>last_run_id 以降"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1<br/>未取得 runs?"]
+    local["<img src='https://cf-icons.pages.dev/server-database.svg' width='32' height='32' /><br/>ローカル SQLite<br/>papers 取込"]
+    rag["<img src='https://cf-icons.pages.dev/workers-ai.svg' width='32' height='32' /><br/>ローカル埋め込み<br/>手元論文検索"]
+    llm["<img src='https://cf-icons.pages.dev/ai.svg' width='32' height='32' /><br/>ローカル LLM<br/>競合・重複・活用"]
+    ui["<img src='https://cf-icons.pages.dev/analytics.svg' width='32' height='32' /><br/>報告 UI"]
+
+    boot --> edge --> sync --> d1
+    d1 -->|あり| local --> rag --> llm --> ui
+    d1 -->|なし| ui
+```
+
+手順:
+
+1. **起動** — 認証済みなら同期 API を呼ぶ（経路は [ADR-0004](0004-cloudflare-edge-and-scheduling.md)）
+2. **未取得確認** — ローカル `projects.last_run_id` より後の `runs` / `run_papers` が D1 にあるか見る
+3. **プル** — あれば公開候補だけをローカル `papers` に取り込む。`last_run_id` を進める。失敗と 0 件は区別して残す（`FR-08`）
+4. **手元検索** — 取り込んだ各候補を、ローカル埋め込みで自分の論文・原稿索引と照合（`FR-03`, `C-01`）
+5. **ローカル LLM** — 近傍ヒットを材料に、**競合／重複／活用／無関連**を判定する。未公開本文は端末外に出さない。外部 BFF（C2）はこの工程の本線にしない
+6. **報告** — 判定を行に保存し、起動後に読める報告にする（成功条件 2）。ライブラリ追加はユーザー操作（`FR-05`）
+
+CLI からも同じ共有コアで「同期＋判定」を実行できる（`FR-11`）。GUI 必須にしない。
+
 ### 関連度・テーマ
 
-1. クラウドでプロフィールにより緩めに絞る → ローカル RAG で精密判定
-2. テーマ候補はデスクトップ起動後に LLM 生成（cron は候補集合まで）。既定は C2（公開＋プロフィール）
+1. クラウドでプロフィールにより緩めに絞る → **起動後にローカル RAG＋ローカル LLM で精密判定**（上節）
+2. テーマ候補はデスクトップ起動後に生成（cron は候補集合まで）。テーマ生成の既定経路は C2（公開＋プロフィール、ADR-0002）。競合検査とは別工程
 
 ### ローカル RAG
 
@@ -26,6 +58,7 @@ GUI と CLI は共有コア越しに同一データを触る（二重管理し�
 - ローカル保存は SQLite 1 ファイル＋`sqlite-vec`（組込み・サーバー不要）。メタとベクトルを同一トランザクションで扱う
 - 1 プロジェクト = やりたいこと 1 つ = 埋め込みモデル 1 つ。モデル変更時は再索引。未公開データはローカル推論のみ
 - 論文ベクトルは保存せず判定時に同モデルで計算。モデルは設定（分野名をコードに埋めない）
+- **競合／重複の精密判定はローカル LLM。** 埋め込みは候補の絞り込み、LLM はラベル付け。どちらもローカル（`C-01`）
 - クラウドに出すユーザー情報はプロジェクト概要（`summary`）のみ
 
 ### データ配置（ER 図は [er-diagram.md](../er-diagram.md)）
@@ -58,4 +91,4 @@ GUI と CLI は共有コア越しに同一データを触る（二重管理し�
 - 欠けた依存だけ欠落表示。「0件」と「取得失敗」を区別。レポートは一意 ID
 - LLM は OpenAI 互換に閉じ、差替えは BFF 内に局所化
 
-却下: ローカル cron のみ / クラウド完結 / personal を外部索引化 / SQLite＋LanceDB 併用（ネイティブ依存 2 つ・二重ストア整合）
+却下: ローカル cron のみ / クラウド完結 / personal を外部索引化 / SQLite＋LanceDB 併用（ネイティブ依存 2 つ・二重ストア整合） / **競合検査で手元論文を BFF・外部 LLM に送る**
