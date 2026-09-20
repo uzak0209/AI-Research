@@ -895,17 +895,19 @@ textarea::placeholder {
   pointer-events: none;
 }
 
+/* マーカー。文字が読める濃さに留める。
+   矩形は行ごとにまとめてあるので、重なって二重に掛かることはない */
 .pdf-anno {
   position: absolute;
   mix-blend-mode: multiply;
-  opacity: 0.45;
+  opacity: 0.28;
   border-radius: 2px;
   pointer-events: auto;
   cursor: pointer;
 }
 
 .pdf-anno:hover {
-  opacity: 0.7;
+  opacity: 0.45;
   outline: 2px solid var(--fg);
 }
 
@@ -963,9 +965,9 @@ textarea::placeholder {
 }
 
 /* コメントが付いているものは分かるようにする */
+/* コメントが付いているものは下線で示す。枠で囲うと文字が読みにくい */
 .pdf-anno.has-comment {
-  outline: 2px solid var(--fg);
-  outline-offset: -1px;
+  box-shadow: inset 0 -2px 0 0 var(--fg-muted);
 }
 
 .pdf-ink-path.has-comment {

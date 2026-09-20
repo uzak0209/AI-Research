@@ -15,7 +15,10 @@
     "src/main/**/*.ts",
     "src/preload/**/*.ts",
     "src/shared/**/*.ts",
+    // レンダラ側でも pdf.js を読まない純粋な処理はテストから参照する。
+    // 1 本ずつ列挙すると足し忘れるのでまとめて含める
     "src/renderer/ink-path.ts",
+    "src/renderer/rects.ts",
     "test/**/*.ts",
     "electron.vite.config.ts",
     "vitest.config.ts"
