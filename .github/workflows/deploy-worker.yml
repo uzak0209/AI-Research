@@ -74,8 +74,9 @@ jobs:
         run: npx tsc --noEmit
 
       # Workers ランタイム上で走らせる。Node で動かすと D1 の挙動がずれる
+      # coverage は v8 不可（Workers に inspector が無い）。istanbul を使う
       - name: Test
-        run: npx vitest run
+        run: npx vitest run --coverage
 
       # 認証情報なしで設定とビルドの妥当性を見る
       - name: Dry run (dev)

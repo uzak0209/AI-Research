@@ -119,10 +119,12 @@ flowchart LR
 
 ### 認証（C-02, C-06）
 
-- デスクトップ／CLI は OAuth + PKCE で認証し、BFF が自前の短命アクセストークンを発行する（ADR-0002）
+- デスクトップ／CLI は OAuth + PKCE で認証し、BFF が自前の短命 JWT を発行する（ADR-0002）
 - **クライアント秘密を配布物に入れない**。PKCE を使うのはこのため
-- 更新トークンはローカルで暗号化保存（ADR-0001）。クラウドはユーザー名・メールを持たず、OAuth subject のみ
-- JWT 検証は Worker 内で行う（API Shield を使わないため）
+- トークンの置き場はクライアント側（ADR-0001）。Worker は `Authorization: Bearer` を検証するだけ。
+  Cookie でセッションを持たない（Electron / CLI で Cookie jar を共有できない）
+- クラウドはユーザー名・メールを持たず、OAuth subject のみ
+- JWT 検証は Worker 内で行う（API Shield を使わないため）。実装は `jose`
 - 署名鍵は Workers Secrets。鍵の入れ替え手順は未決
 
 ### 日次収集（FR-01, FR-08, NFR-01）

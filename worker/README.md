@@ -8,16 +8,23 @@ HTTP と cron を 1 つの Worker に同居させる。
 | 経路 | 状態 |
 |---|---|
 | `GET /health` | 動く。CI の疎通確認に使う |
-| `GET /runs`（同期 API・FR-02） | **501**。認証の上流 IdP と署名鍵の入れ替えが未決 |
-| `POST /bff/*`（FR-10） | **501**。分類（C1/C2/C3）決定後に足す |
+| `GET /doc` | OpenAPI |
+| `POST /auth/refresh` | refresh JWT → 新しい access |
+| `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501**（IdP のあとで足す） |
+| `GET`/`POST` `/bff/{name}`（FR-10） | Bearer 必須。分類決定まで **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |
 
 ## 構成
 
-| 要素 | 使うもの | 理由（ADR-0004） |
+| 要素 | 使うもの | 理由 |
 |---|---|---|
-| 実行 | Workers（HTTP と cron を同居） | ランタイムを増やさない。分けると設定と型が二重になる |
+| HTTP | Hono + `@hono/zod-openapi` | 経路と OpenAPI を同じ定義から出す |
+| 入力 | Zod | 境界で一回だけ検証する |
+| SQL | Kysely（compile のみ）+ D1 `batch` | 1 実行 50 クエリに収める。kysely-d1 は使わない |
+| 型 | `kysely-codegen`（`npm run codegen`） | 正本は migrations |
+| JWT | `jose`。Worker は `Authorization: Bearer` のみ | トークン置き場はクライアント（ADR-0001） |
+| 実行 | Workers（HTTP と cron を同居） | ランタイムを増やさない |
 | 保存 | D1（`dev` / `prod` で分ける） | 公開データのみで量が小さい |
 | 分散 | Queues（1 メッセージ = 1 プロジェクト × ソース） | CPU 10ms/実行 の回避 |
 | 冪等 | KV | cron・Queues とも at-least-once |
@@ -76,14 +83,21 @@ Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDF
 
 `prod` は Environment で承認を必須にできる。誤 deploy を止める最後の砦。
 
-### Workers Secrets は今のところ不要
+### Workers Secrets
 
-`wrangler secret put` で入れる秘密は、**現在のコードが 1 つも参照していない**。
-`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` は `/runs` と `/bff/*` が 501 の間は使われない。
-認証と BFF を実装する時点で入れる。
+`/auth/refresh` と `/runs` の Bearer 検証に `JWT_SIGNING_KEY` が要る。
 
-Worker が実際に読むのは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE`（バインディング）と
-`ENVIRONMENT` / `CONSENT_VERSION`（`wrangler.jsonc` の `vars`）だけ。
+```bash
+npx wrangler secret put JWT_SIGNING_KEY --env dev
+```
+
+未設定なら認証系は 501。OAuth の IdP はまだ未決。
+
+クライアントは refresh を OS 保護領域（`safeStorage`）、access をメモリに置く（ADR-0001）。
+Worker は Cookie を出さない。
+
+Worker が読むバインディングは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE` と
+`ENVIRONMENT` / `CONSENT_VERSION`（vars）。秘密は Secrets のみ。
 
 ## CI/CD
 
@@ -116,12 +130,16 @@ Worker が実際に読むのは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE`（バイ�
 cd worker && npx wrangler rollback --env prod
 ```
 
+`JWT_SIGNING_KEY` は `/auth/refresh` と Bearer 検証で使う。IdP は未決。
+
 ## ローカル
 
 ```bash
 npm run dev                          # wrangler dev
 npx wrangler dev --test-scheduled    # cron を叩く: /__scheduled
-npx wrangler d1 migrations apply ai-research-dev --local
+npx wrangler d1 migrations apply ai-research-dev --local --env dev
+npm run codegen                      # migrations から Kysely の型
+npm run test:coverage
 ```
 
 ## Free 枠で効く制約（ADR-0004）

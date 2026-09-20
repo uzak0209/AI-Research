@@ -6,6 +6,8 @@
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 要件（1 本。成功条件・FR・C） |
 | [docs/adr/](docs/adr/) | ADR（**4 本のみ**） |
+| `worker/` | クラウド（Workers。ADR-0004） |
+| `packages/core/` | GUI と CLI の共有コア（トークン・設定。ADR-0001） |
 | `prototypes/` | 検証用。本番ではない |
 
 ## 要件と ADR

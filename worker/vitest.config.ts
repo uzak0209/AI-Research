@@ -12,12 +12,21 @@ export default defineConfig({
     cloudflareTest({
       miniflare: {
         // テストから参照する。setup で適用する
-        bindings: { TEST_MIGRATIONS: migrations },
+        bindings: {
+          TEST_MIGRATIONS: migrations,
+          JWT_SIGNING_KEY: 'test-signing-key-at-least-32-chars',
+        },
       },
       wrangler: { configPath: './wrangler.jsonc', environment: 'dev' },
     }),
   ],
   test: {
     setupFiles: ['./test/setup.ts'],
+    coverage: {
+      provider: 'istanbul',
+      reporter: ['text', 'lcov', 'html'],
+      include: ['src/**/*.ts'],
+      reportsDirectory: './coverage',
+    },
   },
 });
