@@ -5,7 +5,8 @@
 外部 LLM の統制利用も目的に含む。特定の参考文献マネージャへの依存は前提にしない。
 
 > **設計フェーズ。** 正本は [要件 1 本](docs/requirements.md) と [ADR 4 本](docs/adr/)。
-> 実装は [prototypes/judge-bench](prototypes/judge-bench/) の関連度ランキングのみ（検証用）。
+> 実装は [desktop](desktop/)・[worker](worker/)・[packages/core](packages/core/) に部分的にある。
+> 未実装の項目は各 README の表を参照。[prototypes/judge-bench](prototypes/judge-bench/) は検証用の関連度ランキング。
 
 | | |
 |---|---|
