@@ -151,6 +151,7 @@ jobs:
         env:
           JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         run: |
           set -euo pipefail
           put() {
@@ -165,6 +166,7 @@ jobs:
           }
           put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
           put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
+          put OPENALEX_API_KEY "${OPENALEX_API_KEY:-}"
 
       # deploy が通っても Worker が起動しないことがあるので、実際に叩いて確かめる
       - name: Smoke test
@@ -244,6 +246,7 @@ jobs:
         env:
           JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         run: |
           set -euo pipefail
           put() {
@@ -258,6 +261,7 @@ jobs:
           }
           put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
           put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
+          put OPENALEX_API_KEY "${OPENALEX_API_KEY:-}"
 
       - name: Smoke test
         env:

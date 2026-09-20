@@ -56,6 +56,7 @@ Settings → Secrets and variables → Actions。**Secret と Variable はタブ
 | Secret | `CLOUDFLARE_ACCOUNT_ID` | アカウント ID（`npx wrangler whoami` で出る） |
 | Secret | `JWT_SIGNING_KEY` | Worker の HS256 署名鍵。CI が `wrangler secret put` する |
 | Secret | `ORCAROUTER_API_KEY` | OrcaRouter の `sk-orca-…`。CI が `wrangler secret put` する |
+| Secret | `OPENALEX_API_KEY` | OpenAlex の無料 API キー。Workers 共有 IP では無鍵が落ちる |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
 
@@ -88,13 +89,16 @@ Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDF
 
 ### Workers Secrets
 
-`JWT_SIGNING_KEY` と `ORCAROUTER_API_KEY` は **GitHub Secrets に置き、deploy が Worker へ載せる。**
+`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` / `OPENALEX_API_KEY` は **GitHub Secrets に置き、deploy が Worker へ載せる。**
 手元 `wrangler login` と CI のアカウントが違うと、ローカルの `secret put` は別 Worker を作る。
 
 ```bash
 gh secret set JWT_SIGNING_KEY
 gh secret set ORCAROUTER_API_KEY
+gh secret set OPENALEX_API_KEY
 ```
+
+OpenAlex のキーは [openalex.org/settings/api](https://openalex.org/settings/api) で無料発行。2026-02 以降、Workers のような共有 IP からの無鍵呼び出しは落ちる。
 
 未設定なら認証系と C1 は 501。OAuth の IdP はまだ未決。
 `ORCAROUTER_API_KEY` は C1（interactive）用。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
