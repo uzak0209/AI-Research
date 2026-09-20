@@ -45,3 +45,27 @@ export const openAlexWorkSchema = z.object({
 export const openAlexResponseSchema = z.object({
   results: z.array(openAlexWorkSchema).optional(),
 });
+
+export const TrendBodySchema = z
+  .object({
+    // トピックだけ。原稿や手元論文を載せない（C-01, C-09）
+    topic: z.string().trim().min(1).max(200),
+  })
+  .openapi('TrendBody');
+
+export const TrendPaperSchema = z
+  .object({
+    title: z.string(),
+    url: z.string().nullable(),
+    published_at: z.string().nullable(),
+  })
+  .openapi('TrendPaper');
+
+export const TrendResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    summary: z.string().nullable(),
+    papers: z.array(TrendPaperSchema),
+  })
+  .openapi('TrendResponse');

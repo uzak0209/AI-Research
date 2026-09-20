@@ -122,7 +122,7 @@ describe('HTTP', () => {
     expect(res.status).toBe(401);
   });
 
-  it('BFF は Bearer 無しなら 401（自由プロキシを作らない。ADR-0002）', async () => {
+  it('BFF の未実装経路は Bearer 無しなら 401（自由プロキシを作らない。ADR-0002）', async () => {
     const res = await handleFetch(new Request('https://api.test/bff/themes'), env);
     expect(res.status).toBe(401);
   });

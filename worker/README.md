@@ -11,7 +11,8 @@ HTTP と cron を 1 つの Worker に同居させる。
 | `GET /doc` | OpenAPI |
 | `POST /auth/refresh` | refresh JWT → 新しい access |
 | `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501**（IdP のあとで足す） |
-| `GET`/`POST` `/bff/{name}`（FR-10） | Bearer 必須。分類決定まで **501** |
+| `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（`orcarouter/auto`）で要約 |
+| `GET`/`POST` `/bff/{name}`（C2/C3） | Bearer 必須。同意・プレビュー未実装のため **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |
 
@@ -89,15 +90,17 @@ Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDF
 
 ```bash
 npx wrangler secret put JWT_SIGNING_KEY --env dev
+npx wrangler secret put ORCAROUTER_API_KEY --env dev
 ```
 
-未設定なら認証系は 501。OAuth の IdP はまだ未決。
+未設定なら認証系と C1 は 501。OAuth の IdP はまだ未決。
+`ORCAROUTER_API_KEY` は C1（interactive）用。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
 
 クライアントは refresh を OS 保護領域（`safeStorage`）、access をメモリに置く（ADR-0001）。
 Worker は Cookie を出さない。
 
 Worker が読むバインディングは `DB` / `IDEMPOTENCY` / `COLLECT_QUEUE` と
-`ENVIRONMENT` / `CONSENT_VERSION`（vars）。秘密は Secrets のみ。
+`ENVIRONMENT` / `CONSENT_VERSION` / `LLM_DAILY_CALL_LIMIT`（vars）。秘密は Secrets のみ。
 
 ## CI/CD
 
@@ -156,6 +159,6 @@ npm run test:coverage
 
 - **WAF・レート制限がコード管理になっていない。** ADR-0004 は「wrangler / Terraform で
   コード管理」としているが、これらはゾーンの設定で wrangler では扱えない。Terraform が要る
-- 認証（OAuth + PKCE、JWT 検証、署名鍵の入れ替え）
-- BFF endpoint と OrcaRouter 連携
+- 認証（OAuth + PKCE、署名鍵の入れ替え）
+- C2 テーマ候補・C3 ファクトチェック（同意・プレビュー）
 - `runs` / `run_papers` の保持期間の削除処理
