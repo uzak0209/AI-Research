@@ -1,0 +1,96 @@
+// ADR-0004 のクラウド構成をコードで持つ。手動のダッシュボード設定を正にしない。
+//
+// 注意 1: wrangler の名前付き環境は**上位の設定を引き継がない**。
+//         vars もバインディングも env ごとに書く。省くと本番で undefined になる。
+// 注意 2: wrangler の設定ファイルに `${VAR}` の展開は無い。ID は直接書く。
+//         D1 / KV / Queue の ID は**秘密ではない**ので、そのままコミットしてよい。
+//         秘密は Workers Secrets のみ（`C-06`）。
+// 注意 3: リソースの作成は `scripts/bootstrap.sh` で一度だけ行う。
+//         CI ではインフラを作らない（毎回の push で作ると事故が戻せない）。
+//
+// 前提（ADR-0004）:
+//   - HTTP と cron を 1 つの Worker に同居させる（分けると設定と型が二重になる）
+//   - cron はアカウントで 5 本まで（Free）。使うのは収集投入の 1 本だけ
+//   - dev / prod で D1 を分ける（Free で 10 DB まで）
+//   - 公開面はゾーン配下の独自ドメイン。workers.dev は防御の前提にしない
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ai-research-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-22",
+  "observability": { "enabled": true },
+
+  // 既定環境は置かない。必ず --env dev / --env prod を指定する。
+  // ここに書いた値は env に引き継がれないので、下の env が実体。
+
+  "env": {
+    "dev": {
+      "name": "ai-research-api-dev",
+      "vars": {
+        "ENVIRONMENT": "dev",
+        "CONSENT_VERSION": "1"
+      },
+      "observability": { "enabled": true },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ai-research-dev",
+          "database_id": "PLACEHOLDER_DEV_D1_ID",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      // 収集実行の冪等キー。cron・Queues とも at-least-once のため
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "PLACEHOLDER_DEV_KV_ID" }],
+      "queues": {
+        "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect-dev" }],
+        "consumers": [
+          {
+            "queue": "ai-research-collect-dev",
+            // 1 メッセージ = 1（プロジェクト × ソース）。CPU 10ms 枠をメッセージごとに使う
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "ai-research-collect-dev-dlq"
+          }
+        ]
+      },
+      // UTC のみ。夏時間の影響を受けない時刻を選ぶ（ADR-0004）
+      "triggers": { "crons": ["0 20 * * *"] }
+    },
+
+    "prod": {
+      "name": "ai-research-api",
+      "vars": {
+        "ENVIRONMENT": "prod",
+        "CONSENT_VERSION": "1"
+      },
+      "observability": { "enabled": true },
+      // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。
+      // ドメインを決めるまではこの行をコメントのままにしておくと workers.dev に出てしまうので、
+      // prod デプロイの前に必ず実ホスト名へ置き換える。
+      "routes": [{ "pattern": "PLACEHOLDER_API_HOSTNAME", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ai-research-prod",
+          "database_id": "PLACEHOLDER_PROD_D1_ID",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "PLACEHOLDER_PROD_KV_ID" }],
+      "queues": {
+        "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect" }],
+        "consumers": [
+          {
+            "queue": "ai-research-collect",
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "ai-research-collect-dlq"
+          }
+        ]
+      },
+      "triggers": { "crons": ["0 20 * * *"] }
+    }
+  }
+}

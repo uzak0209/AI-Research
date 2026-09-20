@@ -1,0 +1,191 @@
+name: Deploy worker
+
+# ADR-0004 のクラウド側を wrangler でデプロイする。
+#
+# ブランチ規約（AGENTS.md）に合わせる:
+#   PR → dev / main : 検証だけ（deploy しない）
+#   push → dev      : dev 環境へ deploy
+#   push → main     : prod 環境へ deploy
+#
+# インフラの作成は CI でやらない。worker/scripts/bootstrap.sh を人が一度だけ走らせる。
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'worker/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'deploy する環境'
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  # 同じ環境への deploy を重ねない。後から来た方を待たせる（cancel しない）
+  group: deploy-worker-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: worker
+
+jobs:
+  # ---------------------------------------------------------------- 検証
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      # PLACEHOLDER のまま deploy すると存在しないリソースに向かう。
+      # 落とすなら deploy 前のここで落とす。
+      - name: Reject placeholder resource ids
+        run: |
+          set -euo pipefail
+          if grep -n 'PLACEHOLDER_' wrangler.jsonc; then
+            echo "::error::wrangler.jsonc に PLACEHOLDER_ が残っている。scripts/bootstrap.sh の出力で置き換えること。"
+            exit 1
+          fi
+          echo "placeholder なし"
+
+      - name: Generate types
+        run: npx wrangler types --env dev
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Workers ランタイム上で走らせる。Node で動かすと D1 の挙動がずれる
+      - name: Test
+        run: npx vitest run
+
+      # 認証情報なしで設定とビルドの妥当性を見る
+      - name: Dry run (dev)
+        run: npx wrangler deploy --env dev --dry-run
+
+      - name: Dry run (prod)
+        run: npx wrangler deploy --env prod --dry-run
+
+  # ---------------------------------------------------------------- dev
+  deploy-dev:
+    name: deploy-dev
+    needs: validate
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/dev' ||
+      github.event_name == 'workflow_dispatch' && inputs.target == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      # スキーマを先に当てる。コードが新しい列を読むのに列が無い状態を作らない
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply ai-research-dev --remote --env dev
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --env dev
+
+      # deploy が通っても Worker が起動しないことがあるので、実際に叩いて確かめる
+      - name: Smoke test
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HEALTH_URL: ${{ vars.DEV_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HEALTH_URL:-}" ]; then
+            echo "::warning::vars.DEV_HEALTH_URL が未設定のため疎通確認を飛ばした（deploy 自体は成功）"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 "$HEALTH_URL")
+          echo "status=$code body=$(cat /tmp/health.json)"
+          [ "$code" = "200" ]
+
+  # ---------------------------------------------------------------- prod
+  deploy-prod:
+    name: deploy-prod
+    needs: validate
+    if: >-
+      github.event_name == 'push' && github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch' && inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    # GitHub 側で承認を要求できる。prod への誤 deploy を止める最後の砦
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply ai-research-prod --remote --env prod
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --env prod
+
+      - name: Smoke test
+        env:
+          HEALTH_URL: ${{ vars.PROD_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HEALTH_URL:-}" ]; then
+            echo "::warning::vars.PROD_HEALTH_URL が未設定のため疎通確認を飛ばした（deploy 自体は成功）"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 "$HEALTH_URL")
+          echo "status=$code body=$(cat /tmp/health.json)"
+          [ "$code" = "200" ]
+
+      # 失敗したら直前のバージョンへ戻す手順をログに残す（自動では戻さない）
+      - name: Rollback hint
+        if: failure()
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          echo "::error::prod の deploy に失敗した。戻す場合は次を手で実行する:"
+          echo "  cd worker && npx wrangler rollback --env prod"
+          npx wrangler versions list --env prod 2>&1 | head -20 || true

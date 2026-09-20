@@ -1,0 +1,12 @@
+{
+  "name": "judge-bench",
+  "private": true,
+  "type": "module",
+  "description": "ADR-0001 検証: Transformers.js(ONNX/CPU) で採否判定が実用速度かを測る",
+  "scripts": {
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0"
+  }
+}

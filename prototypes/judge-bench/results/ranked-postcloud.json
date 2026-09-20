@@ -1,0 +1,2216 @@
+{
+  "stats": {
+    "model": "Xenova/bge-small-en-v1.5",
+    "score_mode": "blend",
+    "n": 38,
+    "load_ms": 391,
+    "embed_total_ms": 3470,
+    "embed_per_item_ms": 91
+  },
+  "rows": [
+    {
+      "id": "r02",
+      "title": "Transfer learning with graph neural networks for improved molecular property prediction in the multi-fidelity setting",
+      "score": 0.8607868996730349,
+      "sim_summary": 0.8823977457027962,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.8103615922702587
+        },
+        {
+          "id": "c10",
+          "sim": 0.7503238592498105
+        },
+        {
+          "id": "c08",
+          "sim": 0.747389756260207
+        },
+        {
+          "id": "c06",
+          "sim": 0.6735258097445166
+        },
+        {
+          "id": "c04",
+          "sim": 0.6688921240643861
+        },
+        {
+          "id": "c07",
+          "sim": 0.6490255009036376
+        },
+        {
+          "id": "c09",
+          "sim": 0.5969682660421898
+        },
+        {
+          "id": "c05",
+          "sim": 0.5873088980819519
+        },
+        {
+          "id": "c02",
+          "sim": 0.5769183857296527
+        },
+        {
+          "id": "c03",
+          "sim": 0.566808806284095
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8103615922702587,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s41467-024-45566-8",
+      "rank": 1
+    },
+    {
+      "id": "r07",
+      "title": "Chain-aware graph neural networks for molecular property prediction",
+      "score": 0.8375768338769697,
+      "sim_summary": 0.8515095202798052,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.8050672322703538
+        },
+        {
+          "id": "c10",
+          "sim": 0.6941443252467481
+        },
+        {
+          "id": "c08",
+          "sim": 0.6393428451705251
+        },
+        {
+          "id": "c04",
+          "sim": 0.6095395748714514
+        },
+        {
+          "id": "c06",
+          "sim": 0.602023597447054
+        },
+        {
+          "id": "c05",
+          "sim": 0.5856440733957008
+        },
+        {
+          "id": "c09",
+          "sim": 0.5715417018282234
+        },
+        {
+          "id": "c07",
+          "sim": 0.5488948266890097
+        },
+        {
+          "id": "c02",
+          "sim": 0.5281991980647739
+        },
+        {
+          "id": "c03",
+          "sim": 0.5145741362351354
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8050672322703538,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1093/bioinformatics/btae574",
+      "rank": 2
+    },
+    {
+      "id": "r01",
+      "title": "Chemistry-intuitive explanation of graph neural networks for molecular property prediction with substructure masking",
+      "score": 0.833772045935375,
+      "sim_summary": 0.8357643781564636,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.8291232707528351
+        },
+        {
+          "id": "c10",
+          "sim": 0.7302638193041835
+        },
+        {
+          "id": "c08",
+          "sim": 0.6760597298595122
+        },
+        {
+          "id": "c06",
+          "sim": 0.6466753231126844
+        },
+        {
+          "id": "c04",
+          "sim": 0.6305847233941687
+        },
+        {
+          "id": "c07",
+          "sim": 0.5991206481515566
+        },
+        {
+          "id": "c09",
+          "sim": 0.5962839832398551
+        },
+        {
+          "id": "c05",
+          "sim": 0.5879557645746356
+        },
+        {
+          "id": "c02",
+          "sim": 0.557290903150562
+        },
+        {
+          "id": "c03",
+          "sim": 0.5569708151575218
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8291232707528351,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1038/s41467-023-38192-3",
+      "rank": 3
+    },
+    {
+      "id": "r03",
+      "title": "Kolmogorov–Arnold graph neural networks for molecular property prediction",
+      "score": 0.8323056344960276,
+      "sim_summary": 0.8428020154694809,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.8078140788913037
+        },
+        {
+          "id": "c10",
+          "sim": 0.6937514548828115
+        },
+        {
+          "id": "c04",
+          "sim": 0.6416735202203645
+        },
+        {
+          "id": "c08",
+          "sim": 0.6405331686840401
+        },
+        {
+          "id": "c06",
+          "sim": 0.588553872083785
+        },
+        {
+          "id": "c09",
+          "sim": 0.5885222004381222
+        },
+        {
+          "id": "c07",
+          "sim": 0.5656789059263911
+        },
+        {
+          "id": "c05",
+          "sim": 0.5527938563531667
+        },
+        {
+          "id": "c03",
+          "sim": 0.529628476740815
+        },
+        {
+          "id": "c02",
+          "sim": 0.5147639943389724
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.8078140788913037,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1038/s42256-025-01087-7",
+      "rank": 4
+    },
+    {
+      "id": "r04",
+      "title": "Explainable AI in drug discovery: self-interpretable graph neural network for molecular property prediction using concept whitening",
+      "score": 0.8312360790447659,
+      "sim_summary": 0.8472955122539918,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7937640682232389
+        },
+        {
+          "id": "c10",
+          "sim": 0.6900944092898628
+        },
+        {
+          "id": "c08",
+          "sim": 0.6584599906707812
+        },
+        {
+          "id": "c06",
+          "sim": 0.6085704252559341
+        },
+        {
+          "id": "c04",
+          "sim": 0.5834986999106768
+        },
+        {
+          "id": "c09",
+          "sim": 0.5804535776011672
+        },
+        {
+          "id": "c07",
+          "sim": 0.5646121004527818
+        },
+        {
+          "id": "c05",
+          "sim": 0.5379073348329948
+        },
+        {
+          "id": "c03",
+          "sim": 0.5260540856401532
+        },
+        {
+          "id": "c02",
+          "sim": 0.5225854950358795
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7937640682232389,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1007/s10994-023-06369-y",
+      "rank": 5
+    },
+    {
+      "id": "r08",
+      "title": "Fingerprint-enhanced hierarchical molecular graph neural networks for property prediction",
+      "score": 0.8024836235840066,
+      "sim_summary": 0.814059502324481,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7754732398562333
+        },
+        {
+          "id": "c10",
+          "sim": 0.6490280319882089
+        },
+        {
+          "id": "c08",
+          "sim": 0.6441120238386121
+        },
+        {
+          "id": "c06",
+          "sim": 0.5893049955662915
+        },
+        {
+          "id": "c09",
+          "sim": 0.5716104626629873
+        },
+        {
+          "id": "c04",
+          "sim": 0.5687923116395106
+        },
+        {
+          "id": "c07",
+          "sim": 0.5584268769658044
+        },
+        {
+          "id": "c05",
+          "sim": 0.5255472634896011
+        },
+        {
+          "id": "c03",
+          "sim": 0.5162275195443438
+        },
+        {
+          "id": "c02",
+          "sim": 0.5035179575574986
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7754732398562333,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.jpha.2025.101242",
+      "rank": 6
+    },
+    {
+      "id": "r09",
+      "title": "Chemprop: A Machine Learning Package for Chemical Property Prediction",
+      "score": 0.8016141212320866,
+      "sim_summary": 0.8183637307066778,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7625316991247072
+        },
+        {
+          "id": "c10",
+          "sim": 0.6735820746052272
+        },
+        {
+          "id": "c08",
+          "sim": 0.6599922238842701
+        },
+        {
+          "id": "c04",
+          "sim": 0.6544173722085801
+        },
+        {
+          "id": "c07",
+          "sim": 0.6248883247259664
+        },
+        {
+          "id": "c06",
+          "sim": 0.6091066532299881
+        },
+        {
+          "id": "c09",
+          "sim": 0.5642372585268676
+        },
+        {
+          "id": "c05",
+          "sim": 0.5522288165457641
+        },
+        {
+          "id": "c02",
+          "sim": 0.5356079020697426
+        },
+        {
+          "id": "c03",
+          "sim": 0.5337359632308625
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7625316991247072,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.3c01250",
+      "rank": 7
+    },
+    {
+      "id": "r12",
+      "title": "Enhancing Molecular Property Prediction through Task-Oriented Transfer Learning: Integrating Universal Structural Insights and Domain-Specific Knowledge",
+      "score": 0.7954020463014762,
+      "sim_summary": 0.8072101533195355,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7678497965926713
+        },
+        {
+          "id": "c08",
+          "sim": 0.7171406788286292
+        },
+        {
+          "id": "c10",
+          "sim": 0.712487863831935
+        },
+        {
+          "id": "c06",
+          "sim": 0.7071828547444989
+        },
+        {
+          "id": "c04",
+          "sim": 0.6307008992502676
+        },
+        {
+          "id": "c07",
+          "sim": 0.6074923259715315
+        },
+        {
+          "id": "c09",
+          "sim": 0.5763855479270882
+        },
+        {
+          "id": "c02",
+          "sim": 0.5751846727924366
+        },
+        {
+          "id": "c05",
+          "sim": 0.5585524274557596
+        },
+        {
+          "id": "c03",
+          "sim": 0.5489464960326997
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7678497965926713,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1021/acs.jmedchem.4c00692",
+      "rank": 8
+    },
+    {
+      "id": "r11",
+      "title": "Accurate Predictions of Molecular Properties of Proteins via Graph Neural Networks and Transfer Learning",
+      "score": 0.7939425029812011,
+      "sim_summary": 0.812042308221169,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7517096240879428
+        },
+        {
+          "id": "c10",
+          "sim": 0.6579189383954275
+        },
+        {
+          "id": "c08",
+          "sim": 0.6412562228010733
+        },
+        {
+          "id": "c04",
+          "sim": 0.6118364582517337
+        },
+        {
+          "id": "c06",
+          "sim": 0.5874511083614868
+        },
+        {
+          "id": "c07",
+          "sim": 0.568474384749883
+        },
+        {
+          "id": "c09",
+          "sim": 0.5533555290441025
+        },
+        {
+          "id": "c05",
+          "sim": 0.5444649347168307
+        },
+        {
+          "id": "c02",
+          "sim": 0.535414173573939
+        },
+        {
+          "id": "c03",
+          "sim": 0.5264227560354785
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7517096240879428,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2025,
+      "doi": "https://doi.org/10.1021/acs.jctc.4c01682",
+      "rank": 9
+    },
+    {
+      "id": "r14",
+      "title": "Enhancing drug property prediction with dual-channel transfer learning based on molecular fragment",
+      "score": 0.7927148025073469,
+      "sim_summary": 0.8047036222176642,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7647408898499403
+        },
+        {
+          "id": "c10",
+          "sim": 0.7249307403384881
+        },
+        {
+          "id": "c08",
+          "sim": 0.722635580119768
+        },
+        {
+          "id": "c06",
+          "sim": 0.714613832950509
+        },
+        {
+          "id": "c04",
+          "sim": 0.6273411832651565
+        },
+        {
+          "id": "c07",
+          "sim": 0.6258540757740505
+        },
+        {
+          "id": "c02",
+          "sim": 0.5944560757774815
+        },
+        {
+          "id": "c09",
+          "sim": 0.5720913989042329
+        },
+        {
+          "id": "c05",
+          "sim": 0.5680612054728276
+        },
+        {
+          "id": "c03",
+          "sim": 0.5460389803030127
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7647408898499403,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1186/s12859-023-05413-x",
+      "rank": 10
+    },
+    {
+      "id": "r06",
+      "title": "Graph Neural Networks and Structural Information on Ionic Liquids: A Cheminformatics Study on Molecular Physicochemical Property Prediction",
+      "score": 0.7863459307036212,
+      "sim_summary": 0.8021080201753747,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7495677219361966
+        },
+        {
+          "id": "c10",
+          "sim": 0.667696767110609
+        },
+        {
+          "id": "c08",
+          "sim": 0.6029176558795535
+        },
+        {
+          "id": "c06",
+          "sim": 0.5921346261754821
+        },
+        {
+          "id": "c04",
+          "sim": 0.5783297998256351
+        },
+        {
+          "id": "c07",
+          "sim": 0.5327310651295758
+        },
+        {
+          "id": "c03",
+          "sim": 0.5308955448840439
+        },
+        {
+          "id": "c09",
+          "sim": 0.5227121110715791
+        },
+        {
+          "id": "c05",
+          "sim": 0.5179212700267515
+        },
+        {
+          "id": "c02",
+          "sim": 0.49854522328138345
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7495677219361966,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jpcb.3c05521",
+      "rank": 11
+    },
+    {
+      "id": "r10",
+      "title": "Transferring a Molecular Foundation Model for Polymer Property Predictions",
+      "score": 0.7788169608551857,
+      "sim_summary": 0.7964450532756497,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7376847452074364
+        },
+        {
+          "id": "c10",
+          "sim": 0.7155576568890677
+        },
+        {
+          "id": "c08",
+          "sim": 0.7058536736708957
+        },
+        {
+          "id": "c06",
+          "sim": 0.6908361386323546
+        },
+        {
+          "id": "c04",
+          "sim": 0.636042396586761
+        },
+        {
+          "id": "c02",
+          "sim": 0.6201878425062092
+        },
+        {
+          "id": "c07",
+          "sim": 0.6179541808821228
+        },
+        {
+          "id": "c09",
+          "sim": 0.5758695905240904
+        },
+        {
+          "id": "c03",
+          "sim": 0.5726440340051142
+        },
+        {
+          "id": "c05",
+          "sim": 0.5714017064572309
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7376847452074364,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.3c01650",
+      "rank": 12
+    },
+    {
+      "id": "r13",
+      "title": "Improved GNNs for Log D 7.4 Prediction by Transferring Knowledge from Low-Fidelity Data",
+      "score": 0.7787832285624654,
+      "sim_summary": 0.786814709563461,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7600431062268092
+        },
+        {
+          "id": "c08",
+          "sim": 0.675349403672264
+        },
+        {
+          "id": "c10",
+          "sim": 0.6638119936330784
+        },
+        {
+          "id": "c07",
+          "sim": 0.6036328376942521
+        },
+        {
+          "id": "c06",
+          "sim": 0.5980971212355239
+        },
+        {
+          "id": "c04",
+          "sim": 0.595118720127038
+        },
+        {
+          "id": "c09",
+          "sim": 0.5901080105880786
+        },
+        {
+          "id": "c02",
+          "sim": 0.5369075819280295
+        },
+        {
+          "id": "c03",
+          "sim": 0.5335039525589163
+        },
+        {
+          "id": "c05",
+          "sim": 0.531643047023032
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7600431062268092,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jcim.2c01564",
+      "rank": 13
+    },
+    {
+      "id": "r05",
+      "title": "DGCL: dual-graph neural networks contrastive learning for molecular property prediction",
+      "score": 0.7756246657892263,
+      "sim_summary": 0.7879204996835564,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7469343867024562
+        },
+        {
+          "id": "c08",
+          "sim": 0.675913526210006
+        },
+        {
+          "id": "c10",
+          "sim": 0.6363536267766492
+        },
+        {
+          "id": "c06",
+          "sim": 0.6014337732353752
+        },
+        {
+          "id": "c04",
+          "sim": 0.5919358703845455
+        },
+        {
+          "id": "c07",
+          "sim": 0.5838593232950263
+        },
+        {
+          "id": "c03",
+          "sim": 0.5718721676613073
+        },
+        {
+          "id": "c02",
+          "sim": 0.5577748417442471
+        },
+        {
+          "id": "c09",
+          "sim": 0.557661740348831
+        },
+        {
+          "id": "c05",
+          "sim": 0.5162807866392415
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7469343867024562,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "A",
+      "expected": "useful",
+      "year": 2024,
+      "doi": "https://doi.org/10.1093/bib/bbae474",
+      "rank": 14
+    },
+    {
+      "id": "r33",
+      "title": "Scalable Parallel Algorithm for Graph Neural Network Interatomic Potentials in Molecular Dynamics Simulations",
+      "score": 0.7536832598124492,
+      "sim_summary": 0.7469039732428673,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7695015951414738
+        },
+        {
+          "id": "c10",
+          "sim": 0.6658689079769833
+        },
+        {
+          "id": "c08",
+          "sim": 0.6302174509044733
+        },
+        {
+          "id": "c04",
+          "sim": 0.6221914807495214
+        },
+        {
+          "id": "c06",
+          "sim": 0.6051209634201599
+        },
+        {
+          "id": "c05",
+          "sim": 0.5801103747405076
+        },
+        {
+          "id": "c07",
+          "sim": 0.5667632991598062
+        },
+        {
+          "id": "c03",
+          "sim": 0.5549874056163024
+        },
+        {
+          "id": "c09",
+          "sim": 0.5490337067647201
+        },
+        {
+          "id": "c02",
+          "sim": 0.5331045419026084
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7695015951414738,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1021/acs.jctc.4c00190",
+      "rank": 15
+    },
+    {
+      "id": "r37",
+      "title": "Few-Shot Prediction of Toxicity of Ionic Liquids Supported by Attentive Model-Agnostic Meta-Learning",
+      "score": 0.718110409681906,
+      "sim_summary": 0.7272534509490982,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6967766467251243
+        },
+        {
+          "id": "c08",
+          "sim": 0.6796158289459485
+        },
+        {
+          "id": "c07",
+          "sim": 0.6518484717650824
+        },
+        {
+          "id": "c10",
+          "sim": 0.638132759570535
+        },
+        {
+          "id": "c06",
+          "sim": 0.6026284471333572
+        },
+        {
+          "id": "c09",
+          "sim": 0.594677695967322
+        },
+        {
+          "id": "c03",
+          "sim": 0.591571865382658
+        },
+        {
+          "id": "c04",
+          "sim": 0.5841364292592638
+        },
+        {
+          "id": "c02",
+          "sim": 0.5677965319489267
+        },
+        {
+          "id": "c05",
+          "sim": 0.5323902225663195
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6967766467251243,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "useful",
+      "year": 2026,
+      "doi": "https://doi.org/10.1021/acs.chemrestox.6c00022",
+      "rank": 16
+    },
+    {
+      "id": "r32",
+      "title": "Uncertainty-driven dynamics for active learning of interatomic potentials",
+      "score": 0.7181101826313231,
+      "sim_summary": 0.7236841494564834,
+      "claim_sims": [
+        {
+          "id": "c07",
+          "sim": 0.7051042600392824
+        },
+        {
+          "id": "c01",
+          "sim": 0.7040822072167335
+        },
+        {
+          "id": "c04",
+          "sim": 0.6943481359804543
+        },
+        {
+          "id": "c10",
+          "sim": 0.6577779686491987
+        },
+        {
+          "id": "c08",
+          "sim": 0.651516072596323
+        },
+        {
+          "id": "c06",
+          "sim": 0.56241038234008
+        },
+        {
+          "id": "c09",
+          "sim": 0.5556180760320563
+        },
+        {
+          "id": "c03",
+          "sim": 0.5465207399949963
+        },
+        {
+          "id": "c05",
+          "sim": 0.5451050737915145
+        },
+        {
+          "id": "c02",
+          "sim": 0.5164435929414324
+        }
+      ],
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.7051042600392824,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "useful",
+      "year": 2023,
+      "doi": "https://doi.org/10.1038/s43588-023-00406-5",
+      "rank": 17
+    },
+    {
+      "id": "r19",
+      "title": "Explainable artificial intelligence and domain adaptation for predicting HIV infection with graph neural networks",
+      "score": 0.7179043637966734,
+      "sim_summary": 0.7334488398299976,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6816339197189168
+        },
+        {
+          "id": "c08",
+          "sim": 0.6650832516005407
+        },
+        {
+          "id": "c10",
+          "sim": 0.6185200082812063
+        },
+        {
+          "id": "c09",
+          "sim": 0.6181549711582239
+        },
+        {
+          "id": "c06",
+          "sim": 0.614916205855094
+        },
+        {
+          "id": "c07",
+          "sim": 0.6038457162706188
+        },
+        {
+          "id": "c02",
+          "sim": 0.5870042521493932
+        },
+        {
+          "id": "c04",
+          "sim": 0.584995161887249
+        },
+        {
+          "id": "c03",
+          "sim": 0.5718518613547977
+        },
+        {
+          "id": "c05",
+          "sim": 0.5561911122079566
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6816339197189168,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1080/07853890.2024.2407063",
+      "rank": 18
+    },
+    {
+      "id": "r18",
+      "title": "Discrete-time graph neural networks for transaction prediction in Web3 social platforms",
+      "score": 0.7172135732185472,
+      "sim_summary": 0.7317306925704858,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6833402947306904
+        },
+        {
+          "id": "c10",
+          "sim": 0.6488030891176331
+        },
+        {
+          "id": "c06",
+          "sim": 0.6296128478798785
+        },
+        {
+          "id": "c08",
+          "sim": 0.6012141094000643
+        },
+        {
+          "id": "c04",
+          "sim": 0.5990190462681325
+        },
+        {
+          "id": "c09",
+          "sim": 0.5828457009400724
+        },
+        {
+          "id": "c05",
+          "sim": 0.5680042796054474
+        },
+        {
+          "id": "c07",
+          "sim": 0.5504497024865722
+        },
+        {
+          "id": "c03",
+          "sim": 0.5012156398724507
+        },
+        {
+          "id": "c02",
+          "sim": 0.4876453404282118
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6833402947306904,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1007/s10994-024-06579-y",
+      "rank": 19
+    },
+    {
+      "id": "r27",
+      "title": "Augmenting large language models with chemistry tools",
+      "score": 0.7068835785642513,
+      "sim_summary": 0.705447757606088,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.7102338274666326
+        },
+        {
+          "id": "c08",
+          "sim": 0.6718030162384487
+        },
+        {
+          "id": "c10",
+          "sim": 0.6629608027865876
+        },
+        {
+          "id": "c06",
+          "sim": 0.6594644327250551
+        },
+        {
+          "id": "c07",
+          "sim": 0.5959191388466294
+        },
+        {
+          "id": "c04",
+          "sim": 0.5902588398659674
+        },
+        {
+          "id": "c02",
+          "sim": 0.5532274914547376
+        },
+        {
+          "id": "c03",
+          "sim": 0.5520699348173267
+        },
+        {
+          "id": "c05",
+          "sim": 0.5488713096733286
+        },
+        {
+          "id": "c09",
+          "sim": 0.5351985306543047
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.7102338274666326,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1038/s42256-024-00832-8",
+      "rank": 20
+    },
+    {
+      "id": "r38",
+      "title": "A Small-Sample Graph Neural Network Approach for Predicting Sortie Mission Reliability of Shipborne Vehicle Layouts",
+      "score": 0.6994013117107152,
+      "sim_summary": 0.7131970211774307,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6672113229550457
+        },
+        {
+          "id": "c09",
+          "sim": 0.6556734085008218
+        },
+        {
+          "id": "c08",
+          "sim": 0.6337842753202092
+        },
+        {
+          "id": "c07",
+          "sim": 0.6256836807880078
+        },
+        {
+          "id": "c10",
+          "sim": 0.6213456364799198
+        },
+        {
+          "id": "c04",
+          "sim": 0.6169240426731902
+        },
+        {
+          "id": "c06",
+          "sim": 0.6128193064270309
+        },
+        {
+          "id": "c05",
+          "sim": 0.5935828387340341
+        },
+        {
+          "id": "c03",
+          "sim": 0.5528330103327174
+        },
+        {
+          "id": "c02",
+          "sim": 0.5062895974448216
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6672113229550457,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2026,
+      "doi": "https://doi.org/10.3390/jmse14070599",
+      "rank": 21
+    },
+    {
+      "id": "r31",
+      "title": "Efficient Molecular Dynamics Simulations of Deep Eutectic Solvents with First-Principles Accuracy Using Machine Learning Interatomic Potentials",
+      "score": 0.6993147767547786,
+      "sim_summary": 0.7080047439040394,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6790381867398366
+        },
+        {
+          "id": "c10",
+          "sim": 0.6502370879776338
+        },
+        {
+          "id": "c04",
+          "sim": 0.6239215373251865
+        },
+        {
+          "id": "c08",
+          "sim": 0.5934372768038987
+        },
+        {
+          "id": "c07",
+          "sim": 0.581847612882553
+        },
+        {
+          "id": "c06",
+          "sim": 0.564725482615876
+        },
+        {
+          "id": "c05",
+          "sim": 0.546144910507535
+        },
+        {
+          "id": "c03",
+          "sim": 0.5319568174004121
+        },
+        {
+          "id": "c02",
+          "sim": 0.5233724142106069
+        },
+        {
+          "id": "c09",
+          "sim": 0.5106443153276496
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6790381867398366,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1021/acs.jctc.3c00944",
+      "rank": 22
+    },
+    {
+      "id": "r15",
+      "title": "Counterfactual Graph Learning for Anomaly Detection on Attributed Networks",
+      "score": 0.691755836426095,
+      "sim_summary": 0.6938050137782226,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6869744226044641
+        },
+        {
+          "id": "c10",
+          "sim": 0.6768070188239259
+        },
+        {
+          "id": "c09",
+          "sim": 0.6528989980744981
+        },
+        {
+          "id": "c08",
+          "sim": 0.6301163408616681
+        },
+        {
+          "id": "c05",
+          "sim": 0.6118670488095808
+        },
+        {
+          "id": "c04",
+          "sim": 0.6048276042021041
+        },
+        {
+          "id": "c06",
+          "sim": 0.5827005404340745
+        },
+        {
+          "id": "c07",
+          "sim": 0.554364131948857
+        },
+        {
+          "id": "c03",
+          "sim": 0.5258792794147943
+        },
+        {
+          "id": "c02",
+          "sim": 0.4876376194262922
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6869744226044641,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1109/tkde.2023.3250523",
+      "rank": 23
+    },
+    {
+      "id": "r26",
+      "title": "Large language models for drug discovery and development",
+      "score": 0.6822832957046961,
+      "sim_summary": 0.6858913629917187,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6738644720349769
+        },
+        {
+          "id": "c08",
+          "sim": 0.6692067313757519
+        },
+        {
+          "id": "c10",
+          "sim": 0.6422911699330187
+        },
+        {
+          "id": "c06",
+          "sim": 0.614437712291533
+        },
+        {
+          "id": "c07",
+          "sim": 0.5989718171856775
+        },
+        {
+          "id": "c09",
+          "sim": 0.5962986015663938
+        },
+        {
+          "id": "c04",
+          "sim": 0.5727492893260439
+        },
+        {
+          "id": "c03",
+          "sim": 0.5651038656877364
+        },
+        {
+          "id": "c05",
+          "sim": 0.561207815792597
+        },
+        {
+          "id": "c02",
+          "sim": 0.5437966102559251
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6738644720349769,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.patter.2025.101346",
+      "rank": 24
+    },
+    {
+      "id": "r16",
+      "title": "Dual Variational Graph Reconstruction Learning for Social Recommendation",
+      "score": 0.6798326458659585,
+      "sim_summary": 0.6887853157559319,
+      "claim_sims": [
+        {
+          "id": "c10",
+          "sim": 0.6589430827893539
+        },
+        {
+          "id": "c01",
+          "sim": 0.6431288482232241
+        },
+        {
+          "id": "c06",
+          "sim": 0.61544150112132
+        },
+        {
+          "id": "c08",
+          "sim": 0.5989354440075794
+        },
+        {
+          "id": "c09",
+          "sim": 0.5876067345955763
+        },
+        {
+          "id": "c05",
+          "sim": 0.575369507462566
+        },
+        {
+          "id": "c04",
+          "sim": 0.5736430061145764
+        },
+        {
+          "id": "c03",
+          "sim": 0.5708910131050869
+        },
+        {
+          "id": "c07",
+          "sim": 0.5491131439648727
+        },
+        {
+          "id": "c02",
+          "sim": 0.5279668331891283
+        }
+      ],
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.6589430827893539,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1109/tkde.2024.3386895",
+      "rank": 25
+    },
+    {
+      "id": "r20",
+      "title": "Leveraging Bayesian deep learning and ensemble methods for uncertainty quantification in image classification: A ranking-based approach",
+      "score": 0.668694167441673,
+      "sim_summary": 0.6361827379441494,
+      "claim_sims": [
+        {
+          "id": "c04",
+          "sim": 0.7445541696025615
+        },
+        {
+          "id": "c07",
+          "sim": 0.6904735097810837
+        },
+        {
+          "id": "c09",
+          "sim": 0.6618408669073367
+        },
+        {
+          "id": "c05",
+          "sim": 0.651733111065836
+        },
+        {
+          "id": "c08",
+          "sim": 0.6487948096425844
+        },
+        {
+          "id": "c01",
+          "sim": 0.6131153272509022
+        },
+        {
+          "id": "c10",
+          "sim": 0.5833650409735633
+        },
+        {
+          "id": "c06",
+          "sim": 0.5618102429769483
+        },
+        {
+          "id": "c03",
+          "sim": 0.5503815265630264
+        },
+        {
+          "id": "c02",
+          "sim": 0.540732281217293
+        }
+      ],
+      "nearest_claim": {
+        "id": "c04",
+        "sim": 0.7445541696025615,
+        "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1016/j.heliyon.2024.e24188",
+      "rank": 26
+    },
+    {
+      "id": "r24",
+      "title": "A Deep Learning-Based Framework for Uncertainty Quantification in Medical Imaging Using the DropWeak Technique: An Empirical Study with Baresnet",
+      "score": 0.6662713157709084,
+      "sim_summary": 0.6553514617567546,
+      "claim_sims": [
+        {
+          "id": "c07",
+          "sim": 0.6917509751372675
+        },
+        {
+          "id": "c09",
+          "sim": 0.6811808633790943
+        },
+        {
+          "id": "c04",
+          "sim": 0.6715262742280202
+        },
+        {
+          "id": "c08",
+          "sim": 0.6616784865971554
+        },
+        {
+          "id": "c01",
+          "sim": 0.6371102209261372
+        },
+        {
+          "id": "c10",
+          "sim": 0.5951837559941388
+        },
+        {
+          "id": "c05",
+          "sim": 0.5920251770091456
+        },
+        {
+          "id": "c03",
+          "sim": 0.5856419324539629
+        },
+        {
+          "id": "c06",
+          "sim": 0.5673528051092064
+        },
+        {
+          "id": "c02",
+          "sim": 0.5455307556515424
+        }
+      ],
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6917509751372675,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.3390/diagnostics13040800",
+      "rank": 27
+    },
+    {
+      "id": "r22",
+      "title": "Calibrating ensembles for scalable uncertainty quantification in deep learning-based medical image segmentation",
+      "score": 0.6648802144227854,
+      "sim_summary": 0.6204435865651878,
+      "claim_sims": [
+        {
+          "id": "c04",
+          "sim": 0.7685656794238465
+        },
+        {
+          "id": "c07",
+          "sim": 0.7324526628047725
+        },
+        {
+          "id": "c09",
+          "sim": 0.6807620381196818
+        },
+        {
+          "id": "c08",
+          "sim": 0.6689555701667869
+        },
+        {
+          "id": "c05",
+          "sim": 0.6492795331353101
+        },
+        {
+          "id": "c01",
+          "sim": 0.6159281623053214
+        },
+        {
+          "id": "c10",
+          "sim": 0.6039938315327824
+        },
+        {
+          "id": "c06",
+          "sim": 0.5842396144384094
+        },
+        {
+          "id": "c03",
+          "sim": 0.562352942975071
+        },
+        {
+          "id": "c02",
+          "sim": 0.5437478687609877
+        }
+      ],
+      "nearest_claim": {
+        "id": "c04",
+        "sim": 0.7685656794238465,
+        "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.compbiomed.2023.107096",
+      "rank": 28
+    },
+    {
+      "id": "r17",
+      "title": "Bi-Directional Transfer Graph Contrastive Learning for Social Recommendation",
+      "score": 0.6614926156711252,
+      "sim_summary": 0.6691634548942392,
+      "claim_sims": [
+        {
+          "id": "c10",
+          "sim": 0.6435939908171926
+        },
+        {
+          "id": "c01",
+          "sim": 0.6338781655692441
+        },
+        {
+          "id": "c06",
+          "sim": 0.6003609633388043
+        },
+        {
+          "id": "c08",
+          "sim": 0.5853943072376611
+        },
+        {
+          "id": "c09",
+          "sim": 0.5639293555792857
+        },
+        {
+          "id": "c05",
+          "sim": 0.5404511291327948
+        },
+        {
+          "id": "c04",
+          "sim": 0.5283809563793157
+        },
+        {
+          "id": "c03",
+          "sim": 0.5179601094388308
+        },
+        {
+          "id": "c07",
+          "sim": 0.5146658858997455
+        },
+        {
+          "id": "c02",
+          "sim": 0.49286311202048066
+        }
+      ],
+      "nearest_claim": {
+        "id": "c10",
+        "sim": 0.6435939908171926,
+        "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2024,
+      "doi": "https://doi.org/10.1109/tbdata.2024.3387340",
+      "rank": 29
+    },
+    {
+      "id": "r35",
+      "title": "Learning to Learn Task-Adaptive Hyperparameters for Few-Shot Learning",
+      "score": 0.6613596571267158,
+      "sim_summary": 0.6361181800823088,
+      "claim_sims": [
+        {
+          "id": "c07",
+          "sim": 0.720256436896999
+        },
+        {
+          "id": "c08",
+          "sim": 0.6933696203386417
+        },
+        {
+          "id": "c06",
+          "sim": 0.6488088103655514
+        },
+        {
+          "id": "c03",
+          "sim": 0.6180006171596021
+        },
+        {
+          "id": "c02",
+          "sim": 0.6070069707092576
+        },
+        {
+          "id": "c10",
+          "sim": 0.6033466279239569
+        },
+        {
+          "id": "c04",
+          "sim": 0.6031674595660096
+        },
+        {
+          "id": "c01",
+          "sim": 0.5913538522023509
+        },
+        {
+          "id": "c09",
+          "sim": 0.5910984854164435
+        },
+        {
+          "id": "c05",
+          "sim": 0.5522527820388989
+        }
+      ],
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.720256436896999,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1109/tpami.2023.3261387",
+      "rank": 30
+    },
+    {
+      "id": "r30",
+      "title": "Machine learning interatomic potential for molecular dynamics simulation of the ferroelectric KNb O 3 perovskite",
+      "score": 0.660279151959456,
+      "sim_summary": 0.6724217375345521,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6319464522842316
+        },
+        {
+          "id": "c10",
+          "sim": 0.6062484996597908
+        },
+        {
+          "id": "c04",
+          "sim": 0.5827789442543885
+        },
+        {
+          "id": "c08",
+          "sim": 0.5590114741964026
+        },
+        {
+          "id": "c06",
+          "sim": 0.5379969879667814
+        },
+        {
+          "id": "c07",
+          "sim": 0.5354231931681777
+        },
+        {
+          "id": "c03",
+          "sim": 0.5118606754190986
+        },
+        {
+          "id": "c05",
+          "sim": 0.5078946338468
+        },
+        {
+          "id": "c09",
+          "sim": 0.5038209744792064
+        },
+        {
+          "id": "c02",
+          "sim": 0.4571214453226943
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6319464522842316,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1103/physrevb.107.014101",
+      "rank": 31
+    },
+    {
+      "id": "r25",
+      "title": "Artificial intelligence enabled ChatGPT and large language models in drug target discovery, drug discovery, and development",
+      "score": 0.6601707404097706,
+      "sim_summary": 0.6666485721122195,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6450557997707236
+        },
+        {
+          "id": "c08",
+          "sim": 0.6280828491864066
+        },
+        {
+          "id": "c07",
+          "sim": 0.6140308734134576
+        },
+        {
+          "id": "c10",
+          "sim": 0.6021363724114974
+        },
+        {
+          "id": "c09",
+          "sim": 0.5842278254930446
+        },
+        {
+          "id": "c06",
+          "sim": 0.5680733643956751
+        },
+        {
+          "id": "c04",
+          "sim": 0.5534672340254021
+        },
+        {
+          "id": "c05",
+          "sim": 0.551337432273843
+        },
+        {
+          "id": "c02",
+          "sim": 0.5505582910128775
+        },
+        {
+          "id": "c03",
+          "sim": 0.5500929135102681
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6450557997707236,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.omtn.2023.08.009",
+      "rank": 32
+    },
+    {
+      "id": "r23",
+      "title": "Uncertainty aware training to improve deep learning model calibration for classification of cardiac MR images",
+      "score": 0.6595217921366109,
+      "sim_summary": 0.6346974445127997,
+      "claim_sims": [
+        {
+          "id": "c07",
+          "sim": 0.7174452699255038
+        },
+        {
+          "id": "c04",
+          "sim": 0.7059208297302768
+        },
+        {
+          "id": "c08",
+          "sim": 0.6851874277387346
+        },
+        {
+          "id": "c09",
+          "sim": 0.6395653286702317
+        },
+        {
+          "id": "c01",
+          "sim": 0.6117222607851878
+        },
+        {
+          "id": "c05",
+          "sim": 0.5953639354172513
+        },
+        {
+          "id": "c02",
+          "sim": 0.5849487128337123
+        },
+        {
+          "id": "c03",
+          "sim": 0.5845959736470632
+        },
+        {
+          "id": "c06",
+          "sim": 0.580169606139043
+        },
+        {
+          "id": "c10",
+          "sim": 0.5559228450560414
+        }
+      ],
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.7174452699255038,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.media.2023.102861",
+      "rank": 33
+    },
+    {
+      "id": "r34",
+      "title": "Atomistic modeling of the mechanical properties: the rise of machine learning interatomic potentials",
+      "score": 0.6573996196741861,
+      "sim_summary": 0.6677720924833306,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.6331971831195159
+        },
+        {
+          "id": "c10",
+          "sim": 0.6176278143354691
+        },
+        {
+          "id": "c04",
+          "sim": 0.5983467446418784
+        },
+        {
+          "id": "c08",
+          "sim": 0.5685321465466064
+        },
+        {
+          "id": "c07",
+          "sim": 0.5583623562351495
+        },
+        {
+          "id": "c09",
+          "sim": 0.536303606991405
+        },
+        {
+          "id": "c06",
+          "sim": 0.5356704835194767
+        },
+        {
+          "id": "c05",
+          "sim": 0.5278809100069595
+        },
+        {
+          "id": "c03",
+          "sim": 0.5250285868595151
+        },
+        {
+          "id": "c02",
+          "sim": 0.4669634896244639
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.6331971831195159,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1039/d3mh00125c",
+      "rank": 34
+    },
+    {
+      "id": "r29",
+      "title": "AI-enabled language models (LMs) to large language models (LLMs) and multimodal large language models (MLLMs) in drug discovery and development",
+      "score": 0.6556183209320158,
+      "sim_summary": 0.6595809510782518,
+      "claim_sims": [
+        {
+          "id": "c01",
+          "sim": 0.646372183924132
+        },
+        {
+          "id": "c08",
+          "sim": 0.6385276780511384
+        },
+        {
+          "id": "c10",
+          "sim": 0.5985823180179176
+        },
+        {
+          "id": "c07",
+          "sim": 0.5912107348031466
+        },
+        {
+          "id": "c06",
+          "sim": 0.590684580174069
+        },
+        {
+          "id": "c09",
+          "sim": 0.5652337392982996
+        },
+        {
+          "id": "c04",
+          "sim": 0.5586827986422852
+        },
+        {
+          "id": "c02",
+          "sim": 0.543194474659209
+        },
+        {
+          "id": "c05",
+          "sim": 0.5339043952381601
+        },
+        {
+          "id": "c03",
+          "sim": 0.5330333841555429
+        }
+      ],
+      "nearest_claim": {
+        "id": "c01",
+        "sim": 0.646372183924132,
+        "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1016/j.jare.2025.02.011",
+      "rank": 35
+    },
+    {
+      "id": "r36",
+      "title": "Evaluating Machine Learning Techniques for Brain Tumor Detection with Emphasis on Few-Shot Learning Using MAML",
+      "score": 0.6416315845679428,
+      "sim_summary": 0.6293617021267343,
+      "claim_sims": [
+        {
+          "id": "c08",
+          "sim": 0.670261310264096
+        },
+        {
+          "id": "c07",
+          "sim": 0.6360326407036407
+        },
+        {
+          "id": "c01",
+          "sim": 0.61652855728276
+        },
+        {
+          "id": "c09",
+          "sim": 0.6057971124320509
+        },
+        {
+          "id": "c06",
+          "sim": 0.5740180303202358
+        },
+        {
+          "id": "c04",
+          "sim": 0.5671106019598889
+        },
+        {
+          "id": "c10",
+          "sim": 0.5648813778416999
+        },
+        {
+          "id": "c05",
+          "sim": 0.559224956034242
+        },
+        {
+          "id": "c03",
+          "sim": 0.558398134261403
+        },
+        {
+          "id": "c02",
+          "sim": 0.5443581737143036
+        }
+      ],
+      "nearest_claim": {
+        "id": "c08",
+        "sim": 0.670261310264096,
+        "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.3390/a18100624",
+      "rank": 36
+    },
+    {
+      "id": "r21",
+      "title": "AUQantO: Actionable Uncertainty Quantification Optimization in deep learning architectures for medical image classification",
+      "score": 0.6374443947952309,
+      "sim_summary": 0.6176045942531558,
+      "claim_sims": [
+        {
+          "id": "c07",
+          "sim": 0.6837372627267393
+        },
+        {
+          "id": "c04",
+          "sim": 0.6754612610936679
+        },
+        {
+          "id": "c08",
+          "sim": 0.666734473195582
+        },
+        {
+          "id": "c09",
+          "sim": 0.6315181469729506
+        },
+        {
+          "id": "c01",
+          "sim": 0.6164617612541059
+        },
+        {
+          "id": "c05",
+          "sim": 0.6012676225462552
+        },
+        {
+          "id": "c03",
+          "sim": 0.5778235050529261
+        },
+        {
+          "id": "c02",
+          "sim": 0.5669450737680911
+        },
+        {
+          "id": "c10",
+          "sim": 0.5611704212455911
+        },
+        {
+          "id": "c06",
+          "sim": 0.5504984804914487
+        }
+      ],
+      "nearest_claim": {
+        "id": "c07",
+        "sim": 0.6837372627267393,
+        "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2023,
+      "doi": "https://doi.org/10.1016/j.asoc.2023.110666",
+      "rank": 37
+    },
+    {
+      "id": "r28",
+      "title": "Large Language Models and Their Applications in Drug Discovery and Development: A Primer",
+      "score": 0.6374026916715414,
+      "sim_summary": 0.6444162114485539,
+      "claim_sims": [
+        {
+          "id": "c08",
+          "sim": 0.6210378121918457
+        },
+        {
+          "id": "c01",
+          "sim": 0.6137127777736568
+        },
+        {
+          "id": "c10",
+          "sim": 0.6134686479388892
+        },
+        {
+          "id": "c06",
+          "sim": 0.6116807312885558
+        },
+        {
+          "id": "c02",
+          "sim": 0.5531150392440549
+        },
+        {
+          "id": "c09",
+          "sim": 0.5511191051428235
+        },
+        {
+          "id": "c07",
+          "sim": 0.5485077405489547
+        },
+        {
+          "id": "c03",
+          "sim": 0.5474046473087623
+        },
+        {
+          "id": "c04",
+          "sim": 0.546472264175926
+        },
+        {
+          "id": "c05",
+          "sim": 0.5239898727423196
+        }
+      ],
+      "nearest_claim": {
+        "id": "c08",
+        "sim": 0.6210378121918457,
+        "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+      },
+      "tier": "B",
+      "expected": "excluded",
+      "year": 2025,
+      "doi": "https://doi.org/10.1111/cts.70205",
+      "rank": 38
+    }
+  ]
+}

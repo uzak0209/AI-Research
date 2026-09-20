@@ -1,0 +1,126 @@
+{
+  "_note": "合成データ。実在の論文ではない。実物の要旨に長さを寄せ、計測の代表性を確保する目的で作成した。expected は人手のラベルで、モデルには渡さない。",
+  "summary": "We develop graph neural networks for molecular property prediction, focusing on the low-data regime. Our main interest is transfer learning and pretraining strategies that let a model trained on large public molecule corpora adapt to small proprietary assay datasets (hundreds of labeled molecules), together with calibrated uncertainty estimates so that chemists know when to distrust a prediction.",
+  "papers": [
+    {
+      "id": "p01",
+      "expected": "useful",
+      "title": "Pretraining Graph Neural Networks on Large Molecular Corpora Improves Low-Data Property Prediction",
+      "abstract": "Molecular property prediction is often limited by the cost of wet-lab assays, leaving practitioners with only a few hundred labeled compounds. We study self-supervised pretraining of message-passing neural networks on 10 million unlabeled molecules drawn from public chemical databases, using masked atom prediction and contextual subgraph prediction as pretext tasks. Fine-tuning the pretrained encoder on eight downstream regression benchmarks with between 200 and 1200 labels, we observe consistent reductions in mean absolute error relative to training from scratch, with the largest gains in the smallest data regimes. We further analyze which pretext tasks transfer, and show that node-level objectives alone underperform when the downstream property depends on global topology. Ablations indicate that freezing early layers during fine-tuning stabilizes optimization when fewer than 500 labels are available."
+    },
+    {
+      "id": "p02",
+      "expected": "useful",
+      "title": "Calibrated Uncertainty for Molecular Regression with Deep Ensembles and Conformal Prediction",
+      "abstract": "Deployment of machine learning models in drug discovery requires not only accurate predictions but reliable indications of when a prediction should not be trusted. We compare deep ensembles, Monte Carlo dropout, and mean-variance estimation on molecular regression tasks, and evaluate them with proper scoring rules as well as empirical coverage of prediction intervals. We find that ensembles give the best sharpness-calibration tradeoff but remain overconfident under scaffold split, where test molecules differ structurally from training molecules. We then apply split conformal prediction as a post-hoc wrapper, which restores nominal coverage at the cost of wider intervals, and show that conformalized ensembles retain useful discrimination between confident and uncertain predictions in an active-learning loop."
+    },
+    {
+      "id": "p03",
+      "expected": "useful",
+      "title": "Few-Shot Transfer Across Bioassays via Meta-Learning on Molecular Graphs",
+      "abstract": "Proprietary bioassay datasets are typically small, heterogeneous, and measured under differing protocols, which makes naive transfer between assays unreliable. We cast cross-assay transfer as a few-shot learning problem and train a graph neural network with model-agnostic meta-learning over a distribution of public assays. At adaptation time the model receives between 16 and 256 labeled molecules from an unseen assay. Compared with fine-tuning a conventionally pretrained encoder, the meta-learned initialization converges in fewer gradient steps and is less sensitive to learning-rate choice. We also report negative results: when the unseen assay measures a property mechanistically unrelated to the meta-training distribution, meta-learning provides no advantage and occasionally degrades performance relative to a random-forest baseline on fingerprints."
+    },
+    {
+      "id": "p04",
+      "expected": "useful",
+      "title": "Scaffold Splits Considered Harmful? Rethinking Evaluation Protocols for Molecular Machine Learning",
+      "abstract": "Reported improvements in molecular property prediction frequently fail to reproduce when models are deployed. We audit evaluation practice across sixty recent papers and find substantial variation in splitting strategy, hyperparameter budget, and the treatment of duplicate structures. Re-running twelve published architectures under a unified protocol with matched tuning budgets, we find that differences between graph neural networks and well-tuned descriptor baselines shrink considerably, and that random splits overstate transfer to novel chemical series by a wide margin. We argue for reporting multiple splits with explicit chemical-similarity statistics, and release a harness that computes these diagnostics automatically."
+    },
+    {
+      "id": "p05",
+      "expected": "useful",
+      "title": "Domain Adaptation from Public to Proprietary Chemical Datasets under Label Shift",
+      "abstract": "Public molecular datasets and internal corporate assay data differ both in chemical space coverage and in label distribution, a combination that violates the assumptions of standard domain adaptation methods. We characterize this setting as simultaneous covariate and label shift, and propose an importance-weighted fine-tuning procedure that estimates weights from an unlabeled sample of the target chemical space. Experiments on three internal datasets, shared in anonymized form, show improvements over unweighted fine-tuning, particularly when the target assay is enriched for a chemical series that is rare in public data. We discuss the practical difficulty of estimating weights when the target sample is itself small."
+    },
+    {
+      "id": "p06",
+      "expected": "useful",
+      "title": "Do Graph Transformers Outperform Message Passing for Molecules? A Controlled Comparison",
+      "abstract": "Graph transformers with global attention have been proposed as successors to message-passing neural networks for molecular tasks, but comparisons are typically confounded by differences in pretraining data and parameter count. We hold both constant and compare four architectures across twelve datasets spanning quantum-chemical, physicochemical, and bioactivity endpoints. Under matched budgets, global attention helps primarily on properties with long-range dependence, such as certain quantum descriptors, and offers little benefit on bioactivity endpoints where local substructures dominate. We additionally measure inference cost and note that attention-based models are several times more expensive per molecule, which matters for virtual screening at scale."
+    },
+    {
+      "id": "p07",
+      "expected": "useful",
+      "title": "Active Learning with Uncertainty-Aware Graph Networks Reduces Assay Cost",
+      "abstract": "We study batch active learning for molecular property optimization, where each acquisition round corresponds to a costly laboratory assay. Using an uncertainty-aware graph neural network as the surrogate, we compare acquisition functions that balance predicted value against epistemic uncertainty and against chemical diversity within the batch. In retrospective simulations on four public datasets and one prospective campaign, uncertainty-guided acquisition reaches a target hit rate with roughly forty percent fewer assays than random selection, while purely greedy acquisition stalls in a single chemical series. We report the sensitivity of these results to surrogate calibration, which we find to be the dominant factor."
+    },
+    {
+      "id": "p08",
+      "expected": "useful",
+      "title": "Self-Supervised Objectives for Molecular Graphs: A Systematic Study of What Transfers",
+      "abstract": "Numerous self-supervised objectives have been proposed for molecular graphs, yet it remains unclear which properties of a pretext task determine downstream transfer. We implement fourteen objectives within a single codebase and evaluate them on downstream tasks stratified by data size and by the chemical distance between pretraining and downstream distributions. We find that objectives encouraging invariance to conformer perturbation transfer best to three-dimensional endpoints, while denoising objectives on two-dimensional graphs are preferable for bioactivity. Notably, transfer benefit correlates more strongly with the overlap of chemical space than with the quantity of pretraining data, suggesting that curating pretraining corpora may matter more than scaling them."
+    },
+    {
+      "id": "p09",
+      "expected": "useful",
+      "title": "Low-Resource Fine-Tuning of Molecular Encoders with Parameter-Efficient Adapters",
+      "abstract": "Fine-tuning large pretrained molecular encoders on datasets of a few hundred labels frequently overfits. We investigate parameter-efficient adaptation, inserting low-rank adapters into the message-passing layers and updating only these parameters. Across nine small downstream datasets, adapters match or exceed full fine-tuning while updating under two percent of parameters, and they substantially reduce variance across random seeds, which we argue is the more practically relevant outcome for teams that cannot afford extensive model selection. We additionally show that adapters allow a single shared encoder to serve many assays without storing a separate copy of the backbone per task."
+    },
+    {
+      "id": "p10",
+      "expected": "useful",
+      "title": "Uncertainty Quantification under Distribution Shift for Virtual Screening",
+      "abstract": "Virtual screening applies a trained model to libraries that are far larger and chemically broader than the training set, so uncertainty estimates must remain informative under substantial distribution shift. We evaluate several uncertainty estimators on deliberately shifted splits constructed by holding out entire scaffolds and entire assay protocols. All methods degrade, but the ranking among them is not preserved across shift types, which complicates method selection. We propose a lightweight diagnostic based on latent-space distance to the training manifold that predicts when the coverage of an estimator will fail, and we demonstrate its use as a gating criterion before committing screening resources."
+    },
+    {
+      "id": "p11",
+      "expected": "excluded",
+      "title": "Instruction Tuning Small Language Models for Multilingual Customer Support",
+      "abstract": "We describe a pipeline for adapting language models with fewer than two billion parameters to customer-support dialogue in nine languages. Starting from a permissively licensed base model, we construct an instruction dataset by filtering historical support transcripts, removing personally identifying information, and rewriting agent responses for consistency of tone. We evaluate with human raters on helpfulness and policy adherence, and with automatic metrics for language consistency. The tuned models approach the quality of a much larger proprietary baseline on routine intents while remaining deployable on a single commodity GPU, though performance on rare intents and code-switched utterances remains substantially behind."
+    },
+    {
+      "id": "p12",
+      "expected": "excluded",
+      "title": "Real-Time Semantic Segmentation for Autonomous Driving in Adverse Weather",
+      "abstract": "Perception systems for autonomous vehicles degrade under rain, fog, and snow, conditions that are underrepresented in standard driving benchmarks. We collect a dataset of eighty hours of driving in adverse weather with synchronized camera, lidar, and radar, and annotate a subset for semantic segmentation. We benchmark real-time architectures and find that camera-only models suffer the largest degradation, while fusion with radar recovers much of the loss at modest computational cost. We also analyze failure cases involving specular reflections on wet road surfaces, which produce confident but incorrect lane predictions in every model we tested."
+    },
+    {
+      "id": "p13",
+      "expected": "excluded",
+      "title": "A Deep Learning Approach to Photometric Redshift Estimation in Wide-Field Surveys",
+      "abstract": "Upcoming wide-field astronomical surveys will catalogue billions of galaxies for which spectroscopic redshifts are infeasible, making photometric estimation essential. We train convolutional networks directly on multi-band image cutouts rather than on derived photometry, and compare against established template-fitting and gradient-boosting approaches. Direct image input improves accuracy for faint and blended sources, where derived photometry is least reliable. We quantify the impact of the selection function of the spectroscopic training sample on the resulting bias, and propose a reweighting scheme that reduces, though does not eliminate, systematic error in the faintest magnitude bins."
+    },
+    {
+      "id": "p14",
+      "expected": "excluded",
+      "title": "Sim-to-Real Transfer for Dexterous Robotic Manipulation with Tactile Feedback",
+      "abstract": "We train policies for in-hand object reorientation in simulation and transfer them to a physical five-fingered hand equipped with distributed tactile sensors. Domain randomization over friction, mass, and sensor noise is combined with a learned tactile encoder trained on paired simulated and real contact data. The resulting policies reorient a range of unseen objects with a success rate substantially above a vision-only baseline, and degrade gracefully when individual taxels fail. We report the remaining gap for deformable objects, where our rigid-body simulator provides no useful training signal."
+    },
+    {
+      "id": "p15",
+      "expected": "excluded",
+      "title": "Federated Learning with Differential Privacy for Mobile Keyboard Prediction",
+      "abstract": "Next-word prediction on mobile keyboards benefits from user data that cannot be centralized for privacy reasons. We deploy federated averaging with user-level differential privacy across a population of several million devices, and study the interaction between the privacy budget, the number of participating clients per round, and final model quality. We find that quality loss at moderate privacy budgets is smaller than prior simulation studies suggested, but that client participation is strongly non-uniform in practice, correlating with device model and charging behaviour, which introduces demographic skew that the privacy mechanism does not address."
+    },
+    {
+      "id": "p16",
+      "expected": "excluded",
+      "title": "Compiler Optimizations for Sparse Tensor Algebra on Heterogeneous Accelerators",
+      "abstract": "Sparse tensor computations are central to many scientific workloads but map poorly onto accelerators designed for dense arithmetic. We present a compiler intermediate representation that captures sparsity structure symbolically and a scheduling language that lets programmers express loop ordering, format conversion, and workload partitioning independently of the kernel semantics. Our code generator targets both GPUs and a vector processor. Across a suite of sparse kernels we match or exceed hand-tuned vendor libraries on the majority of inputs, with the largest gains on irregular structures for which no tuned library kernel exists."
+    },
+    {
+      "id": "p17",
+      "expected": "excluded",
+      "title": "Detecting Coordinated Inauthentic Behaviour in Online Social Networks",
+      "abstract": "Coordinated campaigns on social platforms are characterized less by the content of individual posts than by temporal and relational patterns across accounts. We model account activity as a temporal hypergraph and learn representations that capture synchronized posting, shared resource usage, and narrative co-occurrence. Evaluated against platform-confirmed takedown datasets, our method achieves higher precision at fixed recall than content-based classifiers, and remains effective when campaign operators vary surface content. We discuss the risk of false positives for legitimate coordinated activity such as activism, and the resulting need for human adjudication before enforcement."
+    },
+    {
+      "id": "p18",
+      "expected": "excluded",
+      "title": "Neural Operators for Fast Surrogate Modelling of Turbulent Flow",
+      "abstract": "Direct numerical simulation of turbulent flow remains prohibitively expensive for design iteration. We train Fourier neural operators to map initial and boundary conditions to flow fields at later times, on a dataset of simulations spanning a range of Reynolds numbers. The surrogate evaluates several orders of magnitude faster than the solver and reproduces bulk statistics accurately within the training range, but extrapolation to higher Reynolds numbers produces physically implausible energy spectra. We propose a spectral consistency penalty that partially mitigates this failure and discuss why it does not resolve it."
+    },
+    {
+      "id": "p19",
+      "expected": "excluded",
+      "title": "Benchmarking Retrieval-Augmented Generation for Enterprise Document Question Answering",
+      "abstract": "We construct a benchmark of enterprise document collections with questions authored by domain practitioners rather than crowdworkers, covering policy documents, technical manuals, and meeting records. We evaluate retrieval-augmented pipelines varying the chunking strategy, the retriever, and the generator, and find that chunking choices account for more variance in end-task accuracy than the choice of generator. We further show that standard automatic metrics correlate poorly with practitioner judgments for questions requiring synthesis across documents, and release practitioner ratings to support metric development."
+    },
+    {
+      "id": "p20",
+      "expected": "excluded",
+      "title": "Cryo-EM Particle Picking with Weakly Supervised Object Detection",
+      "abstract": "Particle picking is a labour-intensive bottleneck in single-particle cryo-electron microscopy workflows. We frame picking as weakly supervised object detection, training from coarse micrograph-level annotations rather than exhaustive per-particle boxes. Our approach combines a detector with a consistency objective across defocus values within a tilt series. On public datasets the resulting particle sets yield reconstructions of comparable resolution to those from manually curated picks, while requiring roughly a tenth of the annotation effort. Performance degrades for small particles near the detection limit, where micrograph-level supervision is insufficient."
+    }
+  ]
+}
