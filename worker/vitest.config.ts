@@ -16,6 +16,7 @@ export default defineConfig({
           TEST_MIGRATIONS: migrations,
           JWT_SIGNING_KEY: 'test-signing-key-at-least-32-chars',
           ORCAROUTER_API_KEY: 'test-orca-key',
+          OPENALEX_API_KEY: 'test-openalex-key',
         },
       },
       wrangler: { configPath: './wrangler.jsonc', environment: 'dev' },

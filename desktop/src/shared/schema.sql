@@ -83,10 +83,37 @@ CREATE TABLE IF NOT EXISTS reference_items (
   year         INTEGER,
   doi          TEXT,
   url          TEXT,
+  venue        TEXT,                        -- 掲載誌・会議
+  abstract     TEXT,
+  item_type    TEXT NOT NULL DEFAULT 'article',
+  -- 重要な文献に付ける印。フィルタの軸になる
+  starred      INTEGER NOT NULL DEFAULT 0,
+  -- 読んだか。未読／読んでいる／読んだ
+  read_status  TEXT NOT NULL DEFAULT 'unread'
+                 CHECK (read_status IN ('unread', 'reading', 'read')),
   -- \cite{} に使う識別子。プロジェクト内で一意（FR-12）
   bibtex_key   TEXT NOT NULL,
-  added_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  added_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- タグ。コレクションより軽い分類（FR-05）
+CREATE TABLE IF NOT EXISTS tags (
+  tag_id     TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  color      TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name ON tags(project_id, name);
+
+CREATE TABLE IF NOT EXISTS reference_tags (
+  reference_id TEXT NOT NULL REFERENCES reference_items(reference_id) ON DELETE CASCADE,
+  tag_id       TEXT NOT NULL REFERENCES tags(tag_id) ON DELETE CASCADE,
+  PRIMARY KEY (reference_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reftags_tag ON reference_tags(tag_id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_refs_key ON reference_items(project_id, bibtex_key);
 -- DOI が一致する項目は既存とみなし、重複エントリを作らない（ADR-0003）
@@ -117,29 +144,35 @@ CREATE TABLE IF NOT EXISTS attachments (
 
 CREATE INDEX IF NOT EXISTS idx_attachments_ref ON attachments(reference_id);
 
--- ハイライト・注釈。**PDF 本体には書き戻さない**（C-08）
+-- ハイライト・ペン書き込み・コメント。**PDF 本体には書き戻さない**（C-08）
 CREATE TABLE IF NOT EXISTS annotations (
   annotation_id TEXT PRIMARY KEY,
   attachment_id TEXT NOT NULL REFERENCES attachments(attachment_id) ON DELETE CASCADE,
   page          INTEGER NOT NULL,
+  -- highlight = 文字を選んで塗る / ink = ペンで書く
+  kind          TEXT NOT NULL DEFAULT 'highlight' CHECK (kind IN ('highlight', 'ink')),
+  -- highlight のときだけ使う。ページ幅・高さに対する比の矩形の配列
   rect_json     TEXT,
+  -- ink のときだけ使う。ページ幅・高さに対する比の点の配列
+  path_json     TEXT,
+  stroke_width  REAL,
   quote         TEXT,
   color         TEXT,
+  -- 書き込んだ本人のコメント。未公開の思考なので外に出さない（C-01）
   comment       TEXT,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_annotations_attachment ON annotations(attachment_id, page);
 
--- 文献ごとの自由記述。未公開の思考なので外に出さない（C-01）
+-- 文献ごとの自由記述。未公開の思考なので外に出さない（C-01）。
+-- 1 文献 1 本にする。複数あると「どれが本文か」が曖昧になる
 CREATE TABLE IF NOT EXISTS notes (
-  note_id      TEXT PRIMARY KEY,
-  reference_id TEXT NOT NULL REFERENCES reference_items(reference_id) ON DELETE CASCADE,
+  reference_id TEXT PRIMARY KEY REFERENCES reference_items(reference_id) ON DELETE CASCADE,
   body         TEXT NOT NULL DEFAULT '',
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE INDEX IF NOT EXISTS idx_notes_ref ON notes(reference_id);
 
 -- 接続・機能オフ（C-03）・同意。秘密は safeStorage で暗号化して入れる
 CREATE TABLE IF NOT EXISTS settings (

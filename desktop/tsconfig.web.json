@@ -10,5 +10,5 @@
     "composite": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["src/renderer/**/*.ts", "src/preload/**/*.ts"]
+  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.d.ts", "src/preload/**/*.ts"]
 }

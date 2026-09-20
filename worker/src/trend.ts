@@ -40,8 +40,8 @@ export function toTrendPapers(papers: FetchedPaper[]): TrendPaper[] {
   }));
 }
 
-export async function fetchPublicPapers(topic: string): Promise<FetchedPaper[]> {
-  return fetchFromSource('openalex', topic);
+export async function fetchPublicPapers(topic: string, opts: { apiKey?: string } = {}): Promise<FetchedPaper[]> {
+  return fetchFromSource('openalex', topic, opts);
 }
 
 export async function summarizeTrend(

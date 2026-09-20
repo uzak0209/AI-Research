@@ -12,6 +12,7 @@ import {
   utcDate,
   type CollectMessage,
 } from '../src/index';
+import { openAlexWorksUrl } from '../src/openalex';
 
 const RUN_DATE = '2026-09-20';
 const PROJECT = 'proj-1';
@@ -163,6 +164,21 @@ describe('粗い採点と要旨の復元', () => {
   it('utcDate は UTC の YYYY-MM-DD（夏時間の影響を受けない）', () => {
     expect(utcDate(new Date('2026-09-20T23:30:00Z'))).toBe('2026-09-20');
     expect(utcDate(new Date('2026-09-20T00:00:00Z'))).toBe('2026-09-20');
+  });
+});
+
+describe('OpenAlex URL', () => {
+  it('search と api_key を使い、古い filter search は使わない', () => {
+    const url = openAlexWorksUrl('DPDK', { apiKey: 'secret-key' });
+    expect(url.searchParams.get('search')).toBe('DPDK');
+    expect(url.searchParams.get('api_key')).toBe('secret-key');
+    expect(url.searchParams.get('filter')).toBe('has_abstract:true,type:article');
+    expect(url.href).not.toContain('title_and_abstract.search');
+  });
+
+  it('鍵が無いときは api_key を付けない', () => {
+    const url = openAlexWorksUrl('DPDK');
+    expect(url.searchParams.get('api_key')).toBeNull();
   });
 });
 
