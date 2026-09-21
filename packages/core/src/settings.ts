@@ -1,7 +1,7 @@
 export const REFRESH_KEY = 'auth.refresh_token_enc';
-/** Worker の URL。未設定ならローカル wrangler（just worker） */
+/** Worker の URL。未設定なら prod（wrangler.jsonc の custom domain） */
 export const CLOUD_ENDPOINT_KEY = 'cloud.endpoint';
-export const DEFAULT_CLOUD_ENDPOINT = 'http://127.0.0.1:8787';
+export const DEFAULT_CLOUD_ENDPOINT = 'https://ai-research.streeeak.link';
 export const EXPORT_BIB_PATH_KEY = 'export.bib_path';
 export const EXPORT_FORMAT_KEY = 'export.format';
 

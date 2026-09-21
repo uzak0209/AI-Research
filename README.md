@@ -64,7 +64,7 @@
 ```bash
 just env                 # worker/.dev.vars と local D1
 just worker              # BFF  http://127.0.0.1:8787
-just desktop             # Electron（ELECTRON_RUN_AS_NODE を外す）
+just desktop             # Electron。API は prod（https://ai-research.streeeak.link）
 just seed-desktop        # Electron を機能紹介用のデモで埋める
 just seed-staging        # staging D1（dev）を同じ物語で埋める
 just verify              # worker 起動中に /health と書誌 BFF
