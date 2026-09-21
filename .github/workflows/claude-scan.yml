@@ -1,25 +1,33 @@
 name: Claude Scan
 
-# 1 日 1 回、専用スキャンを走らせる。
+# 日次で 4 種を走らせる。回す回数に制限は置かない。
 # design-review と adr-hygiene は auto-scan を付けて claude.yml が自動で PR を出す。
-# research-trend は proposal のみ（自動 PR しない）。
+# research-trend と router-retro は proposal のみ（自動 PR しない）。
+# router-retro は手動で 1 日に何回でも回せる。母数が足りるかはスキャン側が見て、
+# 足りなければ issue を出さずに降りる（ADR-0005）。
 on:
   schedule:
     - cron: '0 21 * * *' # UTC 21:00 = JST 06:00
   workflow_dispatch:
     inputs:
       scan_type:
-        description: '回すスキャン。all は 3 種類まとめて'
+        description: '回すスキャン。all は 4 種類まとめて'
         type: choice
-        options: [all, design-review, adr-hygiene, research-trend]
+        options: [all, design-review, adr-hygiene, research-trend, router-retro]
         default: all
+      lookback_days:
+        description: 'router-retro が見る日数。短くすると直近だけを見る'
+        type: string
+        default: '7'
       dry_run:
         description: 'issue を作らず、見つけた内容をログに出すだけ'
         type: boolean
         default: true
 
+# 手動実行は毎回別グループにして、続けて何回回しても待たされないようにする。
+# 定時実行だけは重ならないよう同じグループに入れる。
 concurrency:
-  group: claude-scan-${{ github.event.inputs.scan_type || 'all' }}
+  group: claude-scan-${{ github.event.inputs.scan_type || 'sched' }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'sched' }}
   cancel-in-progress: false
 
 jobs:
@@ -29,11 +37,14 @@ jobs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - id: set
+        env:
+          REQUESTED: ${{ github.event.inputs.scan_type }}
         run: |
           set -euo pipefail
-          requested="${{ github.event.inputs.scan_type || 'all' }}"
+          requested="${REQUESTED:-all}"
+
           if [ "$requested" = "all" ]; then
-            echo 'matrix=["design-review","adr-hygiene","research-trend"]' >> "$GITHUB_OUTPUT"
+            echo 'matrix=["design-review","adr-hygiene","research-trend","router-retro"]' >> "$GITHUB_OUTPUT"
           else
             echo "matrix=[\"${requested}\"]" >> "$GITHUB_OUTPUT"
           fi
@@ -61,6 +72,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           SCAN_TYPE: ${{ matrix.scan_type }}
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+          # router-retro が D1 を読むための秘密。未設定なら空になり、
+          # スキャン側が「読めなければ issue を出さない」で降りる
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_D1_READ_TOKEN }}
+          D1_ID_DEV: ${{ secrets.D1_ID_DEV }}
+          D1_ID_PROD: ${{ secrets.D1_ID_PROD }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
