@@ -20,16 +20,30 @@
 **D1 の生データを読んで印象で語らない。**`scripts/retro-metrics` を実行し、
 出力された集計値 JSON だけを根拠にする。
 
-- スクリプトが無い／失敗する／`CF_ACCOUNT_ID`・`CF_API_TOKEN`・`D1_ID_DEV`・`D1_ID_PROD` が空
+- スクリプトが無い／失敗する／`CLOUDFLARE_ACCOUNT_ID`・`CLOUDFLARE_API_TOKEN` が空
   → **issue を出さない。**何を試してなぜ取れなかったかを出力して終わる（`未確認は書かない`）
-- スクリプトは `SELECT` だけを投げる。書き込むクエリを実行しない
+- **`SELECT` だけを投げる。書き込むクエリを実行しない。**
+  渡されるトークンは deploy と共用で書き込み権限を持つ（`CLOUDFLARE_API_TOKEN`）。
+  読み取りだけに使うのはこちらの責任になる
 - 閾値の比較はスクリプトの結果に従う。**同じ入力なら同じ判定になること**
 
-参考（スクリプトが内部で使う API）:
+### D1 の database_id
+
+**Secret にしない。**`worker/wrangler.jsonc` に書いてあり、同ファイルが
+「D1 / KV / Queue の ID は秘密ではない」と明記している。環境名から引く:
 
 ```
-curl https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/d1/database/$D1_ID/query \
-  -H "Authorization: Bearer $CF_API_TOKEN" \
+DB_ID=$(sed 's@^[[:space:]]*//.*@@' worker/wrangler.jsonc \
+  | jq -r --arg e dev '.env[$e].d1_databases[0].database_id')
+```
+
+`PLACEHOLDER_` が返ったら未構築とみなし、issue を出さずに降りる。
+
+参考（スクリプトが内部で使う API。権限は `D1 Read` で足りる）:
+
+```
+curl https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$DB_ID/query \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sql":"..."}'
 ```

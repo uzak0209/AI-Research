@@ -507,7 +507,7 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 | ADR-0002 | C1 に本機能の 2 endpoint を追加。キーを段ごとに分割。**C3 では Named Router を使わない**と明記 |
 | ADR-0004 | 利用上限を「呼び出し回数」から `cost_usd` 実額へ。Queues に 2 段目の経路を追加 |
 | docs/adr/README.md・adr-hygiene.md | 有効 ADR を 4 本から 5 本に更新 |
-| .github/claude-scans/ | `router-retro.md` を追加。`claude-scan.yml` の matrix に 4 種目として追加し、`lookback_days` 入力を足す。D1 を読む権限（Cloudflare API トークン）を secrets に追加 |
+| .github/claude-scans/ | `router-retro.md` を追加。`claude-scan.yml` の matrix に 4 種目として追加し、`lookback_days` 入力を足す。**認証は既存の `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` を流用し、Secret は増やさない。**D1 の `database_id` は `worker/wrangler.jsonc` から読む（同ファイルが「秘密ではない」と明記） |
 | design-review.md・research-trend.md | **有効 ADR が「0001 / 0002 / 0003」のまま**で ADR-0004 が抜けている。本 ADR の追加と合わせて 0001〜0005 に直す |
 
 ## 却下
@@ -568,10 +568,16 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 - **ローカルから匿名の集計（保存率・既読率）を opt-in で送るか。**
   送れれば「最終的な有用性」の信号が得られるが、`C-01` と ADR-0004 の書き戻し却下の再検討が要る
 - **1 段統合版との A/B をどの範囲で回すか**（dev だけか、prod の一部プロジェクトも含めるか）
-- GitHub Actions から D1 を読む手段（`wrangler d1 execute` と API トークン）と、その権限の絞り方
+- **内省スキャンに読み取り専用の Cloudflare トークンを分けるか。**
+  いまは deploy と同じ `CLOUDFLARE_API_TOKEN`（書き込み可）を渡しており、
+  Bash を持つ LLM のジョブに書き込み権限が乗る。必要なのは `D1 Read` だけなので、
+  最小権限にするなら別トークンを起こす
 - 提案の件数上限（初期値 3 は暫定）と、**issue を出してよい最小の母数**（run 数・論文数）。
   `LOOKBACK_DAYS` の既定 7 も暫定値
 - **`router-retro` を `proposal` から `auto-scan` へ上げるか。**出てくる提案を PR で見てから判断する
 - **トークン/論文・コスト/論文の合格閾値。**実測前なので値を置いていない。
   スクリプトは値を出すだけにして、閾値は後から入れる
+- **「比率の改善が本数減で説明できる」と見なす係数**（`render-trend.mjs` の
+  `EXPLAINED_BY_FEWER_PAPERS`、暫定 0.5）。絶対値の閾値を避けるための相対判定だが、
+  0.5 という値自体に実測の裏づけはない
 - 自前フォールバックの落とし先モデル（`review-bench` の実測後に決める）
