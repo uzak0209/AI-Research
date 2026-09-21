@@ -32,6 +32,9 @@ export const collectMessageSchema = z.object({
   summary: z.string(),
   source: z.string().min(1),
   run_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  // 収集段の LLM 利用を誰の分として数えるか（NFR-04）。
+  // 配送中の古いメッセージには無いので optional。無ければ project から引く
+  user_id: z.string().min(1).optional(),
 });
 
 export const openAlexWorkSchema = z.object({

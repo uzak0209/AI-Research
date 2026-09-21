@@ -29,7 +29,10 @@
       "vars": {
         "ENVIRONMENT": "dev",
         "CONSENT_VERSION": "1",
-        "LLM_DAILY_CALL_LIMIT": "20"
+        "LLM_DAILY_CALL_LIMIT": "20",
+        // ADR-0005 §2: 段ごとの Named Router。コンソールに無い間は素のモデル ID を入れて逃がす
+        "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
+        "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },
       "observability": { "enabled": true },
       "d1_databases": [
@@ -64,7 +67,10 @@
       "vars": {
         "ENVIRONMENT": "prod",
         "CONSENT_VERSION": "1",
-        "LLM_DAILY_CALL_LIMIT": "20"
+        "LLM_DAILY_CALL_LIMIT": "20",
+        // ADR-0005 §2: 段ごとの Named Router。コンソールに無い間は素のモデル ID を入れて逃がす
+        "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
+        "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },
       "observability": { "enabled": true },
       // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。

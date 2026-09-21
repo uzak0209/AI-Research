@@ -91,6 +91,7 @@ const SQL_USAGE = `
          SUM(calls)          AS calls,
          SUM(tokens)         AS tokens,
          SUM(cost_usd)       AS cost_usd,
+         SUM(latency_ms_sum) AS latency_ms_sum,
          SUM(fallback_calls) AS fallback_calls
   FROM llm_usage
   WHERE usage_date >= ?
@@ -147,6 +148,7 @@ export function buildSeries(usage, papers, runs, since) {
         calls: 0,
         tokens: 0,
         cost_usd: 0,
+        latency_ms_sum: 0,
         fallback_calls: 0,
         papers: 0,
         runs: { ok: 0, empty: 0, failed: 0, partial: 0 },
@@ -160,6 +162,7 @@ export function buildSeries(usage, papers, runs, since) {
     e.calls = Number(r.calls ?? 0);
     e.tokens = Number(r.tokens ?? 0);
     e.cost_usd = Number(r.cost_usd ?? 0);
+    e.latency_ms_sum = Number(r.latency_ms_sum ?? 0);
     e.fallback_calls = Number(r.fallback_calls ?? 0);
   }
   for (const r of papers) touch(r.d).papers = Number(r.papers ?? 0);
@@ -175,6 +178,9 @@ export function buildSeries(usage, papers, runs, since) {
       ...e,
       tokens_per_paper: ratio(e.tokens, e.papers),
       cost_per_paper: ratio(e.cost_usd, e.papers),
+      // 生産性: 推論 1 秒あたり何本の論文が取れたか。
+      // 推論時間が未計測（0003 より前の行）の日は出さない。0 割りも「速い」と言わない
+      papers_per_sec: e.latency_ms_sum > 0 ? ratio(e.papers, e.latency_ms_sum / 1000) : null,
     }));
 }
 
@@ -279,12 +285,14 @@ async function main() {
       tokens: sum("tokens"),
       cost_usd: sum("cost_usd"),
       papers: sum("papers"),
+      latency_ms_sum: sum("latency_ms_sum"),
       fallback_calls: sum("fallback_calls"),
     },
     trend: {
       tokens_per_paper: trend(comparable, "tokens_per_paper"),
       cost_per_paper: trend(comparable, "cost_per_paper"),
       papers: trend(comparable, "papers"),
+      papers_per_sec: trend(comparable, "papers_per_sec"),
     },
     by_route: routeRows(byRoute),
     series,

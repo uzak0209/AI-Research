@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Env } from './env';
-import { ORCA_POLICY, type OrcaClassPolicy, type OrcaKeySlot } from './orca-policy';
+import type { OrcaClassPolicy, OrcaKeySlot } from './orca-policy';
 
 /** OpenAI 互換。キーは Workers Secrets。クライアントに出さない（C-06, ADR-0002） */
 export const ORCA_CHAT_URL = 'https://api.orcarouter.ai/v1/chat/completions';
@@ -79,7 +79,7 @@ function servedModel(res: Response, bodyModel: string | undefined, primary: stri
 export async function chatCompletion(
   apiKey: string,
   messages: { role: 'system' | 'user'; content: string }[],
-  policy: OrcaClassPolicy = ORCA_POLICY.C1,
+  policy: OrcaClassPolicy,
 ): Promise<OrcaChatResult> {
   // 宛先ごとに比べるため、往復の実時間を測る。上流の応答時間とネットワークを含む
   const startedAt = Date.now();
@@ -119,6 +119,9 @@ export async function chatCompletion(
     tokens,
     costUsd: usage?.cost_usd ?? null,
     latencyMs,
-    fallbackUsed: served !== policy.model,
+    // 要求名と応答モデルの比較で判定しないこと。
+    // Named Router を要求すると必ず別名のモデルが返るため、比較では常に真になる。
+    // 受け皿に落ちたかどうかは X-Orca-Fallback-Model の有無でしか分からない
+    fallbackUsed: res.headers.get('x-orca-fallback-model') !== null,
   };
 }
