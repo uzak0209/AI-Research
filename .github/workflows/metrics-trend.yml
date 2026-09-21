@@ -261,6 +261,16 @@ jobs:
           } > docs/metrics-trend.md
           tee -a "$GITHUB_STEP_SUMMARY" < docs/metrics-trend.md >/dev/null
 
+      # Claude Code Action が remote URL / credential を書き換えることがある。
+      # そのままだと auto-commit の push が "Invalid username or token" で落ちる。
+      - name: Restore git remote for commit
+        if: ${{ github.event_name != 'schedule' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
       - name: Commit docs metrics report
         if: ${{ github.event_name != 'schedule' }}
         uses: stefanzweifel/git-auto-commit-action@v5
@@ -276,11 +286,14 @@ jobs:
 
   # 定時、または手動で propose_issues=true のときだけ。
   # 改善点があれば proposal issue（router-retro。上限 3・自動 PR なし）
+  # report（docs コミット）が落ちても、collect さえ成功していれば提案は回す。
   propose:
     needs: [collect, report]
     if: >
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.propose_issues == 'true')
+      always() &&
+      needs.collect.result == 'success' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && github.event.inputs.propose_issues == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

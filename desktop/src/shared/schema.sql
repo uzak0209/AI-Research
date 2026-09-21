@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS papers (
   url               TEXT,
   published_at      TEXT,
   coarse_score      REAL,                   -- クラウドの粗選別
+  problem_excerpt   TEXT,                   -- クラウドの課題意識抜粋（FR-15）
   -- blend = 概要 cos × 0.7 + 最近傍チャンク cos × 0.3
   relevance         REAL,
   sim_summary       REAL,

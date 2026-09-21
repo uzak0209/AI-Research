@@ -20,17 +20,13 @@ const PROJECT = 'proj-1';
 
 async function seedProject() {
   await env.DB.batch([
-    env.DB.prepare('INSERT OR IGNORE INTO users (user_id, oauth_subject) VALUES (?, ?)').bind('u1', 'sub-1'),
-    env.DB.prepare(
-      'INSERT OR IGNORE INTO projects (project_id, user_id, title, summary) VALUES (?, ?, ?, ?)',
-    ).bind(PROJECT, 'u1', 'test', 'graph neural networks molecular property prediction'),
-  ]);
-}
-
-async function clearRuns() {
-  await env.DB.batch([
     env.DB.prepare('DELETE FROM run_papers'),
     env.DB.prepare('DELETE FROM runs'),
+    env.DB.prepare('DELETE FROM projects'),
+    env.DB.prepare('INSERT OR IGNORE INTO users (user_id, oauth_subject) VALUES (?, ?)').bind('u1', 'sub-1'),
+    env.DB.prepare(
+      'INSERT INTO projects (project_id, user_id, title, summary) VALUES (?, ?, ?, ?)',
+    ).bind(PROJECT, 'u1', 'test', 'graph neural networks molecular property prediction'),
   ]);
 }
 
@@ -63,7 +59,6 @@ function mockOpenAlex(works: unknown[], status = 200) {
 
 beforeEach(async () => {
   await seedProject();
-  await clearRuns();
 });
 
 afterEach(() => {
@@ -80,22 +75,53 @@ describe('HTTP', () => {
   });
 
   it('同期 API は Bearer 無しなら 401。空配列で「0 件」に見せかけない（C-07）', async () => {
-    const res = await handleFetch(new Request('https://api.test/runs'), env);
+    const res = await handleFetch(new Request('https://api.test/runs?project_id=proj-1'), env);
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe('unauthorized');
   });
 
-  it('同期 API は access が通っても中身は 501', async () => {
+  it('GET /runs は自プロジェクトの run を返す。0 件も 200', async () => {
+    const { signAccessToken } = await import('../src/auth');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    await env.DB.prepare(
+      'INSERT INTO runs (run_id, project_id, run_date, status) VALUES (?, ?, ?, ?)',
+    )
+      .bind(`${PROJECT}:sync`, PROJECT, RUN_DATE, 'empty')
+      .run();
+
+    const res = await handleFetch(
+      new Request(`https://api.test/runs?project_id=${PROJECT}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { project_id: string; runs: { run_id: string }[] };
+    expect(body.project_id).toBe(PROJECT);
+    expect(body.runs.some((r) => r.run_id === `${PROJECT}:sync`)).toBe(true);
+  });
+
+  it('PUT /projects は summary を upsert する', async () => {
     const { signAccessToken } = await import('../src/auth');
     const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
     const res = await handleFetch(
-      new Request('https://api.test/runs', { headers: { Authorization: `Bearer ${token}` } }),
+      new Request('https://api.test/projects/new-proj', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'T', summary: 'problem-aware graph learning' }),
+      }),
       env,
     );
-    expect(res.status).toBe(501);
-    const body = (await res.json()) as { error: string };
-    expect(body.error).toBe('not_implemented');
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare('SELECT title, summary FROM projects WHERE project_id = ?')
+      .bind('new-proj')
+      .first<{ title: string; summary: string }>();
+    expect(row?.title).toBe('T');
+    expect(row?.summary).toBe('problem-aware graph learning');
   });
 
   it('refresh から新しい access を出せる', async () => {
@@ -337,7 +363,7 @@ describe('収集の記録（FR-08 / C-07）', () => {
     await handleQueueMessage(message(), env);
 
     const statements = spy.mock.calls[0]?.[0] ?? [];
-    // runs 1 文 + run_papers を 12 件ずつ（100 バインド ÷ 8 列）= 3 文。合計 4 文
+    // runs 1 文 + run_papers を 11 件ずつ（100 バインド ÷ 9 列）= 3 文。合計 4 文
     expect(statements.length).toBe(4);
     // Free 枠は 1 実行 50 クエリまで
     expect(statements.length).toBeLessThanOrEqual(50);

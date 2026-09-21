@@ -5,7 +5,9 @@ import { batch, execute } from '../../db/execute';
 import { db } from '../../db/kysely';
 import { fetchFromSource } from '../../shared/openalex/adapter';
 import { createUsage } from '../../usage';
+import { attachProblemExcerpts, REVIEW_ENDPOINT } from '../application/problem-excerpt';
 import { COLLECT_ENDPOINT, buildSearchQuery } from '../application/search-terms';
+import type { OrcaChatOk } from '../../shared/orca/chat';
 import type {
   CollectClock,
   CollectIdempotency,
@@ -21,7 +23,7 @@ import type { ScoredPaper } from '../domain';
 /** D1 の 1 文あたりのバインド変数の上限 */
 const D1_MAX_BIND_PARAMS = 100;
 /** run_papers に 1 行あたり入れる列数 */
-const RUN_PAPER_COLUMNS = 8;
+const RUN_PAPER_COLUMNS = 9;
 
 export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
   return {
@@ -94,6 +96,7 @@ export function d1Runs(d1: D1Database): RunStore {
                   url: p.url,
                   published_at: p.published_at,
                   coarse_score: p.coarse_score,
+                  problem_excerpt: p.problem_excerpt,
                 })),
               )
               .onConflict((oc) => oc.columns(['run_id', 'external_id']).doNothing())
@@ -123,24 +126,39 @@ export function ingestDeps(env: Env): IngestDeps {
     search: {
       build: (summary) => buildSearchQuery(env, summary),
     },
+    problemExcerpt: {
+      attach: (papers) => attachProblemExcerpts(env, papers),
+    },
     usage: {
       async recordSearch(msg, usage) {
-        const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
-        if (!userId) return;
-        await createUsage(env).record({
-          userId,
-          endpoint: COLLECT_ENDPOINT,
-          classification: 'C1',
-          requestedModel: usage.requestedModel,
-          resolvedModel: usage.model,
-          tokens: usage.tokens,
-          costUsd: usage.costUsd,
-          latencyMs: usage.latencyMs,
-          fallbackUsed: usage.fallbackUsed,
-        });
+        await recordCollectLlm(env, msg, COLLECT_ENDPOINT, usage);
+      },
+      async recordReview(msg, usage) {
+        await recordCollectLlm(env, msg, REVIEW_ENDPOINT, usage);
       },
     },
   };
+}
+
+async function recordCollectLlm(
+  env: Env,
+  msg: CollectMessage,
+  endpoint: string,
+  usage: OrcaChatOk,
+): Promise<void> {
+  const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
+  if (!userId) return;
+  await createUsage(env).record({
+    userId,
+    endpoint,
+    classification: 'C1',
+    requestedModel: usage.requestedModel,
+    resolvedModel: usage.model,
+    tokens: usage.tokens,
+    costUsd: usage.costUsd,
+    latencyMs: usage.latencyMs,
+    fallbackUsed: usage.fallbackUsed,
+  });
 }
 
 /** 配送中の古いメッセージに user_id が無いときだけ引く */

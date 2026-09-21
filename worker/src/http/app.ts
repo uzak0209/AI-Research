@@ -14,7 +14,12 @@ import {
   TrendResponseSchema,
   BibliographyBodySchema,
   BibliographyResponseSchema,
+  RunsResponseSchema,
+  ProjectPutBodySchema,
+  ProjectResponseSchema,
 } from './schema';
+import { db } from '../db/kysely';
+import { execute } from '../db/execute';
 import { TREND_ENDPOINT, createTrendApp } from '../trend';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
@@ -33,7 +38,7 @@ function abort(fail: AuthFail): never {
   });
 }
 
-function fail(status: 400 | 401 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
+function fail(status: 400 | 401 | 403 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
   throw new HTTPException(status, {
     res: Response.json(body, { status }),
   });
@@ -182,19 +187,203 @@ app.openapi(
   createRoute({
     method: 'get',
     path: '/runs',
+    request: {
+      query: z.object({
+        project_id: z.string().min(1),
+        after: z.string().min(1).optional(),
+      }),
+    },
     responses: {
+      200: {
+        description: 'プロジェクトの収集 run を増分取得。0 件も 200（C-07）',
+        content: { 'application/json': { schema: RunsResponseSchema } },
+      },
+      400: { description: 'project_id 欠落', ...jsonError },
       ...unauthorized,
-      ...notImplemented,
+      403: { description: '他ユーザーの project', ...jsonError },
     },
   }),
   async (c) => {
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
-    abort({
-      ok: false,
-      status: 501,
-      body: { error: 'not_implemented', detail: '同期 API の中身は未実装。認証だけ通った' },
-    });
+
+    const { project_id, after } = c.req.valid('query');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const owned = await execute<{ user_id: string }>(
+      c.env.DB,
+      db.selectFrom('projects').select('user_id').where('project_id', '=', project_id).compile(),
+    );
+    const owner = owned[0];
+    if (owner && owner.user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+
+    let afterCreatedAt: string | null = null;
+    if (after) {
+      const anchor = await execute<{ created_at: string }>(
+        c.env.DB,
+        db
+          .selectFrom('runs')
+          .select('created_at')
+          .where('run_id', '=', after)
+          .where('project_id', '=', project_id)
+          .compile(),
+      );
+      afterCreatedAt = anchor[0]?.created_at ?? null;
+    }
+
+    let runQuery = db
+      .selectFrom('runs')
+      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'created_at'])
+      .where('project_id', '=', project_id)
+      .orderBy('created_at', 'asc')
+      .limit(50);
+
+    if (afterCreatedAt) {
+      runQuery = runQuery.where('created_at', '>', afterCreatedAt);
+    }
+
+    const runs = await execute<{
+      run_id: string;
+      run_date: string;
+      status: string;
+      failed_sources_json: string | null;
+      created_at: string;
+    }>(c.env.DB, runQuery.compile());
+
+    const runIds = runs.map((r) => r.run_id);
+    const paperRows =
+      runIds.length === 0
+        ? []
+        : await execute<{
+            run_id: string;
+            external_id: string;
+            source: string;
+            title: string;
+            abstract: string | null;
+            url: string | null;
+            published_at: string | null;
+            coarse_score: number | null;
+            problem_excerpt: string | null;
+          }>(
+            c.env.DB,
+            db
+              .selectFrom('run_papers')
+              .select([
+                'run_id',
+                'external_id',
+                'source',
+                'title',
+                'abstract',
+                'url',
+                'published_at',
+                'coarse_score',
+                'problem_excerpt',
+              ])
+              .where('run_id', 'in', runIds)
+              .compile(),
+          );
+
+    const papersByRun = new Map<string, typeof paperRows>();
+    for (const row of paperRows) {
+      const list = papersByRun.get(row.run_id) ?? [];
+      list.push(row);
+      papersByRun.set(row.run_id, list);
+    }
+
+    return c.json(
+      {
+        project_id,
+        runs: runs.map((r) => ({
+          run_id: r.run_id,
+          run_date: r.run_date,
+          status: r.status as 'ok' | 'empty' | 'failed' | 'partial',
+          failed_sources_json: r.failed_sources_json,
+          created_at: r.created_at,
+          papers: (papersByRun.get(r.run_id) ?? []).map((p) => ({
+            external_id: p.external_id,
+            source: p.source,
+            title: p.title,
+            abstract: p.abstract,
+            url: p.url,
+            published_at: p.published_at,
+            coarse_score: p.coarse_score,
+            problem_excerpt: p.problem_excerpt,
+          })),
+        })),
+      },
+      200,
+    );
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: 'put',
+    path: '/projects/{project_id}',
+    request: {
+      params: z.object({ project_id: z.string().min(1) }),
+      body: {
+        content: { 'application/json': { schema: ProjectPutBodySchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: '課題意識（summary）の同期。判定の書き戻しはしない',
+        content: { 'application/json': { schema: ProjectResponseSchema } },
+      },
+      400: { description: 'title / summary 欠落', ...jsonError },
+      ...unauthorized,
+      403: { description: '他ユーザーの project', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const { project_id } = c.req.valid('param');
+    const { title, summary } = c.req.valid('json');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const existing = await execute<{ user_id: string }>(
+      c.env.DB,
+      db.selectFrom('projects').select('user_id').where('project_id', '=', project_id).compile(),
+    );
+    if (existing[0] && existing[0].user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+
+    if (existing[0]) {
+      await execute(
+        c.env.DB,
+        db
+          .updateTable('projects')
+          .set({ title, summary })
+          .where('project_id', '=', project_id)
+          .where('user_id', '=', userId)
+          .compile(),
+      );
+    } else {
+      await execute(
+        c.env.DB,
+        db
+          .insertInto('projects')
+          .values({
+            project_id,
+            user_id: userId,
+            title,
+            summary,
+            created_at: new Date().toISOString(),
+          })
+          .compile(),
+      );
+    }
+
+    return c.json({ project_id, title, summary }, 200);
   },
 );
 

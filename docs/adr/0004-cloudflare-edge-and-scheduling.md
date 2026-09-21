@@ -143,11 +143,12 @@ flowchart LR
 - 失敗と 0 件は `runs.status`、ソース単位の失敗は `failed_sources_json`（FR-08）
 - **cron はアカウントで 5 本まで（Free）**。日次収集に使うのは `dev` / `prod` の各 1 本。`test` には付けない。プロジェクトごとに cron を増やす設計にしない
 
-### 同期 API（FR-02 のクラウド側）
+### 同期 API（FR-02 / FR-15 のクラウド側）
 
-- ローカルの `last_run_id` より後の `runs` と `run_papers` を返すだけ（ADR-0001）
-- **プル専用**。クラウドへの書き戻し経路を作らない。判定結果は未公開データ由来のため外に出さない（C-01）
-- Electron 起動時の「未取得確認 → 取込 → **ローカル**埋め込みで関連度採点」は [ADR-0001](0001-runtime-local-data-extensibility.md) の工程。クラウドは候補の受け渡しまで
+- ローカルの `last_run_id` より後の `runs` と `run_papers` を返す（ADR-0001）
+- **判定結果の書き戻しは作らない**（未公開データ由来。C-01）
+- **`summary`（と title）の upsert は許可する**——収集材料であり判定ではない。`PUT /projects/{project_id}`
+- Electron 起動時の「未取得確認 → 取込 → **ローカル**埋め込みで提案手法類似の採点」は [ADR-0001](0001-runtime-local-data-extensibility.md) の工程。クラウドは候補の受け渡しまで
 
 #### 起動時プル（クラウドが見る範囲）
 

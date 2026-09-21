@@ -42,11 +42,17 @@ export type SearchQueryBuilder = {
 
 export type CollectUsage = {
   recordSearch(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
+  recordReview(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
+};
+
+export type ProblemExcerptPort = {
+  attach(papers: ScoredPaper[]): Promise<{ papers: ScoredPaper[]; usage: OrcaChatOk | null }>;
 };
 
 export type IngestDeps = {
   papers: PaperFetcher;
   runs: RunStore;
   search: SearchQueryBuilder;
+  problemExcerpt: ProblemExcerptPort;
   usage: CollectUsage;
 };

@@ -14,6 +14,8 @@ const api = {
   createWorkspace: () => ipcRenderer.invoke('projects:createWorkspace'),
   openWorkspace: () => ipcRenderer.invoke('projects:openWorkspace'),
   revealWorkspace: (projectId: string) => ipcRenderer.invoke('projects:revealWorkspace', projectId),
+  syncProject: (projectId: string) =>
+    ipcRenderer.invoke('projects:sync', projectId) as Promise<{ inserted: number; lastRunId: string | null }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
     const h = (_: unknown, e: { root: string; title: string; action: 'create' | 'open' }) => cb(e);
     ipcRenderer.on('workspace:changed', h);

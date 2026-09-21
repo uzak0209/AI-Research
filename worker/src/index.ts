@@ -1,7 +1,7 @@
 // ADR-0004 のクラウド側。HTTP と cron を 1 つの Worker に同居させる。
 //
 // **設計フェーズのデプロイ土台。** 未決の部分は実装したふりをせず 501 を返す（C-07）。
-//   - GET /runs の中身は未実装 → 501
+//   - GET /runs・PUT /projects/{id} は課題意識の同期（FR-15 / summary）
 //   - Google OAuth は POST /auth/google。JWT 署名鍵の入れ替え手順は未決
 //   - BFF は C1（POST /bff/trends・POST /bff/bibliography）。C2/C3 は同意・プレビュー未決のため 501
 //

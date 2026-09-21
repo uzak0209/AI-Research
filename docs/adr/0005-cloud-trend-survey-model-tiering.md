@@ -1,15 +1,18 @@
 # ADR-0005: クラウド側トレンド調査・競合収集と Named Router によるモデル使い分け
 
-- **ステータス**: 提案 / **日付**: 2026-09-21（同日改訂: 公開書誌 C1 を利用者起点の LLM 経路に明記／同日: router-retro は `test` D1 の集計 JSON を読む。トークンは Claude に渡さない）
-- **要件**: FR-01, FR-08, FR-09, FR-10, C-01, C-04, C-06, C-07, C-09, NFR-01, NFR-03, NFR-04
+- **ステータス**: 承認済み / **日付**: 2026-09-21（同日改訂: 公開書誌 C1 を利用者起点の LLM 経路に明記／同日: router-retro は `test` D1 の集計 JSON を読む。トークンは Claude に渡さない／**同日: 2 段目を課題文抜粋に再定義。関連の二軸に合わせて承認**）
+- **要件**: FR-01, FR-08, FR-09, FR-10, FR-15, FR-16, C-01, C-04, C-06, C-07, C-09, NFR-01, NFR-03, NFR-04
 - **前提**: [ADR-0001](0001-runtime-local-data-extensibility.md)（データ境界・ローカル採点）、
   [ADR-0002](0002-external-llm-bff-classification.md)（BFF・C1/C2/C3）、
   [ADR-0004](0004-cloudflare-edge-and-scheduling.md)（Workers・cron・Queues・無料枠）
 - **外部前提**: AI HACK 2026 第2回 Day 1 資料（評価5項目・Named Router・無料モデル）、
   [OrcaRouter Docs](https://docs.orcarouter.ai/)
 
-プロジェクト概要（`summary`）だけを材料に、クラウドが日次でトレンド調査と競合論文収集を行う。
-本 ADR はその 2 段パイプラインと、**Named Router によるモデル使い分け**だけを扱う。
+プロジェクト概要（`summary`＝課題意識の公開面）だけを材料に、クラウドが日次で
+**課題意識が近い候補**を集め、各候補から**課題・問題の文を抜粋**する。
+利用者向けの最終順位は付けない（提案手法の類似はローカル。ADR-0001）。
+本 ADR はその 2 段パイプラインと、**Named Router によるモデル使い分け**を扱う。
+文献調査に時間をかけてよい——cron は投入のみ、本体は Queue（NFR-01）。
 
 ## この ADR の立て方
 
@@ -182,7 +185,7 @@ flowchart LR
 |---|---|---|---|
 | 検索クエリの生成 | クラウド | `orcarouter/rs-collect` | 検索語の配列 |
 | 論文・トレンドの取得 | クラウド | LLM なし（ソース API） | 候補集合 |
-| **競合／活用の区別と理由** | クラウド | `orcarouter/rs-review` | **競合か活用か・その理由・根拠の引用**。順位と有効／除外は出さない |
+| **課題文の抜粋** | クラウド | `orcarouter/rs-review` | 論文が自ら書いている**課題・問題・limitation** の文。順位と有効／除外は出さない（FR-16） |
 | 関連度の採点・順位 | **ローカル** | なし（埋め込み） | 順位（ADR-0001） |
 | ファクトチェック（C3） | クラウド | **Named Router を使わない・直指定** | ADR-0002 の既存決定 |
 

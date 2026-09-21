@@ -186,4 +186,43 @@ describe('CloudClient', () => {
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/auth/google');
     expect(fetchImpl.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization');
   });
+
+  it('pullRuns は GET /runs に project_id と after を付ける', async () => {
+    const { auth } = session();
+    auth.setAccessToken('access-1');
+    const fetchImpl = vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      expect(url).toContain('/runs?');
+      expect(url).toContain('project_id=proj-1');
+      expect(url).toContain('after=run-a');
+      return new Response(JSON.stringify({ project_id: 'proj-1', runs: [] }), { status: 200 });
+    });
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    const body = await client.pullRuns('proj-1', 'run-a');
+    expect(body.project_id).toBe('proj-1');
+  });
+
+  it('pullRuns は非 200 で throw する', async () => {
+    const { auth } = session();
+    auth.setAccessToken('access-1');
+    const fetchImpl = vi.fn(async () => new Response('nope', { status: 403 }));
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    await expect(client.pullRuns('proj-1')).rejects.toThrow(/403/);
+  });
+
+  it('putProject は PUT /projects/{id} に title と summary を送る', async () => {
+    const { auth } = session();
+    auth.setAccessToken('access-1');
+    const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      expect(String(input)).toContain('/projects/proj-1');
+      expect(init?.method).toBe('PUT');
+      expect(init?.body).toBe(JSON.stringify({ title: 'T', summary: 'S' }));
+      return new Response(JSON.stringify({ project_id: 'proj-1', title: 'T', summary: 'S' }), {
+        status: 200,
+      });
+    });
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    const body = await client.putProject('proj-1', { title: 'T', summary: 'S' });
+    expect(body.summary).toBe('S');
+  });
 });

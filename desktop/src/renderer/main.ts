@@ -45,6 +45,7 @@ interface RankedPaper {
   nearest_chunk_text: string | null;
   nearest_chunk_sim: number | null;
   in_library: number;
+  problem_excerpt: string | null;
 }
 
 interface Attachment {
@@ -824,6 +825,17 @@ function renderPaperDetail(p: RankedPaper) {
     );
   }
 
+  if (p.problem_excerpt) {
+    pane.append(
+      el(
+        'div',
+        { class: 'detail-section' },
+        el('h3', {}, '課題'),
+        el('p', { class: 'abstract' }, p.problem_excerpt),
+      ),
+    );
+  }
+
   if (p.abstract) {
     pane.append(
       el('div', { class: 'detail-section' }, el('h3', {}, '要旨'), el('p', { class: 'abstract' }, p.abstract)),
@@ -854,6 +866,22 @@ $('feed-score').addEventListener('click', async () => {
   ($('feed-cancel') as HTMLButtonElement).disabled = false;
   setStatus('採点を開始した…', 'busy');
   await guard('採点の開始', () => window.api.startScoring(projectId));
+});
+
+$('feed-sync').addEventListener('click', async () => {
+  const btn = $('feed-sync') as HTMLButtonElement;
+  btn.disabled = true;
+  setStatus('クラウドから同期中…', 'busy');
+  const res = await guard('同期', () => window.api.syncProject(projectId));
+  btn.disabled = false;
+  if (!res) return;
+  setStatus(res.inserted > 0 ? `同期: ${res.inserted} 件を取り込んだ` : '同期: 新しい run はありません');
+  await refreshFeed();
+  if (res.inserted > 0) {
+    ($('feed-score') as HTMLButtonElement).disabled = true;
+    ($('feed-cancel') as HTMLButtonElement).disabled = false;
+    await guard('採点の開始', () => window.api.startScoring(projectId));
+  }
 });
 
 $('feed-cancel').addEventListener('click', () => {

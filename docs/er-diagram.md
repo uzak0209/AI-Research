@@ -60,6 +60,7 @@ erDiagram
         text url
         date published_at
         real coarse_score
+        text problem_excerpt "課題・問題の抜粋"
     }
 ```
 
@@ -68,7 +69,7 @@ erDiagram
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
 - **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
 - **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示
-- **`run_papers`**: その実行で見つかった論文。タイトル・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。精密判定は未公開データが要るのでローカルで行う
+- **`run_papers`**: その実行で見つかった論文。タイトル・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。精密な提案手法まわりの順位はローカル（ADR-0001）
 
 ## ローカル（SQLite + sqlite-vec）
 
@@ -99,6 +100,7 @@ erDiagram
         text run_id
         text title
         text abstract
+        text problem_excerpt "課題文抜粋"
         real coarse_score "クラウドの粗選別"
         real relevance "blend の採点値。順位はこれで付ける"
         real sim_summary "概要との cos"

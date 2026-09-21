@@ -25,6 +25,7 @@ export interface PaperInput {
   url?: string | null;
   published_at?: string | null;
   coarse_score?: number | null;
+  problem_excerpt?: string | null;
   run_id?: string | null;
 }
 
@@ -41,6 +42,7 @@ export interface RankedPaper {
   nearest_chunk_text: string | null;
   scored_at: string | null;
   in_library: number;
+  problem_excerpt: string | null;
 }
 
 /** blend の重み。実測で最良だった配分（prototypes/judge-bench/FINDINGS.md） */
@@ -100,6 +102,10 @@ export function setProjectRoot(db: Db, projectId: string, rootPath: string): voi
  * 概要を書き換えると採点の前提が変わる。
  * **黙って古い順位を見せ続けない**ため、採点済みの印を落として採点し直させる（C-07）。
  */
+export function setLastRunId(db: Db, projectId: string, runId: string | null): void {
+  db.prepare('UPDATE projects SET last_run_id = ? WHERE project_id = ?').run(runId, projectId);
+}
+
 export function updateSummary(db: Db, projectId: string, summary: string): void {
   db.exec('BEGIN');
   try {
@@ -212,8 +218,8 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
   try {
     const ins = db.prepare(
       `INSERT INTO papers
-         (paper_id, project_id, run_id, external_id, source, title, abstract, url, published_at, coarse_score)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (paper_id, project_id, run_id, external_id, source, title, abstract, url, published_at, coarse_score, problem_excerpt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (project_id, source, external_id) DO NOTHING`,
     );
     for (const p of papers) {
@@ -228,6 +234,7 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         p.url ?? null,
         p.published_at ?? null,
         p.coarse_score ?? null,
+        p.problem_excerpt ?? null,
       );
       inserted += Number(r.changes);
     }
@@ -291,7 +298,7 @@ export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[
     .prepare(
       `SELECT p.paper_id, p.external_id, p.title, p.abstract, p.url, p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
-              p.scored_at, p.in_library
+              p.scored_at, p.in_library, p.problem_excerpt
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
        WHERE p.project_id = ? AND p.scored_at IS NOT NULL

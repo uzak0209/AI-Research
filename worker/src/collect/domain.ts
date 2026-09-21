@@ -51,4 +51,5 @@ export type ScoredPaper = {
   url: string | null;
   published_at: string | null;
   coarse_score: number;
+  problem_excerpt: string | null;
 };
