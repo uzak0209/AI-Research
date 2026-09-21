@@ -5,7 +5,14 @@ import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const PROJECT_WORKSPACE_DIRS = ['references', 'mypaper', 'claims'] as const;
+/** 作業フォルダとして認識するための必須ディレクトリ */
+export const PROJECT_WORKSPACE_REQUIRED = ['references', 'mypaper', 'claims'] as const;
+
+/** 新規作成時に揃えるディレクトリ（採点用 candidates を含む） */
+export const PROJECT_WORKSPACE_DIRS = [
+  ...PROJECT_WORKSPACE_REQUIRED,
+  'candidates',
+] as const;
 
 /** 新規プロジェクトの規定の置き場（~/IdeaProjects と同階層） */
 export const DEFAULT_PROJECTS_ROOT = join(homedir(), 'Recycle');
@@ -55,14 +62,29 @@ function isEmptyDir(root: string): boolean {
 }
 
 export function isProjectWorkspace(root: string): boolean {
-  return PROJECT_WORKSPACE_DIRS.every((d) => {
+  return PROJECT_WORKSPACE_REQUIRED.every((d) => {
     const p = join(root, d);
     return existsSync(p) && statSync(p).isDirectory();
   });
 }
 
+/** 既存作業フォルダに `candidates/` が無ければ足す（C-08: 既存は触らない） */
+export function ensureCandidatesDir(root: string): string {
+  const p = join(root, 'candidates');
+  if (!existsSync(p)) {
+    mkdirSync(p, { recursive: true });
+  } else if (!statSync(p).isDirectory()) {
+    throw new WorkspaceError('candidates と同じ名前のファイルがある');
+  }
+  return p;
+}
+
+export function candidatePdfPath(root: string, paperId: string): string {
+  return join(ensureCandidatesDir(root), `${paperId}.pdf`);
+}
+
 /**
- * `{root}/references` `{root}/mypaper` `{root}/claims` を作る。
+ * `{root}/references` `{root}/mypaper` `{root}/claims` `{root}/candidates` を作る。
  * 親は既にあること。空でない未知のフォルダには作らない（C-08）。
  */
 export function createProjectWorkspace(root: string): void {

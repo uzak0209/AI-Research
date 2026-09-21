@@ -92,6 +92,7 @@ function memoryRepo(initial: ReferenceSnapshot[] = []): ReferenceRepo & { rows: 
       return id ? { reference_id: id } : undefined;
     },
     projectRoot: () => '/proj',
+    paperId: () => null,
     citeItems: () =>
       [...rows.values()].map((r) => ({
         bibtex_key: r.bibtex_key,

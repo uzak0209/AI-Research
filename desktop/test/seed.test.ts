@@ -33,16 +33,16 @@ describe('desktop seed', () => {
     expect(book?.read_status).toBe('read');
   });
 
-  it('新着は関連度順で、未採点は混ぜず実数で残る（C-07）', () => {
+  it('新着は関連度順で、ライブラリ済と未採点は出さない（C-07）', () => {
     applyDesktopSeed(db);
     const ranked = listRanked(db, 'seed-demo');
-    expect(ranked).toHaveLength(8);
+    expect(ranked).toHaveLength(5);
+    expect(ranked.every((p) => p.in_library === 0)).toBe(true);
     expect(countUnscored(db, 'seed-demo')).toBe(2);
     const scores = ranked.map((p) => p.relevance ?? 0);
     expect(scores).toEqual([...scores].sort((a, b) => b - a));
-    expect(ranked[0]?.title).toMatch(/multi-fidelity/);
-    expect(ranked[0]?.in_library).toBe(1);
-    expect(ranked[0]?.nearest_chunk_text).toMatch(/multi-fidelity/);
+    expect(ranked[0]?.title).toMatch(/Chain-aware/);
+    expect(ranked[0]?.nearest_chunk_text).toMatch(/graph neural|GNN|molecular/i);
     const lowest = ranked[ranked.length - 1];
     expect(lowest?.title).toMatch(/Robotic Manipulation/);
     expect(lowest?.nearest_chunk_text).toMatch(/active learning/);

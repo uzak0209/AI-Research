@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS papers (
   published_at      TEXT,
   coarse_score      REAL,                   -- クラウドの粗選別
   problem_excerpt   TEXT,                   -- クラウドの課題意識抜粋（FR-15）
-  -- blend = 概要 cos × 0.7 + 最近傍チャンク cos × 0.3
+  pdf_url           TEXT,                   -- OA 直リンク（取得済み／解決済み）
+  fulltext_path     TEXT,                   -- candidates/{paper_id}.pdf など
+  fulltext          TEXT,                   -- 採点用に抽出した本文（無ければ未採点・mypaper あり時）
+  -- 読む順: mypaper↔全文 max-cos、または blend（概要×0.7＋最近傍関連技術×0.3）
   relevance         REAL,
   sim_summary       REAL,
   nearest_chunk_id  INTEGER REFERENCES chunks(chunk_id) ON DELETE SET NULL,

@@ -1,12 +1,26 @@
 // 採点エンジンの検証。埋め込みは差し替えて決定的に確かめる。
 // 重点は「途中で止まっても嘘をつかないこと」（C-07 / NFR-06）。
 
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EMBED_DIM, openDb, type Db } from '../src/shared/db.js';
-import { countUnscored, createProject, listRanked, setManuscript, upsertPapers } from '../src/shared/repo.js';
-import { scoreProject, type Embedder } from '../src/shared/scorer.js';
+import {
+  countUnscored,
+  countUnscoredMissingFulltext,
+  createProject,
+  listRanked,
+  setManuscript,
+  setPaperFulltext,
+  setProjectRoot,
+  upsertPapers,
+} from '../src/shared/repo.js';
+import { maxPairwiseCos, scoreProject, type Embedder } from '../src/shared/scorer.js';
+import { createProjectWorkspace } from '../src/shared/workspace.js';
 
 let db: Db;
+let root: string;
 const PROJ = 'p1';
 const MODEL = 'test-model';
 
@@ -32,22 +46,28 @@ function fakeEmbedder(model = MODEL): Embedder {
 
 beforeEach(() => {
   db = openDb({ path: ':memory:' });
+  root = mkdtempSync(join(tmpdir(), 'airesearch-score-'));
+  createProjectWorkspace(root);
   createProject(db, {
     project_id: PROJ,
     title: 'GNN',
     summary: 'graph neural networks molecular property prediction transfer learning',
     embed_model: MODEL,
+    root_path: root,
   });
 });
 
-afterEach(() => db.close());
+afterEach(() => {
+  db.close();
+  rmSync(root, { recursive: true, force: true });
+});
 
 const PAPERS = [
   { external_id: 'hit', source: 's', title: 'graph neural networks for molecular property prediction', abstract: 'transfer learning molecules' },
   { external_id: 'miss', source: 's', title: 'neural machine translation for low resource languages', abstract: 'translation corpora' },
 ];
 
-describe('採点', () => {
+describe('採点（mypaper 空 = blend）', () => {
   it('関連する論文が上位に来る', async () => {
     upsertPapers(db, PROJ, PAPERS);
     const n = await scoreProject(db, PROJ, fakeEmbedder());
@@ -85,8 +105,66 @@ describe('採点', () => {
     await scoreProject(db, PROJ, fakeEmbedder());
     const ranked = listRanked(db, PROJ);
     expect(ranked[0]!.nearest_chunk_id).toBeNull();
-    // blend はチャンクが無ければ概要と一致する
     expect(ranked[0]!.relevance).toBeCloseTo(ranked[0]!.sim_summary!, 6);
+  });
+});
+
+describe('採点（mypaper あり = 全文 max-cos）', () => {
+  function writeMypaper(body: string) {
+    writeFileSync(join(root, 'mypaper', 'draft.md'), body);
+  }
+
+  it('PDF 本文がある候補だけ採点し、近い方が上位', async () => {
+    writeMypaper('graph neural networks for molecular property prediction transfer learning');
+    upsertPapers(db, PROJ, PAPERS);
+    const rows = db
+      .prepare('SELECT paper_id, external_id FROM papers WHERE project_id = ?')
+      .all(PROJ) as { paper_id: string; external_id: string }[];
+    const hit = rows.find((r) => r.external_id === 'hit')!;
+    const miss = rows.find((r) => r.external_id === 'miss')!;
+    setPaperFulltext(db, hit.paper_id, {
+      path: join(root, 'candidates', `${hit.paper_id}.pdf`),
+      text: 'graph neural networks molecular property prediction molecules',
+    });
+    setPaperFulltext(db, miss.paper_id, {
+      path: join(root, 'candidates', `${miss.paper_id}.pdf`),
+      text: 'neural machine translation low resource languages corpora',
+    });
+
+    const n = await scoreProject(db, PROJ, fakeEmbedder());
+    expect(n).toBe(2);
+    const ranked = listRanked(db, PROJ);
+    expect(ranked[0]!.title).toMatch(/molecular/);
+    expect(ranked[0]!.nearest_chunk_id).toBeNull();
+    expect(ranked[0]!.relevance!).toBeGreaterThan(ranked[1]!.relevance!);
+  });
+
+  it('PDF 本文が無い候補は未採点のまま（要旨で埋めない）', async () => {
+    writeMypaper('graph neural networks molecular property');
+    upsertPapers(db, PROJ, PAPERS);
+    const rows = db
+      .prepare('SELECT paper_id, external_id FROM papers WHERE project_id = ?')
+      .all(PROJ) as { paper_id: string; external_id: string }[];
+    const hit = rows.find((r) => r.external_id === 'hit')!;
+    setPaperFulltext(db, hit.paper_id, {
+      path: '/tmp/x.pdf',
+      text: 'graph neural networks molecular property prediction',
+    });
+
+    const n = await scoreProject(db, PROJ, fakeEmbedder());
+    expect(n).toBe(1);
+    expect(countUnscored(db, PROJ)).toBe(1);
+    expect(countUnscoredMissingFulltext(db, PROJ)).toBe(1);
+    expect(listRanked(db, PROJ)).toHaveLength(1);
+  });
+});
+
+describe('maxPairwiseCos', () => {
+  it('最大の組を返す', () => {
+    const a = [Float32Array.from([1, 0]), Float32Array.from([0, 1])];
+    const b = [Float32Array.from([0.6, 0.8])];
+    // pad to EMBED_DIM for cosine which uses a.length — our cosine uses a.length not EMBED_DIM
+    expect(maxPairwiseCos(a, b)).toBeCloseTo(0.8, 5);
   });
 });
 
@@ -109,8 +187,8 @@ describe('中断と再開（NFR-06 / C-07）', () => {
     });
 
     expect(done).toBe(2);
-    expect(countUnscored(db, PROJ)).toBe(2); // 残りは実数で分かる
-    expect(listRanked(db, PROJ)).toHaveLength(2); // 済んだ分は見える
+    expect(countUnscored(db, PROJ)).toBe(2);
+    expect(listRanked(db, PROJ)).toHaveLength(2);
   });
 
   it('主張のベクトルが既にあっても再採点できる', async () => {
@@ -119,7 +197,7 @@ describe('中断と再開（NFR-06 / C-07）', () => {
     await scoreProject(db, PROJ, fakeEmbedder());
     expect(countUnscored(db, PROJ)).toBe(0);
 
-    db.prepare("UPDATE papers SET scored_at = NULL WHERE project_id = ?").run(PROJ);
+    db.prepare('UPDATE papers SET scored_at = NULL WHERE project_id = ?').run(PROJ);
     const n = await scoreProject(db, PROJ, fakeEmbedder());
     expect(n).toBe(2);
     expect(countUnscored(db, PROJ)).toBe(0);
@@ -173,10 +251,24 @@ describe('モデルの取り違え', () => {
     await expect(scoreProject(db, PROJ, fakeEmbedder('other-model'))).rejects.toThrow(
       /埋め込みモデルが違う/,
     );
-    expect(countUnscored(db, PROJ)).toBe(2); // 何も採点されていない
+    expect(countUnscored(db, PROJ)).toBe(2);
   });
 
   it('存在しないプロジェクトは落とす', async () => {
     await expect(scoreProject(db, 'nope', fakeEmbedder())).rejects.toThrow(/プロジェクトが無い/);
+  });
+});
+
+describe('setProjectRoot', () => {
+  it('root を後から付けても mypaper を読む', async () => {
+    setProjectRoot(db, PROJ, root);
+    writeFileSync(join(root, 'mypaper', 'a.md'), 'graph neural molecular');
+    upsertPapers(db, PROJ, [PAPERS[0]!]);
+    const id = (
+      db.prepare('SELECT paper_id FROM papers WHERE project_id = ?').get(PROJ) as { paper_id: string }
+    ).paper_id;
+    setPaperFulltext(db, id, { path: 'x.pdf', text: 'graph neural molecular property' });
+    const n = await scoreProject(db, PROJ, fakeEmbedder());
+    expect(n).toBe(1);
   });
 });

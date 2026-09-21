@@ -247,11 +247,19 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
 }
 
 /** 未採点の論文。採点キュー表を作らずこれで再開する（NFR-06） */
-export function listUnscored(db: Db, projectId: string, limit = 500) {
+export function listUnscored(
+  db: Db,
+  projectId: string,
+  limit = 500,
+  opts: { requireFulltext?: boolean } = {},
+) {
+  const requireFulltext = opts.requireFulltext === true;
   return db
     .prepare(
-      `SELECT paper_id, title, abstract FROM papers
+      `SELECT paper_id, title, abstract, fulltext, fulltext_path
+       FROM papers
        WHERE project_id = ? AND scored_at IS NULL
+         ${requireFulltext ? "AND fulltext IS NOT NULL AND trim(fulltext) != ''" : ''}
        ORDER BY published_at DESC NULLS LAST, rowid
        LIMIT ?`,
     )
@@ -259,7 +267,68 @@ export function listUnscored(db: Db, projectId: string, limit = 500) {
     paper_id: string;
     title: string;
     abstract: string | null;
+    fulltext: string | null;
+    fulltext_path: string | null;
   }[];
+}
+
+/** mypaper あり時: 本文が無くて採点できない件数（実数。C-07） */
+export function countUnscoredMissingFulltext(db: Db, projectId: string): number {
+  const r = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM papers
+       WHERE project_id = ? AND scored_at IS NULL
+         AND (fulltext IS NULL OR trim(fulltext) = '')`,
+    )
+    .get(projectId) as { n: number };
+  return r.n;
+}
+
+export function listPapersNeedingFulltext(db: Db, projectId: string, limit = 200) {
+  return db
+    .prepare(
+      `SELECT paper_id, title, abstract, url, external_id, pdf_url, fulltext_path
+       FROM papers
+       WHERE project_id = ? AND scored_at IS NULL
+         AND (fulltext IS NULL OR trim(fulltext) = '')
+         AND in_library = 0
+       ORDER BY published_at DESC NULLS LAST, rowid
+       LIMIT ?`,
+    )
+    .all(projectId, limit) as unknown as {
+    paper_id: string;
+    title: string;
+    abstract: string | null;
+    url: string | null;
+    external_id: string | null;
+    pdf_url: string | null;
+    fulltext_path: string | null;
+  }[];
+}
+
+export function setPaperPdfUrl(db: Db, paperId: string, pdfUrl: string): void {
+  db.prepare('UPDATE papers SET pdf_url = ? WHERE paper_id = ?').run(pdfUrl, paperId);
+}
+
+export function setPaperFulltext(
+  db: Db,
+  paperId: string,
+  data: { path: string; text: string },
+): void {
+  db.prepare(
+    'UPDATE papers SET fulltext_path = ?, fulltext = ? WHERE paper_id = ?',
+  ).run(data.path, data.text, paperId);
+}
+
+export function getPaperFulltextRow(
+  db: Db,
+  paperId: string,
+): { fulltext_path: string | null; fulltext: string | null; pdf_url: string | null } | undefined {
+  return db
+    .prepare('SELECT fulltext_path, fulltext, pdf_url FROM papers WHERE paper_id = ?')
+    .get(paperId) as
+    | { fulltext_path: string | null; fulltext: string | null; pdf_url: string | null }
+    | undefined;
 }
 
 /** 1 件ずつ確定させる。途中で終了しても済んだ分は残る（NFR-06） */
@@ -290,7 +359,7 @@ export function saveScore(
 }
 
 /**
- * 関連度順。**未採点は混ぜない。**
+ * 関連度順。**未採点は混ぜない。ライブラリ済も出さない。**
  * 順位が付いていないものを上位や下位に紛れ込ませると、採点漏れに気づけない（C-07）。
  */
 export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[] {
@@ -301,7 +370,7 @@ export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[
               p.scored_at, p.in_library, p.problem_excerpt
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
-       WHERE p.project_id = ? AND p.scored_at IS NOT NULL
+       WHERE p.project_id = ? AND p.scored_at IS NOT NULL AND p.in_library = 0
        ORDER BY p.relevance DESC
        LIMIT ?`,
     )

@@ -6,6 +6,7 @@ import {
   addToLibrary,
   blendScore,
   countUnscored,
+  countUnscoredMissingFulltext,
   createProject,
   listChunks,
   listLibrary,
@@ -16,6 +17,7 @@ import {
   getChunkEmbedding,
   setChunkEmbedding,
   setManuscript,
+  setPaperFulltext,
   setProjectRoot,
   getProject,
   updateSummary,
@@ -222,8 +224,19 @@ describe('ライブラリ（FR-05 / FR-12）', () => {
 
     addToLibrary(db, PROJ, { paper_id: p!.paper_id, title: 'A', authors: 'Jane Smith', year: 2024 });
 
-    expect(listRanked(db, PROJ)[0]!.in_library).toBe(1);
+    expect(listRanked(db, PROJ)).toHaveLength(0);
     expect(listLibrary(db, PROJ)).toHaveLength(1);
+  });
+
+  it('本文が無い未採点を数える（mypaper 採点用）', () => {
+    upsertPapers(db, PROJ, [
+      { external_id: 'a', source: 's', title: 'A', abstract: null },
+      { external_id: 'b', source: 's', title: 'B', abstract: null },
+    ]);
+    const rows = listUnscored(db, PROJ);
+    setPaperFulltext(db, rows[0]!.paper_id, { path: 'x.pdf', text: 'body' });
+    expect(countUnscoredMissingFulltext(db, PROJ)).toBe(1);
+    expect(listUnscored(db, PROJ, 500, { requireFulltext: true })).toHaveLength(1);
   });
 
   it('同じ DOI は二重登録できない（ADR-0003）', () => {
