@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS projects (
   -- プロジェクトに 1 つ固定。別モデルのベクトルは比較できない
   embed_model  TEXT NOT NULL,
   last_run_id  TEXT,                        -- 同期位置。settings には置かない
+  -- 作業フォルダ（references / mypaper / claims）。未設定可。索引の正本は SQLite
+  root_path    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
