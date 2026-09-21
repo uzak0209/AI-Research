@@ -259,6 +259,72 @@ describe('cron（Queues への投入だけ）', () => {
   });
 });
 
+describe('自発調査 POST /projects/{id}/collect（FR-17）', () => {
+  it('Bearer 無しなら 401', async () => {
+    const res = await handleFetch(
+      new Request(`https://api.test/projects/${PROJECT}/collect`, { method: 'POST' }),
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('投入して 202 と run_id を返す', async () => {
+    const { signAccessToken } = await import('../src/auth');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const sent: unknown[] = [];
+    const store = new Map<string, string>();
+    const fakeEnv = {
+      ...env,
+      COLLECT_QUEUE: { sendBatch: async (b: unknown[]) => void sent.push(...b) },
+      IDEMPOTENCY: {
+        get: async (k: string) => store.get(k) ?? null,
+        put: async (k: string, v: string) => void store.set(k, v),
+      },
+    } as unknown as typeof env;
+
+    const res = await handleFetch(
+      new Request(`https://api.test/projects/${PROJECT}/collect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fakeEnv,
+    );
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as {
+      project_id: string;
+      run_id: string;
+      enqueued: number;
+    };
+    expect(body.project_id).toBe(PROJECT);
+    expect(body.run_id).toMatch(new RegExp(`^${PROJECT}:manual:\\d+$`));
+    expect(body.enqueued).toBe(sent.length);
+    expect(sent.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('連打は 429', async () => {
+    const { signAccessToken } = await import('../src/auth');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const store = new Map<string, string>([[`collect:manual:u1`, '1']]);
+    const fakeEnv = {
+      ...env,
+      COLLECT_QUEUE: { sendBatch: async () => {} },
+      IDEMPOTENCY: {
+        get: async (k: string) => store.get(k) ?? null,
+        put: async (k: string, v: string) => void store.set(k, v),
+      },
+    } as unknown as typeof env;
+
+    const res = await handleFetch(
+      new Request(`https://api.test/projects/${PROJECT}/collect`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fakeEnv,
+    );
+    expect(res.status).toBe(429);
+  });
+});
+
 // --------------------------------------------------------------- 収集
 
 describe('収集の記録（FR-08 / C-07）', () => {

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudClient } from '@ai-research/core';
 import { openDb, type Db } from '../src/shared/db.js';
-import { createProject, countUnscored, getProject } from '../src/shared/repo.js';
-import { syncProjectFromCloud } from '../src/shared/sync.js';
+import { createProject, countUnscored, getProject, setManuscript } from '../src/shared/repo.js';
+import { cloudSummaryFromLocal, syncProjectFromCloud } from '../src/shared/sync.js';
 
 let db: Db;
 const PROJ = 'proj-sync';
@@ -31,13 +31,30 @@ beforeEach(() => {
   });
 });
 
+describe('cloudSummaryFromLocal', () => {
+  it('関連技術が無ければ課題意識だけ', () => {
+    expect(cloudSummaryFromLocal('problem', [])).toBe('problem');
+  });
+
+  it('課題意識と関連技術を連結する', () => {
+    expect(cloudSummaryFromLocal('problem', [{ text: 'DPDK' }, { text: 'NIC' }])).toBe(
+      'problem\n\nDPDK\nNIC',
+    );
+  });
+});
+
 describe('syncProjectFromCloud', () => {
   it('存在しない projectId なら throw', async () => {
     await expect(syncProjectFromCloud(db, mockClient({}), 'missing')).rejects.toThrow(/not found/);
   });
 
   it('pull した run の papers を upsert し last_run_id を進める', async () => {
-    const putProject = vi.fn(async () => ({ project_id: PROJ, title: 'Title', summary: 'Summary text' }));
+    setManuscript(db, PROJ, [{ text: 'DPDK' }, { text: 'RSS' }]);
+    const putProject = vi.fn(async () => ({
+      project_id: PROJ,
+      title: 'Title',
+      summary: 'Summary text\n\nDPDK\nRSS',
+    }));
     const pullRuns = vi.fn(async (_id: string, after?: string | null) => {
       expect(after).toBeNull();
       return {
@@ -80,7 +97,10 @@ describe('syncProjectFromCloud', () => {
       PROJ,
     );
 
-    expect(putProject).toHaveBeenCalledWith(PROJ, { title: 'Title', summary: 'Summary text' });
+    expect(putProject).toHaveBeenCalledWith(PROJ, {
+      title: 'Title',
+      summary: 'Summary text\n\nDPDK\nRSS',
+    });
     expect(inserted).toBe(1);
     expect(lastRunId).toBe('run-2');
     expect(getProject(db, PROJ)?.last_run_id).toBe('run-2');

@@ -154,3 +154,12 @@ export const ProjectResponseSchema = z
     summary: z.string(),
   })
   .openapi('ProjectResponse');
+
+export const CollectAcceptedSchema = z
+  .object({
+    project_id: z.string(),
+    run_id: z.string(),
+    run_date: z.string(),
+    enqueued: z.number().int().nonnegative(),
+  })
+  .openapi('CollectAccepted');
