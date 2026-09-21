@@ -5,8 +5,9 @@ name: Metrics trend
 # - 数値・SVG グラフ: scripts/retro-metrics + render-charts-svg（決定的）
 # - 「何をしてどれだけ動いたか」の文章: Claude（metrics-report.md）
 # - 出し先: docs/metrics-trend.md + docs/metrics-*.svg（README に埋め込み）とジョブサマリ
-# - 改善フロー（router-retro → proposal issue）: 約 30 分ごと（schedule）
+# - 改善フロー（router-retro → proposal issue）: 約 10 分ごと（schedule）
 #   定時は提案のみ。docs / Claude まとめは merge・手動実行のとき書く（コミット洪水を避ける）
+#   ※ schedule は default branch（main）の workflow だけが発火する。dev だけでは回らない。
 #
 # PR が dev / main に merge されたとき（= push）に走る。
 # docs/metrics-trend.md / docs/metrics-*.svg だけの push では再帰しない。
@@ -17,7 +18,8 @@ on:
       - 'docs/metrics-trend.md'
       - 'docs/metrics-*.svg'
   schedule:
-    - cron: '*/30 * * * *' # 約 30 分ごと（GitHub 側で遅れることがある）
+    # 毎時 0,10,20,30,40,50 分（GitHub 側で遅延・間引きされることがある）
+    - cron: '0,10,20,30,40,50 * * * *'
   workflow_dispatch:
     inputs:
       target_env:
@@ -286,9 +288,9 @@ jobs:
 
   # 定時、または手動で propose_issues=true のときだけ。
   # 改善点があれば proposal issue（router-retro。上限 3・自動 PR なし）
-  # report（docs コミット）が落ちても、collect さえ成功していれば提案は回す。
+  # report（docs コミット）とは独立。collect の成果物だけ見ればよい。
   propose:
-    needs: [collect, report]
+    needs: [collect]
     if: >
       always() &&
       needs.collect.result == 'success' &&
