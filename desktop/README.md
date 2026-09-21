@@ -30,7 +30,7 @@ Electron + TypeScript、ローカル SQLite、Transformers.js による関連度
 
 ## 起動
 
-入口はリポジトリ直下の `just desktop`。Cursor 経由だと `ELECTRON_RUN_AS_NODE=1` が付いて Electron が Node になるので、`npm run dev` / `just desktop` はそれを外す。
+入口はリポジトリ直下の `just desktop`。Cursor 経由だと `ELECTRON_RUN_AS_NODE=1` が付いて Electron が Node になるので、`npm run dev` / `just desktop` はそれを外す。API の既定は prod（`https://ai-research.streeeak.link`）。ローカル wrangler に向けるときは `just desktop-cloud`。
 
 ```bash
 just desktop
