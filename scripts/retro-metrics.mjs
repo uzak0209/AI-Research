@@ -36,13 +36,21 @@ function parseArgs(argv) {
 
 // ---------------------------------------------------------------- 設定
 // wrangler.jsonc は行コメントだけを含む。文字列中に // は無い前提で落とす。
-function readDatabaseId(env) {
-  const raw = readFileSync(join(REPO, "worker", "wrangler.jsonc"), "utf8");
-  const stripped = raw
+//
+// CRLF を先に潰しておくこと。JS の正規表現の `.` は `\r` にマッチしないため、
+// CRLF のままだと行末の `$` が成立せず、コメントが 1 行も消えない。
+// Linux の checkout は LF なので CI では表面化せず、Windows だけで落ちる。
+export function stripJsoncComments(raw) {
+  return raw
+    .replace(/\r\n?/g, "\n")
     .split("\n")
     .map((line) => line.replace(/^[ \t]*\/\/.*$/, ""))
     .join("\n");
-  const cfg = JSON.parse(stripped);
+}
+
+function readDatabaseId(env) {
+  const raw = readFileSync(join(REPO, "worker", "wrangler.jsonc"), "utf8");
+  const cfg = JSON.parse(stripJsoncComments(raw));
   const db = cfg?.env?.[env]?.d1_databases?.[0];
   if (!db?.database_id) throw new Error(`wrangler.jsonc に ${env} の database_id が無い`);
   if (db.database_id.startsWith("PLACEHOLDER_")) {
