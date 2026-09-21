@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signAccessToken } from '../src/auth/jwt';
 import { handleFetch } from '../src/index';
 import { ORCA_CHAT_URL } from '../src/orca';
+import { JEV_URL } from '../src/jev';
 import { trendPrompt } from '../src/trend';
 import { utcDate } from '../src/date';
 
@@ -27,7 +28,7 @@ async function authed(path: string, init: RequestInit = {}, bindings: typeof env
   return handleFetch(new Request(`https://api.test${path}`, { ...init, headers }), bindings);
 }
 
-function orcaBody(content: string, model = 'orcarouter/auto') {
+function orcaBody(content: string, model = 'openai/gpt-4o-mini') {
   return {
     model,
     choices: [{ message: { role: 'assistant', content } }],
@@ -40,6 +41,9 @@ function mockUpstream(opts: {
   openalexStatus?: number;
   orca?: unknown;
   orcaStatus?: number;
+  orcaHeaders?: HeadersInit;
+  jev?: unknown;
+  jevStatus?: number;
 }) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -51,7 +55,16 @@ function mockUpstream(opts: {
     }
     if (url.startsWith(ORCA_CHAT_URL) || url.includes('orcarouter.ai')) {
       const status = opts.orcaStatus ?? 200;
-      return new Response(JSON.stringify(opts.orca ?? orcaBody('trend summary')), { status });
+      return new Response(JSON.stringify(opts.orca ?? orcaBody('trend summary')), {
+        status,
+        headers: opts.orcaHeaders,
+      });
+    }
+    if (url.startsWith(JEV_URL) || url.includes('typesafe.ai')) {
+      const status = opts.jevStatus ?? 200;
+      return new Response(JSON.stringify(opts.jev ?? { model: 'jev-1.13.0', answers: {}, usage: { input_tokens: 40 } }), {
+        status,
+      });
     }
     return new Response('unexpected fetch', { status: 500 });
   });
@@ -84,7 +97,7 @@ describe('POST /bff/trends（C1）', () => {
     const res = await authed(
       '/bff/trends',
       { method: 'POST', body: JSON.stringify({ topic: 'DPDK' }) },
-      { ...env, ORCAROUTER_API_KEY: undefined },
+      { ...env, ORCAROUTER_API_KEY: undefined, ORCAROUTER_API_KEY_INTERACTIVE: undefined },
     );
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error: string };
@@ -159,6 +172,7 @@ describe('POST /bff/trends（C1）', () => {
       papers: { title: string }[];
     };
     expect(body.classification).toBe('C1');
+    expect(body.model).toBe('openai/gpt-4o-mini');
     expect(body.summary).toContain('DPDK');
     expect(body.papers[0]?.title).toContain('DPDK');
 
@@ -171,11 +185,19 @@ describe('POST /bff/trends（C1）', () => {
     expect(orca).toBeTruthy();
     const headers = new Headers(orca?.init?.headers);
     expect(headers.get('authorization')).toBe('Bearer test-orca-key');
+    expect(headers.get('x-orcarouter-include-cost')).toBe('true');
     const sent = JSON.parse(String(orca?.init?.body)) as {
       model: string;
+      temperature: number;
+      extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
-    expect(sent.model).toBe('orcarouter/auto');
+    expect(sent.model).toBe('openai/gpt-4o-mini');
+    expect(sent.temperature).toBe(0);
+    expect(sent.extra_body).toEqual({
+      route: 'fallback',
+      models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
     const user = sent.messages.find((m) => m.content.includes('Topic: DPDK'));
     expect(user?.content).toContain('DPDK architecture for 100Gbps');
     expect(user?.content).not.toContain('unpublished');
@@ -191,14 +213,45 @@ describe('POST /bff/trends（C1）', () => {
       endpoint: '/bff/trends',
       calls: 1,
       tokens: 30,
+      model: 'openai/gpt-4o-mini',
     });
     expect(JSON.stringify(usage)).not.toContain('100Gbps 向け');
+  });
+
+  it('INTERACTIVE キーがあれば ORCAROUTER_API_KEY なしでも呼べる', async () => {
+    const calls = mockUpstream({
+      papers: [{ id: 'W1', display_name: 'x' }],
+      orca: orcaBody('ok'),
+    });
+    const res = await authed(
+      '/bff/trends',
+      { method: 'POST', body: JSON.stringify({ topic: 'DPDK' }) },
+      { ...env, ORCAROUTER_API_KEY: undefined, ORCAROUTER_API_KEY_INTERACTIVE: 'interactive-key' },
+    );
+    expect(res.status).toBe(200);
+    const orca = calls.find((c) => c.url.includes('orcarouter.ai'));
+    expect(new Headers(orca?.init?.headers).get('authorization')).toBe('Bearer interactive-key');
+  });
+
+  it('fallback で当たったモデルを usage に残す', async () => {
+    mockUpstream({
+      papers: [{ id: 'W1', display_name: 'x' }],
+      orca: orcaBody('ok', 'openai/gpt-4o-mini'),
+      orcaHeaders: { 'X-Orca-Fallback-Model': 'google/gemini-2.5-flash' },
+    });
+    const res = await authed('/bff/trends', {
+      method: 'POST',
+      body: JSON.stringify({ topic: 'DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { model: string };
+    expect(body.model).toBe('google/gemini-2.5-flash');
   });
 
   it('上限に達していたら Orca の前に 429（NFR-04）', async () => {
     await env.DB.prepare(
       `INSERT INTO llm_usage (user_id, usage_date, endpoint, classification, model, calls, tokens)
-       VALUES (?, ?, '/bff/trends', 'C1', 'orcarouter/auto', 20, 0)`,
+       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', 20, 0)`,
     )
       .bind(PROJECT_USER, utcDate())
       .run();
@@ -217,6 +270,127 @@ describe('POST /bff/trends（C1）', () => {
   it('C2 はまだ 501', async () => {
     const res = await authed('/bff/themes', { method: 'POST' });
     expect(res.status).toBe(501);
+  });
+});
+
+describe('POST /bff/bibliography（C1・Jev）', () => {
+  const work = {
+    id: 'https://openalex.org/W1',
+    doi: 'https://doi.org/10.1234/foo',
+    display_name: 'A study of DPDK',
+    publication_year: 2024,
+    type: 'article',
+    authorships: [{ author: { display_name: 'Ada Lovelace' } }],
+    primary_location: { source: { display_name: 'SIGCOMM' } },
+  };
+
+  function jevAdopt(choice = 'w0') {
+    return {
+      model: 'jev-1.13.0',
+      answers: {
+        match: { type: 'choice', choice, confidence: 0.95, probabilities: { [choice]: 0.95, none: 0.05 } },
+        same_work: { type: 'noul', noul: 0.9 },
+      },
+      usage: { input_tokens: 42, output_tokens: 0 },
+    };
+  }
+
+  it('鍵が無いなら 501', async () => {
+    const res = await authed(
+      '/bff/bibliography',
+      { method: 'POST', body: JSON.stringify({ doi: '10.1234/foo' }) },
+      { ...env, JEV_API_KEY: undefined },
+    );
+    expect(res.status).toBe(501);
+  });
+
+  it('候補 0 件なら record は null。Jev も Orca も呼ばない', async () => {
+    const calls = mockUpstream({ papers: [] });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'no such paper' }),
+    });
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({
+      classification: 'C1',
+      model: null,
+      record: { title: null, authors: null, doi: null },
+    });
+    expect(calls.some((c) => c.url.includes('typesafe'))).toBe(false);
+    expect(calls.some((c) => c.url.includes('orcarouter'))).toBe(false);
+  });
+
+  it('OpenAlex が落ちたら 502。捏造しない', async () => {
+    mockUpstream({ openalexStatus: 503 });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ doi: '10.1234/foo' }),
+    });
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string; detail?: string };
+    expect(body.detail).toBe('openalex status=503');
+    expect(JSON.stringify(body)).not.toContain('test-jev-key');
+  });
+
+  it('Jev が落ちたら 502。usage は増やさない', async () => {
+    mockUpstream({ papers: [work], jevStatus: 503 });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ doi: '10.1234/foo' }),
+    });
+    expect(res.status).toBe(502);
+    const n = await env.DB.prepare('SELECT COUNT(*) AS n FROM llm_usage').first<{ n: number }>();
+    expect(n?.n).toBe(0);
+  });
+
+  it('OpenAlex の行をコピーし、Orca には投げない', async () => {
+    const calls = mockUpstream({ papers: [work], jev: jevAdopt() });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ doi: '10.1234/foo', title: 'A study of DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      classification: string;
+      model: string;
+      record: { title: string; authors: string; doi: string };
+    };
+    expect(body.classification).toBe('C1');
+    expect(body.model).toBe('jev-1.13.0');
+    expect(body.record).toMatchObject({
+      title: 'A study of DPDK',
+      authors: 'Ada Lovelace',
+      doi: '10.1234/foo',
+    });
+    expect(calls.some((c) => c.url.includes('orcarouter'))).toBe(false);
+    const jev = calls.find((c) => c.url.includes('typesafe.ai'));
+    expect(new Headers(jev?.init?.headers).get('authorization')).toBe('Bearer test-jev-key');
+    const sent = JSON.parse(String(jev?.init?.body)) as { model: string; questions: { match: { type: string } } };
+    expect(sent.model).toBe('jev-1.13.0');
+    expect(sent.questions.match.type).toBe('choice');
+    const usage = await env.DB.prepare(
+      'SELECT classification, endpoint, model, tokens FROM llm_usage WHERE user_id = ?',
+    )
+      .bind(PROJECT_USER)
+      .first<{ classification: string; endpoint: string; model: string; tokens: number }>();
+    expect(usage).toMatchObject({
+      classification: 'C1',
+      endpoint: '/bff/bibliography',
+      model: 'jev-1.13.0',
+      tokens: 42,
+    });
+  });
+
+  it('Jev が none なら項目は null。著者を生成しない', async () => {
+    mockUpstream({ papers: [work], jev: jevAdopt('none') });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'A study of DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { record: { authors: string | null; doi: string | null } };
+    expect(body.record.authors).toBeNull();
+    expect(body.record.doi).toBeNull();
   });
 });
 

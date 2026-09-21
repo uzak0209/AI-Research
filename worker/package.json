@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --env dev",
+    "local:env": "bash scripts/local-env.sh",
+    "local:token": "node scripts/mint-access.mjs",
+    "local:verify": "bash scripts/verify-local.sh",
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "deploy:dev": "wrangler deploy --env dev",

@@ -1,6 +1,7 @@
 import type { FetchedPaper } from './openalex';
 import { fetchFromSource } from './openalex';
-import { C1_MODEL, chatCompletion } from './orca';
+import { chatCompletion } from './orca';
+import { ORCA_POLICY } from './orca-policy';
 
 export const TREND_ENDPOINT = '/bff/trends';
 export const TREND_PAPER_LIMIT = 12;
@@ -55,7 +56,7 @@ export async function summarizeTrend(
       content: 'You summarize public research trends. Never claim a paper that is not in the user list.',
     },
     { role: 'user', content: trendPrompt(topic, papers) },
-  ], C1_MODEL);
+  ], ORCA_POLICY.C1);
 
   if (!result.ok) return result;
   return { ok: true, summary: result.text, model: result.model, tokens: result.tokens };

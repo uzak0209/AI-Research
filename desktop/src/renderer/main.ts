@@ -84,6 +84,7 @@ const READ_LABEL: Record<ReadStatus, string> = {
 };
 
 let projectId = '';
+let projectRoot: string | null = null;
 let libFilter: 'all' | 'starred' | ReadStatus = 'all';
 let libTag: string | null = null;
 let selectedRef: string | null = null;
@@ -814,7 +815,7 @@ function renderPaperDetail(p: RankedPaper) {
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, `最も近い自分の主張（${p.nearest_chunk_sim?.toFixed(3)}）`),
+        el('h3', {}, `最も近い提案手法（${p.nearest_chunk_sim?.toFixed(3)}）`),
         el('p', { class: 'abstract' }, p.nearest_chunk_text),
         el('p', { class: 'note-info' }, 'これは最も近いという事実で、競合しているという判定ではありません。'),
       ),
@@ -875,7 +876,29 @@ window.api.onScoreEvent((raw) => {
 
 // --- プロジェクト -------------------------------------------------------------
 
+function showWorkspace(root: string | null): void {
+  projectRoot = root;
+  const empty = $('proj-empty');
+  const tree = $('proj-tree');
+  const pathEl = $('proj-root');
+  const titleEl = $('titlebar-title');
+  const name = ($('proj-title') as HTMLInputElement).value.trim();
+  const label = name || (root ? root.replace(/^.*[/\\]/, '') : 'AI-Research');
+  titleEl.textContent = label;
+  document.title = label;
+  if (root) {
+    empty.hidden = true;
+    tree.hidden = false;
+    pathEl.textContent = root;
+  } else {
+    empty.hidden = false;
+    tree.hidden = true;
+    pathEl.textContent = '';
+  }
+}
+
 $('proj-save').addEventListener('click', async () => {
+  const title = ($('proj-title') as HTMLInputElement).value.trim();
   const summary = ($('summary') as HTMLTextAreaElement).value.trim();
   const claims = ($('claims') as HTMLTextAreaElement).value
     .split('\n')
@@ -883,6 +906,7 @@ $('proj-save').addEventListener('click', async () => {
     .filter(Boolean);
 
   const ok = await guard('保存', async () => {
+    if (title) await window.api.updateTitle(projectId, title);
     await window.api.updateSummary(projectId, summary);
     await window.api.setClaims(projectId, claims);
     return true;
@@ -890,19 +914,69 @@ $('proj-save').addEventListener('click', async () => {
   if (ok) setStatus('保存した。採点し直しが必要です。');
 });
 
+function applyWorkspace(res: { root: string; title: string; action: 'create' | 'open' }): void {
+  ($('proj-title') as HTMLInputElement).value = res.title;
+  showWorkspace(res.root);
+  setStatus(res.action === 'open' ? '作業フォルダを開いた' : '作業フォルダを作った');
+  $('tab-project').click();
+}
+
+$('proj-mkdir').addEventListener('click', async () => {
+  const res = (await window.api.createWorkspace()) as
+    | { ok: true; root: string; title: string; action: 'create' | 'open' }
+    | { ok: false; canceled?: boolean; error?: string };
+  if (!res.ok) {
+    if (res.canceled) return;
+    setStatus(res.error ?? 'フォルダを作れなかった', 'error');
+    return;
+  }
+  applyWorkspace(res);
+});
+
+$('proj-open').addEventListener('click', async () => {
+  const res = (await window.api.openWorkspace()) as
+    | { ok: true; root: string; title: string; action: 'create' | 'open' }
+    | { ok: false; canceled?: boolean; error?: string };
+  if (!res.ok) {
+    if (res.canceled) return;
+    setStatus(res.error ?? 'フォルダを開けなかった', 'error');
+    return;
+  }
+  applyWorkspace(res);
+});
+
+$('proj-reveal').addEventListener('click', async () => {
+  const res = (await window.api.revealWorkspace(projectId)) as { ok: boolean; error?: string };
+  if (!res.ok) setStatus(res.error ?? 'フォルダを開けなかった', 'error');
+});
+
+window.api.onWorkspaceChanged((e) => applyWorkspace(e));
+window.api.onWorkspaceError((message) => setStatus(message, 'error'));
+
 // --- 起動 --------------------------------------------------------------------
 
 async function boot() {
-  const projects = (await window.api.listProjects()) as { project_id: string; summary: string }[];
+  document.body.dataset.platform = window.api.platform;
+  $('proj-reveal').textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
+  const projects = (await window.api.listProjects()) as {
+    project_id: string;
+    title: string;
+    summary: string;
+    root_path: string | null;
+  }[];
   const p =
     projects[0] ??
     ((await window.api.createProject('新しいプロジェクト', '')) as {
       project_id: string;
+      title: string;
       summary: string;
+      root_path: string | null;
     });
 
   projectId = p.project_id;
+  ($('proj-title') as HTMLInputElement).value = p.title ?? '';
   ($('summary') as HTMLTextAreaElement).value = p.summary ?? '';
+  showWorkspace(p.root_path ?? null);
 
   const claims = (await window.api.listClaims(projectId)) as { text: string }[];
   ($('claims') as HTMLTextAreaElement).value = claims.map((c) => c.text).join('\n');

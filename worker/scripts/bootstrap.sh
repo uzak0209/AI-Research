@@ -71,6 +71,7 @@ $( [ "$ENV_NAME" = "prod" ] && echo "     env.prod.routes[0].pattern            
 2. 秘密を入れる（値は対話で聞かれる。引数やログに出さない。C-06）
      npx wrangler secret put JWT_SIGNING_KEY --env ${ENV_NAME}
      npx wrangler secret put ORCAROUTER_API_KEY --env ${ENV_NAME}
+     npx wrangler secret put JEV_API_KEY --env ${ENV_NAME}
 
 3. マイグレーションを当てる
      npx wrangler d1 migrations apply ${D1_NAME} --remote

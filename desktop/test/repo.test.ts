@@ -15,6 +15,8 @@ import {
   saveScore,
   setChunkEmbedding,
   setManuscript,
+  setProjectRoot,
+  getProject,
   updateSummary,
   upsertPapers,
 } from '../src/shared/repo.js';
@@ -218,5 +220,13 @@ describe('ライブラリ（FR-05 / FR-12）', () => {
     addToLibrary(db, PROJ, { title: 'T1', authors: 'A B', year: 2024 });
     addToLibrary(db, PROJ, { title: 'T2', authors: 'C D', year: 2024 });
     expect(listLibrary(db, PROJ)).toHaveLength(2);
+  });
+});
+
+describe('作業フォルダ', () => {
+  it('root_path を後から付けられる', () => {
+    expect(getProject(db, PROJ)?.root_path).toBeNull();
+    setProjectRoot(db, PROJ, '/tmp/proj');
+    expect(getProject(db, PROJ)?.root_path).toBe('/tmp/proj');
   });
 });

@@ -4,13 +4,14 @@
 **`.bib` / Typst への自動書き出し**・原稿ファクトチェック。
 外部 LLM の統制利用も目的に含む。特定の参考文献マネージャへの依存は前提にしない。
 
-> **設計フェーズ。** 正本は [要件 1 本](docs/requirements.md) と [ADR 4 本](docs/adr/)。
-> 実装は [prototypes/judge-bench](prototypes/judge-bench/) の関連度ランキングのみ（検証用）。
+> **設計フェーズ。** 正本は [要件 1 本](docs/requirements.md) と [ADR 5 本](docs/adr/)。
+> 実装は [desktop](desktop/)・[worker](worker/)・[packages/core](packages/core/) に部分的にある。
+> 未実装の項目は各 README の表を参照。[prototypes/judge-bench](prototypes/judge-bench/) は検証用の関連度ランキング。
 
 | | |
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 何を・なぜ |
-| [docs/adr/](docs/adr/) | どう作るか（0001〜0004） |
+| [docs/adr/](docs/adr/) | どう作るか（0001〜0005） |
 | [docs/er-diagram.md](docs/er-diagram.md) | データ配置（ER 図） |
 
 ## 何ができるか（初版の目標）
@@ -56,9 +57,16 @@
 > 上流プロバイダは各自の保持ポリシーに従う。「残らない」とは説明しない。
 
 
-## デスクトップ起動方法
+## ローカル検証
+
+入口は `just`（未導入なら `brew install just`）。`just` で一覧が出る。
 
 ```bash
-cd desktop
-npm run dev
+just env                 # worker/.dev.vars と local D1
+just worker              # BFF  http://127.0.0.1:8787
+just desktop             # Electron（ELECTRON_RUN_AS_NODE を外す）
+just verify              # worker 起動中に /health と書誌 BFF
 ```
+
+有料キーは `worker/.dev.vars` に書く。GitHub Secret からは引き戻せない。クライアントには置かない（`C-06`）。
+デスクトップはまだ `POST /bff/bibliography` を呼ばない。書誌 BFF は `just verify`。

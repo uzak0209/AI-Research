@@ -14,6 +14,7 @@ export interface Project {
   summary: string;
   embed_model: string;
   last_run_id: string | null;
+  root_path: string | null;
 }
 
 export interface PaperInput {
@@ -54,27 +55,44 @@ export function blendScore(simSummary: number, nearestChunkSim: number | null): 
 
 // --- プロジェクト -----------------------------------------------------------
 
+const PROJECT_COLS = 'project_id, title, summary, embed_model, last_run_id, root_path';
+
 export function createProject(
   db: Db,
-  p: { title: string; summary: string; embed_model: string; project_id?: string },
+  p: { title: string; summary: string; embed_model: string; project_id?: string; root_path?: string | null },
 ): Project {
   const id = p.project_id ?? randomUUID();
   db.prepare(
-    'INSERT INTO projects (project_id, title, summary, embed_model) VALUES (?, ?, ?, ?)',
-  ).run(id, p.title, p.summary, p.embed_model);
-  return { project_id: id, title: p.title, summary: p.summary, embed_model: p.embed_model, last_run_id: null };
+    'INSERT INTO projects (project_id, title, summary, embed_model, root_path) VALUES (?, ?, ?, ?, ?)',
+  ).run(id, p.title, p.summary, p.embed_model, p.root_path ?? null);
+  return {
+    project_id: id,
+    title: p.title,
+    summary: p.summary,
+    embed_model: p.embed_model,
+    last_run_id: null,
+    root_path: p.root_path ?? null,
+  };
 }
 
 export function getProject(db: Db, projectId: string): Project | undefined {
   return db
-    .prepare('SELECT project_id, title, summary, embed_model, last_run_id FROM projects WHERE project_id = ?')
+    .prepare(`SELECT ${PROJECT_COLS} FROM projects WHERE project_id = ?`)
     .get(projectId) as Project | undefined;
 }
 
 export function listProjects(db: Db): Project[] {
   return db
-    .prepare('SELECT project_id, title, summary, embed_model, last_run_id FROM projects ORDER BY created_at')
+    .prepare(`SELECT ${PROJECT_COLS} FROM projects ORDER BY created_at`)
     .all() as unknown as Project[];
+}
+
+export function updateTitle(db: Db, projectId: string, title: string): void {
+  db.prepare('UPDATE projects SET title = ? WHERE project_id = ?').run(title, projectId);
+}
+
+export function setProjectRoot(db: Db, projectId: string, rootPath: string): void {
+  db.prepare('UPDATE projects SET root_path = ? WHERE project_id = ?').run(rootPath, projectId);
 }
 
 /**

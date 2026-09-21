@@ -55,8 +55,12 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         # action は Claude の実行環境に GH_TOKEN を渡さないので、`gh pr create` /
         # `gh issue comment` を使わせるためにここで入れる。
+        # 有料キーも同じ経路。実験はモックではなく実測（C-07）。値は issue に書くな。
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # ブランチは dev から切る。pr-target.yml が base=dev 以外の PR を
@@ -69,14 +73,21 @@ jobs:
           allowed_bots: claude
           additional_permissions: |
             actions: read
+          settings: |
+            {
+              "env": {
+                "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
+                "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
+                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}"
+              }
+            }
           prompt: |
             対象は ${{ github.repository }} の
             #${{ github.event.issue.number || github.event.pull_request.number }} です。
             内容は `gh issue view ${{ github.event.issue.number || github.event.pull_request.number }} --comments`
             で読めます。この issue / コメントの内容に対応してください。
 
-            このリポジトリは現在**設計フェーズ**で、実装コードはまだ無い。
-            中身はアーキテクチャ決定記録 (ADR) と README のみ。
+            正本は `docs/requirements.md` と ADR 0001〜0005。実装は `worker/` と `desktop/`。
 
             守ること:
             - `docs/adr/README.md` と関連する ADR を必ず読んでから着手する
@@ -87,6 +98,9 @@ jobs:
               新しい ADR の追加を提案する PR にするか issue でその旨を述べる
             - 特に次の原則は破らない: 未公開の研究データはローカルに留める
               （実験データ・実験ノート・投稿前の原稿をクラウドに送る設計にしない）
+            - 有料キー（`JEV_API_KEY` / `ORCAROUTER_API_KEY` / `OPENALEX_API_KEY`）は
+              プロセス環境にある。上流の評価はモックではなく実測する。
+              **値を issue / PR / コミットに書かない。** キーが空なら実測せずその旨を述べる
             - ADR を新規追加する場合は `docs/adr/README.md` の一覧にも追記する
 
             変更を伴う issue では、調べて終わりにせず必ず最後まで実行すること:

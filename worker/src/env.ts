@@ -14,8 +14,14 @@ export interface Env {
    * 未設定なら BFF は 501。クライアントに置かない（C-06）
    */
   ORCAROUTER_API_KEY?: string;
+  /** C1 interactive。未設定なら ORCAROUTER_API_KEY を使う */
+  ORCAROUTER_API_KEY_INTERACTIVE?: string;
+  ORCAROUTER_API_KEY_CRON?: string;
+  ORCAROUTER_API_KEY_SENSITIVE?: string;
   /** OpenAlex。2026-02 以降は共有 IP からの無鍵呼び出しが落ちる。クライアントに置かない（C-06） */
   OPENALEX_API_KEY?: string;
+  /** TypeSafe Jev（C1 書誌の判定）。クライアントに置かない（C-06, ADR-0002） */
+  JEV_API_KEY?: string;
 }
 
 /** 1 メッセージ = 1（プロジェクト × ソース）。実行を分けて 10ms 枠を稼ぐ */

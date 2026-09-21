@@ -2,12 +2,28 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 const api = {
+  platform: process.platform,
   // --- プロジェクト ---
   listProjects: () => ipcRenderer.invoke('projects:list'),
   createProject: (title: string, summary: string) =>
     ipcRenderer.invoke('projects:create', title, summary),
   updateSummary: (projectId: string, summary: string) =>
     ipcRenderer.invoke('projects:updateSummary', projectId, summary),
+  updateTitle: (projectId: string, title: string) =>
+    ipcRenderer.invoke('projects:updateTitle', projectId, title),
+  createWorkspace: () => ipcRenderer.invoke('projects:createWorkspace'),
+  openWorkspace: () => ipcRenderer.invoke('projects:openWorkspace'),
+  revealWorkspace: (projectId: string) => ipcRenderer.invoke('projects:revealWorkspace', projectId),
+  onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
+    const h = (_: unknown, e: { root: string; title: string; action: 'create' | 'open' }) => cb(e);
+    ipcRenderer.on('workspace:changed', h);
+    return () => ipcRenderer.off('workspace:changed', h);
+  },
+  onWorkspaceError: (cb: (message: string) => void) => {
+    const h = (_: unknown, message: string) => cb(message);
+    ipcRenderer.on('workspace:error', h);
+    return () => ipcRenderer.off('workspace:error', h);
+  },
 
   listClaims: (projectId: string) => ipcRenderer.invoke('claims:list', projectId),
   setClaims: (projectId: string, claims: string[]) =>
