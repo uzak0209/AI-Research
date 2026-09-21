@@ -54,18 +54,37 @@ export async function dailyCallCount(d1: D1Database, userId: string, day = utcDa
   return Number(rows[0]?.calls ?? 0);
 }
 
-/** 監査に本文を残さない。endpoint・分類・モデル・トークン数だけ（ADR-0002） */
+/**
+ * 監査に本文を残さない。宛先・分類・数量だけ（ADR-0002）。
+ *
+ * 宛先ごとに比べられるよう、要求した宛先（model）と応答したモデル（resolved_model）で
+ * 行を分ける。推論時間とコストは**合計**で積む。この行は upsert で積み上がる集計なので、
+ * 1 回分の値を置くと最後の呼び出しで上書きされる。平均は latency_ms_sum / calls で出す。
+ */
 export async function recordLlmUsage(
   d1: D1Database,
   row: {
     userId: string;
     endpoint: string;
     classification: Classification;
-    model: string | null;
+    /** 要求した宛先。Named Router 名またはモデル ID */
+    requestedModel: string | null;
+    /** 実際に応答したモデル */
+    resolvedModel: string | null;
     tokens: number;
+    /** 取れなかったときは null。0 として足さない（C-07） */
+    costUsd?: number | null;
+    latencyMs?: number;
+    fallbackUsed?: boolean;
   },
 ): Promise<void> {
   const day = utcDate();
+  const requested = row.requestedModel ?? '';
+  const resolved = row.resolvedModel ?? '';
+  const cost = row.costUsd ?? 0;
+  const latency = row.latencyMs ?? 0;
+  const fallback = row.fallbackUsed ? 1 : 0;
+
   await execute(
     d1,
     db
@@ -75,17 +94,25 @@ export async function recordLlmUsage(
         usage_date: day,
         endpoint: row.endpoint,
         classification: row.classification,
-        model: row.model,
+        model: requested,
+        resolved_model: resolved,
         calls: 1,
         tokens: row.tokens,
+        cost_usd: cost,
+        latency_ms_sum: latency,
+        fallback_calls: fallback,
       })
       .onConflict((oc) =>
-        oc.columns(['user_id', 'usage_date', 'endpoint']).doUpdateSet({
-          calls: sql`calls + 1`,
-          tokens: sql`tokens + ${row.tokens}`,
-          model: row.model,
-          classification: row.classification,
-        }),
+        oc
+          .columns(['user_id', 'usage_date', 'endpoint', 'model', 'resolved_model'])
+          .doUpdateSet({
+            calls: sql`calls + 1`,
+            tokens: sql`tokens + ${row.tokens}`,
+            cost_usd: sql`cost_usd + ${cost}`,
+            latency_ms_sum: sql`latency_ms_sum + ${latency}`,
+            fallback_calls: sql`fallback_calls + ${fallback}`,
+            classification: row.classification,
+          }),
       )
       .compile(),
   );

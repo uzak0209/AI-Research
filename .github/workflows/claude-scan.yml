@@ -93,15 +93,11 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           SCAN_TYPE: ${{ matrix.scan_type }}
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
-          # 実測用。値は issue に出さない（shared.md）。Workers の deploy 用トークンは渡さない。
-          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
-          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
-          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
-          # router-retro が D1 を読む。未設定なら空になり、スキャン側は issue を出さずに降りる
-          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CF_API_TOKEN: ${{ secrets.CF_D1_READ_TOKEN }}
-          D1_ID_DEV: ${{ secrets.D1_ID_DEV }}
-          D1_ID_PROD: ${{ secrets.D1_ID_PROD }}
+          # router-retro が D1 を読むための認証。deploy-worker.yml と同じ Secret を使う。
+          # 未設定なら空になり、スキャン側が「読めなければ issue を出さない」で降りる。
+          # D1 の database_id は秘密ではないので worker/wrangler.jsonc から読む（Secret にしない）
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
@@ -113,10 +109,8 @@ jobs:
                 "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
                 "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}",
                 "LOOKBACK_DAYS": "${{ github.event.inputs.lookback_days || '7' }}",
-                "CF_ACCOUNT_ID": "${{ secrets.CF_ACCOUNT_ID }}",
-                "CF_API_TOKEN": "${{ secrets.CF_D1_READ_TOKEN }}",
-                "D1_ID_DEV": "${{ secrets.D1_ID_DEV }}",
-                "D1_ID_PROD": "${{ secrets.D1_ID_PROD }}"
+                "CLOUDFLARE_ACCOUNT_ID": "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}",
+                "CLOUDFLARE_API_TOKEN": "${{ secrets.CLOUDFLARE_API_TOKEN }}"
               }
             }
           prompt: |
