@@ -512,14 +512,18 @@ function registerIpc(): void {
     const accepted = await cloud.client.startCollect(projectId);
 
     let inserted = 0;
+    let pulled = 0;
     let timedOut = true;
+    let statuses: string[] = [];
     const deadline = Date.now() + 90_000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
       const result = await syncProjectFromCloud(db, cloud.client, projectId);
       inserted += result.inserted;
+      pulled += result.pulled;
+      if (result.statuses.length > 0) statuses = result.statuses;
       const current = getProject(db, projectId);
-      if (current?.last_run_id === accepted.run_id || result.inserted > 0) {
+      if (current?.last_run_id === accepted.run_id || result.inserted > 0 || result.pulled > 0) {
         timedOut = false;
         break;
       }
@@ -534,6 +538,8 @@ function registerIpc(): void {
       run_date: accepted.run_date,
       enqueued: accepted.enqueued,
       inserted,
+      pulled,
+      statuses,
       timedOut,
     };
   });

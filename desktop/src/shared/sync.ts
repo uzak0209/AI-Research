@@ -21,7 +21,12 @@ export async function syncProjectFromCloud(
   db: Db,
   client: CloudClient,
   projectId: string,
-): Promise<{ inserted: number; lastRunId: string | null }> {
+): Promise<{
+  inserted: number;
+  pulled: number;
+  lastRunId: string | null;
+  statuses: string[];
+}> {
   const project = getProject(db, projectId);
   if (!project) throw new Error(`project not found: ${projectId}`);
 
@@ -31,7 +36,11 @@ export async function syncProjectFromCloud(
   const { runs } = await client.pullRuns(projectId, project.last_run_id);
 
   let inserted = 0;
+  let pulled = 0;
+  const statuses: string[] = [];
   for (const run of runs) {
+    statuses.push(run.status);
+    pulled += run.papers.length;
     inserted += upsertPapers(
       db,
       projectId,
@@ -54,5 +63,5 @@ export async function syncProjectFromCloud(
     setLastRunId(db, projectId, lastRunId);
   }
 
-  return { inserted, lastRunId };
+  return { inserted, pulled, lastRunId, statuses };
 }

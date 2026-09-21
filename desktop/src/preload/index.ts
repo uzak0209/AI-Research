@@ -27,6 +27,8 @@ const api = {
       run_date: string;
       enqueued: number;
       inserted: number;
+      pulled: number;
+      statuses: string[];
       timedOut: boolean;
     }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
