@@ -135,6 +135,47 @@ chart("コスト / 論文 (USD)", "usd", "cost_per_paper", 4);
 chart("取得論文数", "papers", "papers", 0);
 
 // ------------------------------------------------ 明細
+// ------------------------------------------------ 宛先ごとの比較
+const routes = m.by_route ?? [];
+say("### 宛先ごとの比較");
+say();
+if (routes.length === 0) {
+  say("記録なし。");
+} else {
+  say("| 宛先 (要求) | 応答したモデル | endpoint | 呼出 | 平均レイテンシ(ms) | トークン/回 | コスト/回(USD) | 受け皿率 |");
+  say("|---|---|---|---:|---:|---:|---:|---:|");
+  for (const r of routes) {
+    const rate = r.fallback_rate === null ? "—" : `${(r.fallback_rate * 100).toFixed(0)}%`;
+    say(
+      `| \`${r.route}\` | \`${r.resolved_model}\` | ${r.endpoint} | ${int(r.calls)} ` +
+        `| ${r.latency_ms_avg === null ? "未計測" : n2(r.latency_ms_avg)} ` +
+        `| ${n2(r.tokens_per_call)} | ${n4(r.cost_per_call)} | ${rate} |`,
+    );
+  }
+  say();
+  say(
+    "要求した宛先と応答したモデルが違う行は、受け皿へ落ちた分。" +
+      "**呼出回数が少ない行は平均が揺れるので、回数を見てから読むこと。**",
+  );
+
+  // 呼出の多い順に、平均レイテンシを並べる。宛先の速さを一目で比べる用
+  const timed = routes.filter((r) => r.latency_ms_avg !== null).slice(0, 8);
+  if (timed.length >= 2) {
+    const labels = timed.map((r) => `"${r.resolved_model.split("/").pop()}"`).join(", ");
+    const values = timed.map((r) => r.latency_ms_avg.toFixed(0)).join(", ");
+    const hi = Math.max(...timed.map((r) => r.latency_ms_avg));
+    say();
+    say("```mermaid");
+    say("xychart-beta");
+    say('    title "宛先ごとの平均レイテンシ"');
+    say(`    x-axis [${labels}]`);
+    say(`    y-axis "ms" 0 --> ${Math.ceil(hi * 1.1)}`);
+    say(`    bar [${values}]`);
+    say("```");
+  }
+}
+say();
+
 say("### 明細");
 say();
 say("| 日付 | 呼出 | トークン | コスト(USD) | 論文 | トークン/論文 | コスト/論文 | 受け皿 | run |");

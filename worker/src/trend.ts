@@ -49,7 +49,19 @@ export async function summarizeTrend(
   apiKey: string,
   topic: string,
   papers: FetchedPaper[],
-): Promise<{ ok: true; summary: string; model: string; tokens: number } | { ok: false; status: number }> {
+): Promise<
+  | {
+      ok: true;
+      summary: string;
+      model: string;
+      requestedModel: string;
+      tokens: number;
+      costUsd: number | null;
+      latencyMs: number;
+      fallbackUsed: boolean;
+    }
+  | { ok: false; status: number }
+> {
   const result = await chatCompletion(apiKey, [
     {
       role: 'system',
@@ -59,5 +71,14 @@ export async function summarizeTrend(
   ], ORCA_POLICY.C1);
 
   if (!result.ok) return result;
-  return { ok: true, summary: result.text, model: result.model, tokens: result.tokens };
+  return {
+    ok: true,
+    summary: result.text,
+    model: result.model,
+    requestedModel: result.requestedModel,
+    tokens: result.tokens,
+    costUsd: result.costUsd,
+    latencyMs: result.latencyMs,
+    fallbackUsed: result.fallbackUsed,
+  };
 }

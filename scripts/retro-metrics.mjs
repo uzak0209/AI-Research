@@ -107,6 +107,23 @@ const SQL_RUNS = `
   ORDER BY run_date
 `;
 
+// 宛先ごとの比較。model は Named Router 名またはモデル ID。
+// 推論時間は合計で持っているので、平均は latency_ms_sum / calls で出す。
+const SQL_BY_ROUTE = `
+  SELECT model                AS route,
+         resolved_model       AS resolved,
+         endpoint,
+         SUM(calls)           AS calls,
+         SUM(tokens)          AS tokens,
+         SUM(cost_usd)        AS cost_usd,
+         SUM(latency_ms_sum)  AS latency_ms_sum,
+         SUM(fallback_calls)  AS fallback_calls
+  FROM llm_usage
+  WHERE usage_date >= ?
+  GROUP BY model, resolved_model, endpoint
+  ORDER BY SUM(calls) DESC
+`;
+
 // 比率は「割れないときは null」にする。0 で埋めると改善に見えてしまう（C-07）
 export function ratio(numerator, denominator) {
   if (!denominator) return null;
@@ -153,6 +170,34 @@ export function buildSeries(usage, papers, runs, since) {
     }));
 }
 
+// 宛先ごとの 1 回あたりの値。latency と cost は合計で入っているので calls で割る。
+// 呼び出しが無い行は割らずに null にする（0 と「不明」を混ぜない。C-07）
+export function routeRows(rows) {
+  return rows
+    .map((r) => {
+      const calls = Number(r.calls ?? 0);
+      const tokens = Number(r.tokens ?? 0);
+      const cost = Number(r.cost_usd ?? 0);
+      const latencySum = Number(r.latency_ms_sum ?? 0);
+      const fallback = Number(r.fallback_calls ?? 0);
+      return {
+        route: r.route || "(不明)",
+        resolved_model: r.resolved || "(不明)",
+        endpoint: r.endpoint,
+        calls,
+        tokens,
+        cost_usd: cost,
+        fallback_calls: fallback,
+        tokens_per_call: ratio(tokens, calls),
+        cost_per_call: ratio(cost, calls),
+        // latency_ms_sum が 0 のままなら未計測（0003 より前の行）。平均を 0 と言わない
+        latency_ms_avg: latencySum > 0 ? ratio(latencySum, calls) : null,
+        fallback_rate: ratio(fallback, calls),
+      };
+    })
+    .sort((a, b) => b.calls - a.calls);
+}
+
 // 前半と後半の平均を比べる。n を必ず添えて、少ない母数で断定しない材料にする
 export function trend(series, key) {
   const vals = series.map((e) => e[key]).filter((v) => v !== null && Number.isFinite(v));
@@ -193,12 +238,13 @@ async function main() {
   }
 
   const ctx = { accountId, token, databaseId: db.id };
-  let usage, papers, runs;
+  let usage, papers, runs, byRoute;
   try {
-    [usage, papers, runs] = await Promise.all([
+    [usage, papers, runs, byRoute] = await Promise.all([
       query(ctx, SQL_USAGE, [since]),
       query(ctx, SQL_PAPERS, [since]),
       query(ctx, SQL_RUNS, [since]),
+      query(ctx, SQL_BY_ROUTE, [since]),
     ]);
   } catch (err) {
     // テーブル未作成もここに来る。取得失敗として残す（0 件とは区別する）
@@ -232,6 +278,7 @@ async function main() {
       cost_per_paper: trend(comparable, "cost_per_paper"),
       papers: trend(comparable, "papers"),
     },
+    by_route: routeRows(byRoute),
     series,
   };
 }

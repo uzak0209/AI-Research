@@ -183,8 +183,12 @@ app.openapi(
       userId,
       endpoint: TREND_ENDPOINT,
       classification: 'C1',
-      model: llm.model,
+      requestedModel: llm.requestedModel,
+      resolvedModel: llm.model,
       tokens: llm.tokens,
+      costUsd: llm.costUsd,
+      latencyMs: llm.latencyMs,
+      fallbackUsed: llm.fallbackUsed,
     });
 
     return c.json(
