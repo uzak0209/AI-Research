@@ -30,6 +30,7 @@
 - [ADR-0002](docs/adr/0002-external-llm-bff-classification.md) — OrcaRouter・BFF・C1/C2/C3
 - [ADR-0003](docs/adr/0003-references-and-manuscript-factcheck.md) — 参考文献ライブラリ・**PDF／注釈**・CLI・原稿 FC
 - [ADR-0004](docs/adr/0004-cloudflare-edge-and-scheduling.md) — クラウド全体構成（無料枠・収集・BFF・防御）
+- [ADR-0005](docs/adr/0005-cloud-trend-survey-model-tiering.md) — クラウド側トレンド調査・競合収集・Named Router によるモデル使い分け（提案）
 
 ```
 論文ソース → Workers cron → D1 → Electron（関連度採点 / ライブラリ UI+PDF / RAG / テーマ / FC）
