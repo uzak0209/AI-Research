@@ -24,7 +24,7 @@ Electron + TypeScript、ローカル SQLite、Transformers.js による関連度
 | **書き込みごとのコメント**（自動保存・右の一覧で編集） | 動く |
 | **書誌を補う**（Orca 安価モデル＋`references/` 追従。OA 直 PDF のみ） | 動く |
 | **Google でログイン**（PKCE。refresh は `safeStorage`） | 動く |
-| クラウドからの同期 | **未実装**（Worker 側 `/runs` が 501） |
+| クラウドからの同期 | **起動時／手動プル**（`GET /runs` → ローカル採点） |
 | 引用ファイル書き出し（FR-12。マーカー内。ファイルが無ければ作らない） | 動く |
 | CLI（FR-11） | **未実装**（`src/shared/` を共有する形で足す） |
 

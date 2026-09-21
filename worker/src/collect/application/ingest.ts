@@ -19,10 +19,14 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
 
   try {
     const fetched = await deps.papers.fetch(msg.source, search.query);
-    papers = fetched.map((p) => ({
+    const scored = fetched.map((p) => ({
       ...p,
       coarse_score: coarseScore(msg.summary, `${p.title} ${p.abstract ?? ''}`),
+      problem_excerpt: null as string | null,
     }));
+    const excerpt = await deps.problemExcerpt.attach(scored);
+    papers = excerpt.papers;
+    if (excerpt.usage) await deps.usage.recordReview(msg, excerpt.usage);
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }

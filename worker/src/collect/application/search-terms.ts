@@ -21,7 +21,8 @@ export const MAX_TERMS = 6;
 const MIN_TERM_LEN = 3;
 
 const SYSTEM = [
-  'You turn a research project summary into search terms for an academic paper database.',
+  'You turn a research project summary (research problem / 課題意識) into search terms for an academic paper database.',
+  'Prefer vocabulary about problems, challenges, limitations, and gaps stated in the summary.',
   'Reply with ONLY a JSON array of strings. No prose, no code fence.',
   `At most ${MAX_TERMS} terms. Each term is 1-4 words, taken from the vocabulary of the summary.`,
   'Do not invent new research topics that the summary does not mention.',

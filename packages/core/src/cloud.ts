@@ -114,6 +114,29 @@ export class CloudClient {
       body: JSON.stringify(hint),
     });
   }
+
+  /** 収集 run の増分取得（GET /runs）。LLM を通らない（ADR-0004） */
+  async pullRuns(projectId: string, after?: string | null): Promise<SyncRunsResponse> {
+    const q = new URLSearchParams({ project_id: projectId });
+    if (after) q.set('after', after);
+    const res = await this.fetch(`/runs?${q}`);
+    if (!res.ok) throw new Error(`pullRuns failed: ${res.status}`);
+    return (await res.json()) as SyncRunsResponse;
+  }
+
+  /** 課題意識（title / summary）をクラウドへ。判定の書き戻しではない（C-01） */
+  async putProject(
+    projectId: string,
+    input: { title: string; summary: string },
+  ): Promise<{ project_id: string; title: string; summary: string }> {
+    const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`putProject failed: ${res.status}`);
+    return (await res.json()) as { project_id: string; title: string; summary: string };
+  }
 }
 
 /** Worker `BibliographyBodySchema` と同じ。title か doi の少なくとも一方 */
@@ -139,3 +162,25 @@ export type BibliographyRecord = {
   abstract: string | null;
   item_type: string;
 };
+
+export type SyncPaper = {
+  external_id: string;
+  source: string;
+  title: string;
+  abstract: string | null;
+  url: string | null;
+  published_at: string | null;
+  coarse_score: number | null;
+  problem_excerpt: string | null;
+};
+
+export type SyncRun = {
+  run_id: string;
+  run_date: string;
+  status: string;
+  failed_sources_json: string | null;
+  created_at: string;
+  papers: SyncPaper[];
+};
+
+export type SyncRunsResponse = { project_id: string; runs: SyncRun[] };

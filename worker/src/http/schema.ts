@@ -108,3 +108,49 @@ export const BibliographyResponseSchema = z
     pdf_url: z.string().nullable(),
   })
   .openapi('BibliographyResponse');
+
+export const RunPaperSchema = z
+  .object({
+    external_id: z.string(),
+    source: z.string(),
+    title: z.string(),
+    abstract: z.string().nullable(),
+    url: z.string().nullable(),
+    published_at: z.string().nullable(),
+    coarse_score: z.number().nullable(),
+    problem_excerpt: z.string().nullable(),
+  })
+  .openapi('RunPaper');
+
+export const RunSchema = z
+  .object({
+    run_id: z.string(),
+    run_date: z.string(),
+    status: z.enum(['ok', 'empty', 'failed', 'partial']),
+    failed_sources_json: z.string().nullable(),
+    created_at: z.string(),
+    papers: z.array(RunPaperSchema),
+  })
+  .openapi('Run');
+
+export const RunsResponseSchema = z
+  .object({
+    project_id: z.string(),
+    runs: z.array(RunSchema),
+  })
+  .openapi('RunsResponse');
+
+export const ProjectPutBodySchema = z
+  .object({
+    title: z.string().trim().min(1),
+    summary: z.string().trim().min(1),
+  })
+  .openapi('ProjectPutBody');
+
+export const ProjectResponseSchema = z
+  .object({
+    project_id: z.string(),
+    title: z.string(),
+    summary: z.string(),
+  })
+  .openapi('ProjectResponse');

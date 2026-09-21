@@ -5,6 +5,7 @@
 //   - レンダラに Node を渡さない。contextIsolation を切らない
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
+import { NotSignedInError } from '@ai-research/core';
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
 import { appendFileSync, readFileSync, type FSWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -26,6 +27,7 @@ import {
   updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
+import { syncProjectFromCloud } from '../shared/sync.js';
 import { WorkspaceError, createProjectWorkspace } from '../shared/workspace.js';
 import {
   addAttachment,
@@ -263,12 +265,47 @@ function publishAuth(): { signedIn: boolean } {
   return { signedIn };
 }
 
+function pushProjectToCloud(projectId: string): void {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  const p = getProject(db, projectId);
+  if (!p) return;
+  void cloud.client
+    .putProject(projectId, { title: p.title, summary: p.summary })
+    .catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      if (e instanceof NotSignedInError) win?.webContents.send('auth:error', message);
+      else win?.webContents.send('workspace:error', message);
+    });
+}
+
+async function syncAllProjectsFromCloud(): Promise<void> {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  for (const p of listProjects(db)) {
+    try {
+      const { inserted } = await syncProjectFromCloud(db, cloud.client, p.project_id);
+      if (inserted > 0 || countUnscored(db, p.project_id) > 0) {
+        startScoring(p.project_id, DEFAULT_MODEL);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (e instanceof NotSignedInError) {
+        win?.webContents.send('auth:error', message);
+        return;
+      }
+      win?.webContents.send('workspace:error', message);
+      logStartup('同期に失敗: ' + message);
+    }
+  }
+}
+
 async function loginFromMenu(): Promise<{ signedIn: boolean }> {
   if (!cloud) throw new Error('クラウドクライアントが無い');
   await runGoogleLogin(cloud.client, async (url) => {
     await shell.openExternal(url);
   });
-  return publishAuth();
+  const r = publishAuth();
+  await syncAllProjectsFromCloud();
+  return r;
 }
 
 function logoutCloud(): { signedIn: boolean } {
@@ -335,12 +372,15 @@ function registerIpc(): void {
 
   ipcMain.handle('projects:list', () => listProjects(db));
 
-  ipcMain.handle('projects:create', (_e, title: string, summary: string) =>
-    createProject(db, { title, summary, embed_model: DEFAULT_MODEL }),
-  );
+  ipcMain.handle('projects:create', (_e, title: string, summary: string) => {
+    const p = createProject(db, { title, summary, embed_model: DEFAULT_MODEL });
+    pushProjectToCloud(p.project_id);
+    return p;
+  });
 
   ipcMain.handle('projects:updateSummary', (_e, projectId: string, summary: string) => {
     updateSummary(db, projectId, summary);
+    pushProjectToCloud(projectId);
   });
 
   ipcMain.handle('projects:updateTitle', (_e, projectId: string, title: string) => {
@@ -360,6 +400,15 @@ function registerIpc(): void {
     if (!p?.root_path) return { ok: false as const, error: '作業フォルダが未設定' };
     const err = await shell.openPath(p.root_path);
     return err ? { ok: false as const, error: err } : { ok: true as const };
+  });
+
+  ipcMain.handle('projects:sync', async (_e, projectId: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    const result = await syncProjectFromCloud(db, cloud.client, projectId);
+    if (result.inserted > 0 || countUnscored(db, projectId) > 0) {
+      startScoring(projectId, DEFAULT_MODEL);
+    }
+    return result;
   });
 
   ipcMain.handle('claims:list', (_e, projectId: string) => listChunks(db, projectId));
@@ -573,6 +622,9 @@ void app.whenReady().then(() => {
     installAppMenu();
     createWindow();
     logStartup('ウィンドウを作った');
+    if (cloudSignedIn(cloud.session)) {
+      void syncAllProjectsFromCloud();
+    }
   } catch (e) {
     logStartup('ウィンドウ作成に失敗: ' + (e instanceof Error ? (e.stack ?? e.message) : String(e)));
     app.exit(1);

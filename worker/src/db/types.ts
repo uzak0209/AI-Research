@@ -34,6 +34,7 @@ export interface RunPapers {
   url: string | null;
   published_at: string | null;
   coarse_score: number | null;
+  problem_excerpt: string | null;
 }
 
 export interface LlmUsage {
