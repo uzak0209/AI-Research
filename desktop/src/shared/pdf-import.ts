@@ -2,8 +2,8 @@
 //
 // 方針:
 //   - **まずローカルだけで取れるところまで取る。** PDF の Info 辞書と 1 ページ目の本文
-//   - オンライン照会（DOI → 書誌）は**別の関数に分け、呼び出し側が明示的に選ぶ**。
-//     DOI を外部 API に送ると「何を読んでいるか」が外に出るため、既定では行わない（C-03）
+//   - オンライン照会は Worker の POST /bff/bibliography（`bibliography/` の gateway）。
+//     メインからだけ呼ぶ。クライアントから OpenAlex / Orca を直接叩かない（ADR-0002）
 //   - 取れなかった項目は**推測で埋めない**。null のまま返して UI に出す（C-07）
 
 export interface ExtractedMeta {
@@ -21,6 +21,8 @@ export interface ExtractedMeta {
   pageCount: number;
   /** 本文が取れなかった（画像だけの PDF 等）場合に true */
   textEmpty: boolean;
+  /** 1 ページ目。書誌補完の hint 用。4000 字で切る */
+  firstPageText: string | null;
 }
 
 const DOI_RE = /10\.\d{4,9}\/[-._;()/:A-Za-z0-9]+/;
@@ -101,6 +103,7 @@ export async function extractFromPdf(data: Uint8Array): Promise<ExtractedMeta> {
     sources: { title: null, authors: null, year: null, doi: null },
     pageCount: doc.numPages,
     textEmpty: false,
+    firstPageText: null,
   };
 
   try {
@@ -126,23 +129,28 @@ export async function extractFromPdf(data: Uint8Array): Promise<ExtractedMeta> {
 
   // 1〜2 ページ目の本文。DOI は表紙か脚注にあることが多い
   const lines: string[] = [];
+  const page1: string[] = [];
   let joined = '';
   for (let p = 1; p <= Math.min(doc.numPages, 2); p++) {
     const page = await doc.getPage(p);
     const tc = await page.getTextContent();
     const items = tc.items as { str?: string; hasEOL?: boolean }[];
     let cur = '';
+    const pageLines: string[] = [];
     for (const it of items) {
       cur = appendPiece(cur, it.str ?? '');
       if (it.hasEOL) {
-        lines.push(cur);
+        pageLines.push(cur);
         cur = '';
       }
     }
-    if (cur.trim()) lines.push(cur);
-    joined += lines.slice(-1).join('') + ' ';
+    if (cur.trim()) pageLines.push(cur);
+    if (p === 1) page1.push(...pageLines);
+    lines.push(...pageLines);
   }
   joined = lines.join(' ');
+  const page1text = page1.join(' ').replace(/\s+/g, ' ').trim();
+  meta.firstPageText = page1text ? page1text.slice(0, 4000) : null;
 
   meta.textEmpty = joined.trim().length === 0;
 
@@ -171,59 +179,4 @@ export async function extractFromPdf(data: Uint8Array): Promise<ExtractedMeta> {
 
   await task.destroy();
   return meta;
-}
-
-// --- オンライン照会（明示的に呼ぶ） --------------------------------------------
-
-export interface LookupResult {
-  title: string | null;
-  authors: string | null;
-  year: number | null;
-  venue: string | null;
-  abstract: string | null;
-}
-
-/**
- * DOI から書誌を引く。**DOI を外部 API に送る。**
- * 何を読んでいるかが相手に伝わるので、利用者が明示的に選んだときだけ呼ぶこと。
- *
- * @throws 取得できなかったときは投げる。空の結果を「見つからなかった」と偽らない（C-07）
- */
-export async function lookupByDoi(doi: string): Promise<LookupResult> {
-  const url = `https://api.openalex.org/works/https://doi.org/${encodeURIComponent(doi)}`;
-  const res = await fetch(url, {
-    headers: { 'user-agent': 'ai-research (desktop)' },
-  });
-  if (!res.ok) throw new Error(`OpenAlex から取得できなかった (status=${res.status})`);
-
-  const w = (await res.json()) as {
-    display_name?: string;
-    publication_year?: number;
-    authorships?: { author?: { display_name?: string } }[];
-    primary_location?: { source?: { display_name?: string } };
-    abstract_inverted_index?: Record<string, number[]> | null;
-  };
-
-  const authors =
-    w.authorships
-      ?.map((a) => a.author?.display_name)
-      .filter(Boolean)
-      .join('; ') || null;
-
-  let abstract: string | null = null;
-  if (w.abstract_inverted_index) {
-    const slots: string[] = [];
-    for (const [word, positions] of Object.entries(w.abstract_inverted_index)) {
-      for (const p of positions) slots[p] = word;
-    }
-    abstract = slots.filter(Boolean).join(' ').trim() || null;
-  }
-
-  return {
-    title: cleanup(w.display_name),
-    authors,
-    year: w.publication_year ?? null,
-    venue: cleanup(w.primary_location?.source?.display_name),
-    abstract,
-  };
 }

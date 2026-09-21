@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { chatBody, orcaKey } from '../src/orca';
-import { ORCA_POLICY } from '../src/orca-policy';
+import { chatBody, orcaKey } from '../src/shared/orca/chat';
+import {
+  ORCA_POLICY,
+  collectPolicy,
+  reviewPolicy,
+  DEFAULT_COLLECT_ROUTER,
+  DEFAULT_REVIEW_ROUTER,
+} from '../src/shared/orca/policy';
 import type { Env } from '../src/env';
 
 describe('orcaKey', () => {
@@ -18,15 +24,47 @@ describe('orcaKey', () => {
   });
 });
 
-describe('chatBody', () => {
-  it('C1 は fallback チェーンと temperature 0 を付ける', () => {
+describe('段ごとのルーター（ADR-0005 §2）', () => {
+  it('収集とレビューで別の Named Router を要求する', () => {
+    const env = {} as Env;
+    expect(collectPolicy(env).model).toBe(DEFAULT_COLLECT_ROUTER);
+    expect(reviewPolicy(env).model).toBe(DEFAULT_REVIEW_ROUTER);
+    expect(collectPolicy(env).model).not.toBe(reviewPolicy(env).model);
+  });
+
+  it('収集は cron キー、レビューは interactive キーを使う', () => {
+    const env = {} as Env;
+    expect(collectPolicy(env).slot).toBe('cron');
+    expect(reviewPolicy(env).slot).toBe('interactive');
+  });
+
+  it('var があればルーター名を差し替えられる（コンソール未整備時の逃げ道）', () => {
+    const env = { ORCA_ROUTER_REVIEW: 'anthropic/claude-haiku-4.5' } as Env;
+    expect(reviewPolicy(env).model).toBe('anthropic/claude-haiku-4.5');
+  });
+
+  it('受け皿は Named Router 側の設定に置くので extra_body を付けない', () => {
+    const body = chatBody(reviewPolicy({} as Env), [{ role: 'user', content: 'x' }]);
+    expect(body.model).toBe(DEFAULT_REVIEW_ROUTER);
+    expect(body.temperature).toBe(0);
+    expect(body.extra_body).toBeUndefined();
+  });
+
+  it('C1 書誌は Named Router を使わず extra_body を付ける', () => {
     const body = chatBody(ORCA_POLICY.C1, [{ role: 'user', content: 'x' }]);
     expect(body.model).toBe('openai/gpt-4o-mini');
-    expect(body.temperature).toBe(0);
     expect(body.extra_body).toEqual({
       route: 'fallback',
-      models: [...ORCA_POLICY.C1.fallbacks],
+      models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
     });
+  });
+
+  it('明示 fallback を持つ policy なら extra_body を付ける', () => {
+    const body = chatBody(
+      { slot: 'cron', model: 'a', fallbacks: ['a', 'b'], temperature: 0, failOpen: false },
+      [{ role: 'user', content: 'x' }],
+    );
+    expect(body.extra_body).toEqual({ route: 'fallback', models: ['a', 'b'] });
   });
 
   it('fallback が空なら extra_body を付けない（C3 用）', () => {

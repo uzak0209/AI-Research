@@ -41,9 +41,16 @@ export interface LlmUsage {
   usage_date: string;
   endpoint: string;
   classification: string;
-  model: string | null;
+  /** 要求した宛先（Named Router 名またはモデル ID） */
+  model: string;
+  /** 実際に応答したモデル */
+  resolved_model: string;
   calls: number;
   tokens: number;
+  cost_usd: number;
+  /** 合計。平均は latency_ms_sum / calls */
+  latency_ms_sum: number;
+  fallback_calls: number;
 }
 
 export interface DB {

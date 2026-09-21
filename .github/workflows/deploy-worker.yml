@@ -4,10 +4,12 @@ name: Deploy worker
 #
 # ブランチ規約（AGENTS.md）に合わせる:
 #   PR → dev / main : 検証だけ（deploy しない）
-#   push → dev      : dev 環境へ deploy
+#   push → dev      : dev 環境へ deploy（staging 相当）
 #   push → main     : prod 環境へ deploy
+#   手動 target=test: Claude scan 用の隔離環境。初回はリソースも冪等に作る
 #
-# インフラの作成は CI でやらない。worker/scripts/bootstrap.sh を人が一度だけ走らせる。
+# dev / prod のインフラ作成は CI でやらない。worker/scripts/bootstrap.sh を人が一度だけ走らせる。
+# test だけは壊して作り直せるので、deploy-test が bootstrap してよい。
 
 on:
   push:
@@ -23,17 +25,17 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: 'deploy する環境'
+        description: 'deploy する環境。test は Claude scan 用（push では載らない）'
         type: choice
-        options: [dev, prod]
-        default: dev
+        options: [test, dev, prod]
+        default: test
 
 permissions:
   contents: read
 
 concurrency:
   # 同じ環境への deploy を重ねない。後から来た方を待たせる（cancel しない）
-  group: deploy-worker-${{ github.ref }}
+  group: deploy-worker-${{ github.event.inputs.target || github.ref }}
   cancel-in-progress: false
 
 defaults:
@@ -56,16 +58,16 @@ jobs:
 
       - run: npm ci
 
-      # PLACEHOLDER のまま deploy すると存在しないリソースに向かう。
-      # 落とすなら deploy 前のここで落とす。
+      # test の PLACEHOLDER_TEST_* はコメントに残っていてよい。
+      # ID 欄がプレースホルダのままだと deploy-test が差し替える。
       - name: Reject placeholder resource ids
         run: |
           set -euo pipefail
-          if grep -n 'PLACEHOLDER_' wrangler.jsonc; then
-            echo "::error::wrangler.jsonc に PLACEHOLDER_ が残っている。scripts/bootstrap.sh の出力で置き換えること。"
+          if grep -n '"database_id": "PLACEHOLDER_\|"id": "PLACEHOLDER_' wrangler.jsonc | grep -v 'PLACEHOLDER_TEST_'; then
+            echo "::error::wrangler.jsonc の live env に PLACEHOLDER_ が残っている。scripts/bootstrap.sh の出力で置き換えること。"
             exit 1
           fi
-          echo "placeholder なし"
+          echo "live env の ID に placeholder なし"
 
       - name: Generate types
         run: npx wrangler types --env dev
@@ -153,6 +155,8 @@ jobs:
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           put() {
@@ -169,6 +173,8 @@ jobs:
           put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
           put OPENALEX_API_KEY "${OPENALEX_API_KEY:-}"
           put JEV_API_KEY "${JEV_API_KEY:-}"
+          put GOOGLE_OAUTH_CLIENT_ID "${GOOGLE_OAUTH_CLIENT_ID:-}"
+          put GOOGLE_OAUTH_CLIENT_SECRET "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
 
       # deploy が通っても Worker が起動しないことがあるので、実際に叩いて確かめる
       - name: Smoke test
@@ -178,6 +184,109 @@ jobs:
           set -euo pipefail
           if [ -z "${HEALTH_URL:-}" ]; then
             echo "::warning::vars.DEV_HEALTH_URL が未設定のため疎通確認を飛ばした（deploy 自体は成功）"
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 "$HEALTH_URL")
+          echo "status=$code body=$(cat /tmp/health.json)"
+          [ "$code" = "200" ]
+
+  # ---------------------------------------------------------------- test（Claude scan 用。push では載らない）
+  deploy-test:
+    name: deploy-test
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'test'
+    runs-on: ubuntu-latest
+    environment: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - run: npm ci
+
+      - name: Normalize Cloudflare credentials
+        env:
+          RAW_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RAW_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          token="$(printf '%s' "$RAW_TOKEN" | tr -d '[:space:]')"
+          account="$(printf '%s' "$RAW_ACCOUNT" | tr -d '[:space:]')"
+
+          if [ -z "$token" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          if [ -z "$account" ]; then
+            echo "::error::CLOUDFLARE_ACCOUNT_ID が未設定。GitHub の Secrets に登録すること。"
+            exit 1
+          fi
+          case "$account" in
+            *[!a-zA-Z0-9_-]*)
+              echo "::error::CLOUDFLARE_ACCOUNT_ID に英数字・ハイフン・アンダースコア以外が含まれる。改行や空白が混入していないか確認すること。"
+              exit 1
+              ;;
+          esac
+
+          echo "::add-mask::$token"
+          echo "CLOUDFLARE_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "CLOUDFLARE_ACCOUNT_ID=$account" >> "$GITHUB_ENV"
+          echo "認証情報を正規化した（account ID の長さ: ${#account}）"
+
+      # 隔離環境なので初回にリソースを作ってよい。二度目は skip になる。
+      - name: Bootstrap test resources
+        run: bash scripts/bootstrap.sh test
+
+      - name: Resolve test resource ids
+        run: bash scripts/resolve-test-ids.sh
+
+      - name: Apply D1 migrations
+        run: npx wrangler d1 migrations apply ai-research-test --remote --env test
+
+      - name: Seed fixture data
+        run: npx wrangler d1 execute ai-research-test --remote --file=scripts/seed-test.sql
+
+      - name: Deploy
+        run: npx wrangler deploy --env test
+
+      - name: Put Worker secrets
+        env:
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          put() {
+            local name="$1"
+            local value="${2:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name が未設定のため Worker Secret を飛ばした"
+              return 0
+            fi
+            echo "::add-mask::$value"
+            printf '%s' "$value" | npx wrangler secret put "$name" --env test
+          }
+          put JWT_SIGNING_KEY "${JWT_SIGNING_KEY:-}"
+          put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
+          put OPENALEX_API_KEY "${OPENALEX_API_KEY:-}"
+          put JEV_API_KEY "${JEV_API_KEY:-}"
+          put GOOGLE_OAUTH_CLIENT_ID "${GOOGLE_OAUTH_CLIENT_ID:-}"
+          put GOOGLE_OAUTH_CLIENT_SECRET "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
+
+      - name: Smoke test
+        env:
+          HEALTH_URL: ${{ vars.TEST_HEALTH_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HEALTH_URL:-}" ]; then
+            echo "::warning::vars.TEST_HEALTH_URL が未設定のため疎通確認を飛ばした（deploy 自体は成功）"
             exit 0
           fi
           code=$(curl -sS -o /tmp/health.json -w '%{http_code}' --max-time 20 "$HEALTH_URL")
@@ -250,6 +359,8 @@ jobs:
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
           put() {
@@ -266,6 +377,8 @@ jobs:
           put ORCAROUTER_API_KEY "${ORCAROUTER_API_KEY:-}"
           put OPENALEX_API_KEY "${OPENALEX_API_KEY:-}"
           put JEV_API_KEY "${JEV_API_KEY:-}"
+          put GOOGLE_OAUTH_CLIENT_ID "${GOOGLE_OAUTH_CLIENT_ID:-}"
+          put GOOGLE_OAUTH_CLIENT_SECRET "${GOOGLE_OAUTH_CLIENT_SECRET:-}"
 
       - name: Smoke test
         env:

@@ -137,4 +137,53 @@ describe('CloudClient', () => {
     expect(res.status).toBe(200);
     expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/bff/trends');
   });
+
+  it('bibliography は POST /bff/bibliography に hint だけ送る', async () => {
+    const { auth } = session();
+    auth.setAccessToken('access-1');
+    const hint = { doi: '10.1234/foo', title: 'A study of DPDK' };
+    const fetchImpl = vi.fn(async (_input: string | URL, init?: RequestInit) => {
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify(hint));
+      const headers = new Headers(init?.headers);
+      expect(headers.get('Authorization')).toBe('Bearer access-1');
+      return new Response(
+        JSON.stringify({
+          classification: 'C1',
+          model: 'jev-1.13.0',
+          record: { title: 'A study of DPDK', authors: null, year: null, doi: '10.1234/foo', url: null, venue: null, abstract: null, item_type: 'article' },
+        }),
+        { status: 200 },
+      );
+    });
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    const res = await client.bibliography(hint);
+    expect(res.status).toBe(200);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/bff/bibliography');
+  });
+
+  it('loginGoogle は refresh を session に残し、Google の access は持たない', async () => {
+    const { auth } = session();
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          access_token: 'ours-access',
+          refresh_token: 'ours-refresh',
+          token_type: 'bearer',
+          expires_in: 900,
+        }),
+        { status: 200 },
+      );
+    });
+    const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
+    await client.loginGoogle({
+      code: 'c',
+      code_verifier: 'v'.repeat(43),
+      redirect_uri: 'http://127.0.0.1:9/callback',
+    });
+    expect(auth.getAccessToken()).toBe('ours-access');
+    expect(auth.getRefreshToken()).toBe('ours-refresh');
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/auth/google');
+    expect(fetchImpl.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization');
+  });
 });

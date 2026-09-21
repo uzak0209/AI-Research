@@ -6,9 +6,12 @@
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, type FSWatcher } from 'node:fs';
 import { basename, join } from 'node:path';
 import { EOL } from 'node:os';
+import { createBibliographyApp, type BibliographyApp } from '../bibliography/compose.js';
+import { watchReferences } from '../bibliography/watch-references.js';
+import { hintFromReference } from '../bibliography/domain/record.js';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
   countUnscored,
@@ -55,7 +58,8 @@ import {
   type HighlightInput,
   type InkInput,
 } from '../shared/annotations.js';
-import { extractFromPdf, lookupByDoi } from '../shared/pdf-import.js';
+import { cloudSignedIn, createCloud } from './cloud.js';
+import { runGoogleLogin } from './google-login.js';
 import type { ScoreEvent, ScoreRequest } from './score-worker.js';
 
 const DEFAULT_MODEL = 'Xenova/bge-small-en-v1.5';
@@ -63,6 +67,9 @@ const DEFAULT_MODEL = 'Xenova/bge-small-en-v1.5';
 let db: Db;
 let win: BrowserWindow | null = null;
 let scorer: UtilityProcess | null = null;
+let cloud: ReturnType<typeof createCloud> | null = null;
+let biblio: BibliographyApp | null = null;
+let refWatch: FSWatcher | null = null;
 
 const dbPath = () => join(app.getPath('userData'), 'ai-research.db');
 const modelCacheDir = () => join(app.getPath('userData'), 'models');
@@ -173,10 +180,23 @@ function currentProject() {
   );
 }
 
+function notifyLibrary(): void {
+  win?.webContents.send('library:changed');
+}
+
+function restartRefWatch(): void {
+  refWatch?.close();
+  refWatch = null;
+  if (!biblio) return;
+  const p = currentProject();
+  refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
+}
+
 function attachWorkspace(root: string, title: string, action: 'create' | 'open'): WorkspaceOk {
   const p = currentProject();
   setProjectRoot(db, p.project_id, root);
   updateTitle(db, p.project_id, title);
+  restartRefWatch();
   return { ok: true, root, title, action };
 }
 
@@ -236,6 +256,26 @@ function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
   return res;
 }
 
+function publishAuth(): { signedIn: boolean } {
+  if (!cloud) return { signedIn: false };
+  const signedIn = cloudSignedIn(cloud.session);
+  win?.webContents.send('auth:changed', { signedIn });
+  return { signedIn };
+}
+
+async function loginFromMenu(): Promise<{ signedIn: boolean }> {
+  if (!cloud) throw new Error('クラウドクライアントが無い');
+  await runGoogleLogin(cloud.client, async (url) => {
+    await shell.openExternal(url);
+  });
+  return publishAuth();
+}
+
+function logoutCloud(): { signedIn: boolean } {
+  cloud?.session.clear();
+  return publishAuth();
+}
+
 function installAppMenu(): void {
   const isMac = process.platform === 'darwin';
   const fileSubmenu: MenuItemConstructorOptions[] = [
@@ -259,6 +299,26 @@ function installAppMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: 'appMenu' as const }] : []),
     { label: 'ファイル', submenu: fileSubmenu },
+    {
+      label: 'アカウント',
+      submenu: [
+        {
+          label: 'Google でログイン',
+          click: () => {
+            void loginFromMenu().catch((e) => {
+              const message = e instanceof Error ? e.message : String(e);
+              win?.webContents.send('auth:error', message);
+            });
+          },
+        },
+        {
+          label: 'ログアウト',
+          click: () => {
+            logoutCloud();
+          },
+        },
+      ],
+    },
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
@@ -269,6 +329,10 @@ function installAppMenu(): void {
 // --- IPC --------------------------------------------------------------------
 
 function registerIpc(): void {
+  ipcMain.handle('auth:status', () => publishAuth());
+  ipcMain.handle('auth:login', () => loginFromMenu());
+  ipcMain.handle('auth:logout', () => logoutCloud());
+
   ipcMain.handle('projects:list', () => listProjects(db));
 
   ipcMain.handle('projects:create', (_e, title: string, summary: string) =>
@@ -334,9 +398,16 @@ function registerIpc(): void {
   ipcMain.handle('lib:counts', (_e, projectId: string) => libraryCounts(db, projectId));
   ipcMain.handle('lib:tags', (_e, projectId: string) => listTags(db, projectId));
 
-  ipcMain.handle('lib:add', (_e, projectId: string, item: ReferenceInput) =>
-    addReference(db, projectId, item),
-  );
+  ipcMain.handle('lib:add', (_e, projectId: string, item: ReferenceInput) => {
+    const id = addReference(db, projectId, item);
+    void biblio?.follow(projectId, id).then(notifyLibrary);
+    return id;
+  });
+
+  ipcMain.handle('lib:follow', async (_e, projectId: string, referenceId: string) => {
+    if (!biblio) throw new Error('書誌パイプラインが無い');
+    return biblio.follow(projectId, referenceId);
+  });
   ipcMain.handle('lib:update', (_e, referenceId: string, patch: Partial<ReferenceInput>) =>
     updateReference(db, referenceId, patch),
   );
@@ -387,10 +458,11 @@ function registerIpc(): void {
 
   /**
    * PDF を選んで取り込む。1 ファイル = 1 文献。
-   * 書誌はローカルだけで取れる範囲を埋め、**取れなかったものは空のままにする**（C-07）。
+   * 書誌はローカルだけで取れる範囲を埋め、ログインしていれば BFF で補う。
    * PDF の実体は移動もコピーもしない。選ばれた場所のパスを覚えるだけ（C-08）。
    */
   ipcMain.handle('pdf:import', async (_e, projectId: string) => {
+    if (!biblio) throw new Error('書誌パイプラインが無い');
     const picked = await dialog.showOpenDialog({
       title: 'PDF を取り込む',
       filters: [{ name: 'PDF', extensions: ['pdf'] }],
@@ -403,22 +475,14 @@ function registerIpc(): void {
 
     for (const file of picked.filePaths) {
       try {
-        const meta = await extractFromPdf(new Uint8Array(readFileSync(file)));
-        // 表題が取れなければファイル名を使う。推測であることは guessed で示す
-        const title = meta.title ?? basename(file).replace(/\.pdf$/i, '');
-        const refId = addReference(db, projectId, {
-          title,
-          authors: meta.authors,
-          year: meta.year,
-          doi: meta.doi,
-        });
-        addAttachment(db, refId, file);
+        const got = await biblio.ingestFile(projectId, file);
+        const row = biblio.refs.get(got.reference_id);
         imported.push({
-          reference_id: refId,
-          title,
+          reference_id: got.reference_id,
+          title: row?.title ?? basename(file).replace(/\.pdf$/i, ''),
           path: file,
-          guessed: meta.sources.title !== 'info',
-          doi: meta.doi,
+          guessed: got.guessed,
+          doi: row?.doi ?? null,
         });
       } catch (e) {
         // 1 件失敗しても残りは続ける。ただし失敗を隠さない
@@ -440,8 +504,29 @@ function registerIpc(): void {
     return { path: row.path, data: new Uint8Array(buf) };
   });
 
-  /** DOI から書誌を引く。**DOI が外部 API に出る。**呼ぶかは UI 側で利用者が選ぶ */
-  ipcMain.handle('pdf:lookupDoi', async (_e, doi: string) => lookupByDoi(doi));
+  /** 公開書誌の補完。Worker の POST /bff/bibliography。フォルダ追従以外の手動ボタン用 */
+  ipcMain.handle('bff:bibliography', async (_e, raw: {
+    title?: string;
+    authors?: string | null;
+    year?: number | null;
+    doi?: string | null;
+    url?: string | null;
+    venue?: string | null;
+    abstract?: string | null;
+  }) => {
+    if (!biblio) throw new Error('書誌パイプラインが無い');
+    return biblio.gateway.complete(
+      hintFromReference({
+        title: raw.title ?? '',
+        authors: raw.authors,
+        year: raw.year,
+        doi: raw.doi,
+        url: raw.url,
+        venue: raw.venue,
+        abstract: raw.abstract,
+      }),
+    );
+  });
 
   // --- 書き込み（ハイライト・ペン・コメント） ---
 
@@ -469,6 +554,8 @@ void app.whenReady().then(() => {
 
   try {
     db = openDb({ path: dbPath() });
+    cloud = createCloud(db);
+    biblio = createBibliographyApp(db, () => cloud?.client ?? null);
     logStartup('DB を開いた: ' + dbPath());
   } catch (e) {
     // ベクトル拡張が読めないまま起動すると検索が静かに壊れる。
@@ -481,6 +568,7 @@ void app.whenReady().then(() => {
 
   try {
     registerIpc();
+    restartRefWatch();
     app.setName('AI-Research');
     installAppMenu();
     createWindow();
@@ -506,5 +594,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   scorer?.kill();
+  refWatch?.close();
   db?.close();
 });

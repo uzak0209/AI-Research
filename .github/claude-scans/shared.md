@@ -45,3 +45,4 @@
 
 hourly の design-review / adr-hygiene は repo 差分が主題なので、有料 API と D1 実測を毎時叩かない。
 実測が要るのは research-trend（上流）・router-retro（D1 集計）と、issue で実験を求められたとき。
+router-retro の D1 は `d1-retro/` の JSON。Cloudflare トークンで自分で query しない。

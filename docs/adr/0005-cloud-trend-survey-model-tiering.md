@@ -1,6 +1,6 @@
 # ADR-0005: クラウド側トレンド調査・競合収集と Named Router によるモデル使い分け
 
-- **ステータス**: 提案 / **日付**: 2026-09-21
+- **ステータス**: 提案 / **日付**: 2026-09-21（同日改訂: 公開書誌 C1 を利用者起点の LLM 経路に明記／同日: router-retro は `test` D1 の集計 JSON を読む。トークンは Claude に渡さない）
 - **要件**: FR-01, FR-08, FR-09, FR-10, C-01, C-04, C-06, C-07, C-09, NFR-01, NFR-03, NFR-04
 - **前提**: [ADR-0001](0001-runtime-local-data-extensibility.md)（データ境界・ローカル採点）、
   [ADR-0002](0002-external-llm-bff-classification.md)（BFF・C1/C2/C3）、
@@ -45,6 +45,7 @@ flowchart LR
     subgraph wk["Worker（HTTP と cron が同居）"]
         jwt["JWT 検証"]
         sync["同期 API"]
+        bib["公開書誌"]
         theme["テーマ候補"]
         fc["ファクトチェック"]
         st1["1 段目 収集<br/>Queue consumer"]
@@ -57,9 +58,11 @@ flowchart LR
 
     app --> edge --> jwt
     jwt --> sync
+    jwt --> bib
     jwt --> theme
     jwt --> fc
     sync --> d1
+    bib --> orca
     theme --> orca
     fc --> orca
     cron --> st1 --> st2
@@ -73,14 +76,15 @@ flowchart LR
 - **利用者起点はエッジ防御と JWT を通る。cron 起点は通らない**——外から叩ける入口を持たないため
 - **1 段目・2 段目は HTTP エンドポイントを持たない。**Queue consumer なので、
   外部から起動できない。これが自律経路のいちばん外側の防御になる
-- 利用者起点で LLM を使うのはテーマ候補（C2）とファクトチェック（C3）だけ。
-  同期 API は D1 を読むだけで LLM を通らない
+- 利用者起点で LLM を使うのはテーマ候補（C2）、ファクトチェック（C3）、**公開書誌の穴埋め（C1・安価モデル直指定）**。
+  同期 API は D1 を読むだけで LLM を通らない。書誌は Named Router を使わない（`ORCA_POLICY.C1`。ADR-0002）
 
 ### エンドポイントごとの経路
 
 | 経路 | 入口 | エッジ／認証 | 分類 | ルーター | 受け皿 | 典拠 |
 |---|---|---|---|---|---|---|
 | 同期プル | `GET /runs` | 通る／JWT | — | **LLM を通らない** | — | ADR-0004 |
+| 公開書誌 | `POST /bff/bibliography` | 通る／JWT | **C1** | **ルーターを使わない・安価直指定** | `ORCA_POLICY.C1` | ADR-0002 |
 | テーマ候補 | `POST /theme` | 通る／JWT | **C2** | 許可リスト（無料優先 OFF） | あり | ADR-0002 |
 | ファクトチェック | `POST /factcheck` | 通る／JWT | **C3** | **ルーターを使わない・直指定** | **無効** | ADR-0002 |
 | 収集（1 段目） | Queue のみ | **通らない**／なし | **C1** | `orcarouter/rs-collect` | 別ベンダーの安価 1 本 | 本 ADR |
@@ -484,7 +488,7 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 #### issue に書いてよいもの
 
 - **prod の D1 からは集計値だけ。**`summary` の本文・生成された検索語の文字列・論文の要旨は書かない
-- **クエリ文言の良し悪しを論じるときは dev の D1 だけを使う**（ADR-0004 で dev / prod の D1 は分かれている）
+- **クエリ文言の良し悪しを論じるときは dev の D1 だけを使う**（ADR-0004 で test / dev / prod の D1 は分かれている）。test の fixture を本番ルーター変更の根拠にしない
 - shared.md の「未公開研究の記載」禁止をそのまま継承する
 
 #### 暴走しないための制約
@@ -507,7 +511,7 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 | ADR-0002 | C1 に本機能の 2 endpoint を追加。キーを段ごとに分割。**C3 では Named Router を使わない**と明記 |
 | ADR-0004 | 利用上限を「呼び出し回数」から `cost_usd` 実額へ。Queues に 2 段目の経路を追加 |
 | docs/adr/README.md・adr-hygiene.md | 有効 ADR を 4 本から 5 本に更新 |
-| .github/claude-scans/ | `router-retro.md` を追加。`claude-scan.yml` の matrix に 4 種目として追加し、`lookback_days` 入力を足す。D1 を読む権限（Cloudflare API トークン）を secrets に追加 |
+| .github/claude-scans/ | `router-retro.md` を追加。`claude-scan.yml` の matrix に 4 種目として追加し、`lookback_days` / `d1_target` 入力を足す。D1 は `dump-retro.sh` が集計 JSON にし、Claude にはトークンを渡さない。隔離用に wrangler `test` 環境を足す |
 | design-review.md・research-trend.md | **有効 ADR が「0001 / 0002 / 0003」のまま**で ADR-0004 が抜けている。本 ADR の追加と合わせて 0001〜0005 に直す |
 
 ## 却下
@@ -568,10 +572,16 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 - **ローカルから匿名の集計（保存率・既読率）を opt-in で送るか。**
   送れれば「最終的な有用性」の信号が得られるが、`C-01` と ADR-0004 の書き戻し却下の再検討が要る
 - **1 段統合版との A/B をどの範囲で回すか**（dev だけか、prod の一部プロジェクトも含めるか）
-- GitHub Actions から D1 を読む手段（`wrangler d1 execute` と API トークン）と、その権限の絞り方
+- **内省スキャンに読み取り専用の Cloudflare トークンを分けるか。**
+  いまは deploy と同じ `CLOUDFLARE_API_TOKEN`（書き込み可）を渡しており、
+  Bash を持つ LLM のジョブに書き込み権限が乗る。必要なのは `D1 Read` だけなので、
+  最小権限にするなら別トークンを起こす
 - 提案の件数上限（初期値 3 は暫定）と、**issue を出してよい最小の母数**（run 数・論文数）。
   `LOOKBACK_DAYS` の既定 7 も暫定値
 - **`router-retro` を `proposal` から `auto-scan` へ上げるか。**出てくる提案を PR で見てから判断する
 - **トークン/論文・コスト/論文の合格閾値。**実測前なので値を置いていない。
   スクリプトは値を出すだけにして、閾値は後から入れる
+- **「比率の改善が本数減で説明できる」と見なす係数**（`render-trend.mjs` の
+  `EXPLAINED_BY_FEWER_PAPERS`、暫定 0.5）。絶対値の閾値を避けるための相対判定だが、
+  0.5 という値自体に実測の裏づけはない
 - 自前フォールバックの落とし先モデル（`review-bench` の実測後に決める）

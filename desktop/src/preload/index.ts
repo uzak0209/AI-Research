@@ -25,6 +25,22 @@ const api = {
     return () => ipcRenderer.off('workspace:error', h);
   },
 
+  auth: {
+    status: () => ipcRenderer.invoke('auth:status') as Promise<{ signedIn: boolean }>,
+    login: () => ipcRenderer.invoke('auth:login') as Promise<{ signedIn: boolean }>,
+    logout: () => ipcRenderer.invoke('auth:logout') as Promise<{ signedIn: boolean }>,
+    onChanged: (cb: (e: { signedIn: boolean }) => void) => {
+      const h = (_: unknown, e: { signedIn: boolean }) => cb(e);
+      ipcRenderer.on('auth:changed', h);
+      return () => ipcRenderer.off('auth:changed', h);
+    },
+    onError: (cb: (message: string) => void) => {
+      const h = (_: unknown, message: string) => cb(message);
+      ipcRenderer.on('auth:error', h);
+      return () => ipcRenderer.off('auth:error', h);
+    },
+  },
+
   listClaims: (projectId: string) => ipcRenderer.invoke('claims:list', projectId),
   setClaims: (projectId: string, claims: string[]) =>
     ipcRenderer.invoke('claims:set', projectId, claims),
@@ -50,6 +66,8 @@ const api = {
     tags: (projectId: string) => ipcRenderer.invoke('lib:tags', projectId),
 
     add: (projectId: string, item: unknown) => ipcRenderer.invoke('lib:add', projectId, item),
+    follow: (projectId: string, referenceId: string) =>
+      ipcRenderer.invoke('lib:follow', projectId, referenceId),
     update: (referenceId: string, patch: unknown) =>
       ipcRenderer.invoke('lib:update', referenceId, patch),
     remove: (referenceId: string) => ipcRenderer.invoke('lib:delete', referenceId),
@@ -73,6 +91,11 @@ const api = {
     removeAttachment: (attachmentId: string) =>
       ipcRenderer.invoke('lib:removeAttachment', attachmentId),
     openExternally: (path: string) => ipcRenderer.invoke('lib:openExternally', path),
+    onChanged: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on('library:changed', h);
+      return () => ipcRenderer.off('library:changed', h);
+    },
   },
 
   // --- PDF（FR-14） ---
@@ -81,8 +104,8 @@ const api = {
     import: (projectId: string) => ipcRenderer.invoke('pdf:import', projectId),
     /** 添付の中身を取る。レンダラに fs を渡さないため経由する */
     read: (attachmentId: string) => ipcRenderer.invoke('pdf:read', attachmentId),
-    /** DOI から書誌を引く。**DOI が外部 API に出る。**利用者が押したときだけ呼ぶ */
-    lookupDoi: (doi: string) => ipcRenderer.invoke('pdf:lookupDoi', doi),
+    /** 公開書誌を Worker 経由で補う。原稿は送らない。決定はフォルダ追従（ADR-0003）。現行 UI はボタン */
+    bibliography: (hint: unknown) => ipcRenderer.invoke('bff:bibliography', hint),
   },
 
   // --- 書き込み（ハイライト・ペン・コメント） ---

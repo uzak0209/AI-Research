@@ -1,0 +1,110 @@
+import { z } from '@hono/zod-openapi';
+
+export const ErrorSchema = z
+  .object({
+    error: z.string(),
+    detail: z.string().optional(),
+  })
+  .openapi('Error');
+
+export const HealthSchema = z
+  .object({
+    ok: z.literal(true),
+    environment: z.string(),
+  })
+  .openapi('Health');
+
+export const RefreshBodySchema = z
+  .object({ refresh_token: z.string().min(1) })
+  .openapi('RefreshBody');
+
+export const TokenResponseSchema = z
+  .object({
+    access_token: z.string(),
+    token_type: z.literal('bearer'),
+    expires_in: z.number(),
+  })
+  .openapi('TokenResponse');
+
+export const LoginTokenResponseSchema = z
+  .object({
+    access_token: z.string(),
+    refresh_token: z.string(),
+    token_type: z.literal('bearer'),
+    expires_in: z.number(),
+  })
+  .openapi('LoginTokenResponse');
+
+export const GoogleClientSchema = z
+  .object({
+    client_id: z.string().min(1),
+  })
+  .openapi('GoogleClient');
+
+export const GoogleLoginBodySchema = z
+  .object({
+    code: z.string().min(1).max(512),
+    code_verifier: z.string().min(43).max(128),
+    redirect_uri: z.string().url().max(500),
+  })
+  .openapi('GoogleLoginBody');
+
+export const TrendBodySchema = z
+  .object({
+    // トピックだけ。原稿や手元論文を載せない（C-01, C-09）
+    topic: z.string().trim().min(1).max(200),
+  })
+  .openapi('TrendBody');
+
+export const TrendPaperSchema = z
+  .object({
+    title: z.string(),
+    url: z.string().nullable(),
+    published_at: z.string().nullable(),
+  })
+  .openapi('TrendPaper');
+
+export const TrendResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    summary: z.string().nullable(),
+    papers: z.array(TrendPaperSchema),
+  })
+  .openapi('TrendResponse');
+
+export const BibliographyBodySchema = z
+  .object({
+    title: z.string().trim().max(500).optional(),
+    authors: z.string().trim().max(500).optional(),
+    year: z.number().int().min(1000).max(2100).optional(),
+    doi: z.string().trim().max(200).optional(),
+    url: z.string().trim().max(2000).optional(),
+    venue: z.string().trim().max(300).optional(),
+    abstract: z.string().trim().max(2000).optional(),
+    first_page: z.string().trim().max(4000).optional(),
+  })
+  .refine((h) => Boolean(h.title || h.doi), { message: 'title or doi required' })
+  .openapi('BibliographyBody');
+
+export const BibliographyRecordSchema = z
+  .object({
+    title: z.string().nullable(),
+    authors: z.string().nullable(),
+    year: z.number().int().nullable(),
+    doi: z.string().nullable(),
+    url: z.string().nullable(),
+    venue: z.string().nullable(),
+    abstract: z.string().nullable(),
+    item_type: z.string(),
+  })
+  .openapi('BibliographyRecord');
+
+export const BibliographyResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    record: BibliographyRecordSchema,
+    pdf_url: z.string().nullable(),
+  })
+  .openapi('BibliographyResponse');

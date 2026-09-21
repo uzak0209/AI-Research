@@ -12,7 +12,8 @@ import {
   utcDate,
   type CollectMessage,
 } from '../src/index';
-import { openAlexWorksUrl } from '../src/openalex';
+import { openAlexWorksUrl } from '../src/shared/openalex/adapter';
+import { publicWorkUrl } from '../src/shared/papers/domain';
 
 const RUN_DATE = '2026-09-20';
 const PROJECT = 'proj-1';
@@ -50,7 +51,14 @@ const message = (over: Partial<CollectMessage> = {}): CollectMessage => ({
 function mockOpenAlex(works: unknown[], status = 200) {
   return vi
     .spyOn(globalThis, 'fetch')
-    .mockImplementation(async () => new Response(JSON.stringify({ results: works }), { status }));
+    .mockImplementation(async (input) => {
+      const url = String(input);
+      // 収集 1 段目が Orca に検索語を取りに行く。テストでは外部を叩かない
+      if (url.includes('orcarouter')) {
+        return new Response('no', { status: 502 });
+      }
+      return new Response(JSON.stringify({ results: works }), { status });
+    });
 }
 
 beforeEach(async () => {
@@ -79,7 +87,7 @@ describe('HTTP', () => {
   });
 
   it('同期 API は access が通っても中身は 501', async () => {
-    const { signAccessToken } = await import('../src/auth/jwt');
+    const { signAccessToken } = await import('../src/auth');
     const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
     const res = await handleFetch(
       new Request('https://api.test/runs', { headers: { Authorization: `Bearer ${token}` } }),
@@ -91,7 +99,7 @@ describe('HTTP', () => {
   });
 
   it('refresh から新しい access を出せる', async () => {
-    const { signRefreshToken, verifyToken } = await import('../src/auth/jwt');
+    const { signRefreshToken, verifyToken } = await import('../src/auth');
     const refresh = await signRefreshToken(env.JWT_SIGNING_KEY!, 'sub-1');
     const res = await handleFetch(
       new Request('https://api.test/auth/refresh', {
@@ -110,7 +118,7 @@ describe('HTTP', () => {
   });
 
   it('access を refresh に使うと 401', async () => {
-    const { signAccessToken } = await import('../src/auth/jwt');
+    const { signAccessToken } = await import('../src/auth');
     const access = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
     const res = await handleFetch(
       new Request('https://api.test/auth/refresh', {
@@ -180,6 +188,12 @@ describe('OpenAlex URL', () => {
     const url = openAlexWorksUrl('DPDK');
     expect(url.searchParams.get('api_key')).toBeNull();
   });
+
+  it('desktop の papers.url と同じ https URL にする', () => {
+    expect(publicWorkUrl({ doi: 'https://doi.org/10.1234/foo' })).toBe('https://doi.org/10.1234/foo');
+    expect(publicWorkUrl({ id: 'https://openalex.org/W1' })).toBe('https://openalex.org/W1');
+    expect(publicWorkUrl({ landing: 'https://example.org/p', doi: '10.1234/foo' })).toBe('https://example.org/p');
+  });
 });
 
 // --------------------------------------------------------------- cron
@@ -217,7 +231,7 @@ describe('収集の記録（FR-08 / C-07）', () => {
     mockOpenAlex([
       {
         id: 'https://openalex.org/W1',
-        doi: 'https://doi.org/10.1/a',
+        doi: 'https://doi.org/10.1234/a',
         display_name: 'GNN for molecular property prediction',
         publication_date: '2026-09-01',
         abstract_inverted_index: { graph: [0], neural: [1], networks: [2] },
@@ -232,10 +246,15 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(run?.status).toBe('ok');
     expect(run?.failed_sources_json).toBeNull();
 
-    const papers = await env.DB.prepare('SELECT COUNT(*) AS n FROM run_papers WHERE run_id = ?')
+    const papers = await env.DB.prepare(
+      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url FROM run_papers WHERE run_id = ?',
+    )
       .bind(`${PROJECT}:${RUN_DATE}`)
-      .first<{ n: number }>();
+      .first<{ n: number; external_id: string; url: string }>();
     expect(papers?.n).toBe(1);
+    // desktop の papers.external_id / url と同じ形。DOI 生文字列を URL にしない
+    expect(papers?.external_id).toBe('10.1234/a');
+    expect(papers?.url).toBe('https://doi.org/10.1234/a');
   });
 
   it('0 件は empty。failed にしない', async () => {
@@ -316,6 +335,7 @@ describe('収集の記録（FR-08 / C-07）', () => {
   });
 
   it('未知のソースは failed として残る（黙って握りつぶさない）', async () => {
+    mockOpenAlex([]);
     await expect(handleQueueMessage(message({ source: 'unknown-src' }), env)).rejects.toThrow();
 
     const run = await env.DB.prepare('SELECT status, failed_sources_json FROM runs WHERE run_id = ?')
