@@ -8,7 +8,7 @@
 
 ## 今回なにをしたか
 
-PR [#46](https://github.com/uzak0209/AI-Research/pull/46): docs: ER図にllm_calls表とrun_papers照合列を反映
+PR [#34](https://github.com/uzak0209/AI-Research/pull/34): docs: README のアーキ節に ADR-0005 を追記
 
 ## 指標はどう動いたか
 
