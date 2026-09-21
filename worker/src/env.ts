@@ -14,6 +14,10 @@ export interface Env {
    * 未設定なら BFF は 501。クライアントに置かない（C-06）
    */
   ORCAROUTER_API_KEY?: string;
+  /** C1 interactive。未設定なら ORCAROUTER_API_KEY を使う */
+  ORCAROUTER_API_KEY_INTERACTIVE?: string;
+  ORCAROUTER_API_KEY_CRON?: string;
+  ORCAROUTER_API_KEY_SENSITIVE?: string;
   /** OpenAlex。2026-02 以降は共有 IP からの無鍵呼び出しが落ちる。クライアントに置かない（C-06） */
   OPENALEX_API_KEY?: string;
 }
