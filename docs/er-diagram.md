@@ -34,6 +34,7 @@ erDiagram
     users ||--o{ projects : owns
     projects ||--o{ runs : has
     runs ||--o{ run_papers : contains
+    runs ||--o{ llm_calls : logs
 
     users {
         text user_id PK
@@ -63,6 +64,24 @@ erDiagram
         date published_at
         real coarse_score
         text problem_excerpt "課題・問題の抜粋"
+        bool problem_excerpt_verified "abstractとの照合成否（捏造検知）"
+    }
+    llm_calls {
+        text call_id PK
+        text run_id FK
+        text endpoint
+        text classification "C1|C2|C3（ADR-0002）"
+        text stage "1段目|2段目|retro"
+        text router "Named Router 名"
+        text requested_model
+        text resolved_model
+        text fallback_target "自前フォールバックの落とし先。未使用ならNULL"
+        int tokens_in
+        int tokens_out
+        real cost_usd "OrcaRouterの実額"
+        int duration_ms
+        text guardrail_result
+        text failure_reason "5xx|429|timeout|invalid_format"
     }
 ```
 
@@ -71,7 +90,8 @@ erDiagram
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
 - **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
 - **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID（日次は `{project_id}:{日付}`、自発は `{project_id}:manual:{unix}`）。一意は `run_id` のみで同日複数可（FR-17）。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示。`search_terms_json` は研究背景から LLM が推測した略語で、隠さず同期して見せる（C-07）。利用者に渡す論文は粗い順位の上位 5 件
-- **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。候補論文との精密な順位はローカル（ADR-0001）
+- **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。`problem_excerpt_verified` は `problem_excerpt` が `abstract` に字面で存在するかの照合結果で、捏造率の算出に使う（ADR-0005 §10）。候補論文との精密な順位はローカル（ADR-0001）
+- **`llm_calls`**: 1 段目・2 段目・`retro`（内省ループ自身）を含む外部 LLM 呼び出し 1 回の記録（ADR-0005 §8〜§10）。`resolved_model` は Named Router が解決した実モデル、`fallback_target` は自前フォールバックが発生した場合の落とし先。`cost_usd` は `X-OrcaRouter-Include-Cost` で受け取る実額で、OrcaRouter の Request Logs と突合する基礎データ。`failure_reason` はガードレール・形式不正を含む失敗分類
 
 ## ローカル（SQLite + sqlite-vec）
 
@@ -225,7 +245,6 @@ erDiagram
 | 持たない | 代わり | 代償 |
 |---|---|---|
 | クラウド `papers` | `run_papers` に論文情報を直接持つ | 実行ごとに重複。保存量は増えるが結合が減る |
-| クラウド `llm_usage` | Workers 側のログ | 利用上限を数えるなら表が必要 |
 | `themes` | `papers` から都度生成 | 過去の候補を見返せない |
 | `fc_claims` | 保存しない（要件で未決） | 検査結果は画面で見るだけ |
 | 保存キュー表 | `papers.in_library` | ライブラリはローカルなので再試行が要らない |
