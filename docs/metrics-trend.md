@@ -1,7 +1,7 @@
 # 指標レポート
 
 トークン/見つけた論文と点数（`coarse_score` 平均）。
-環境: `dev` / 収集 status: `ok` / 更新: 2026-09-21T09:30Z。
+環境: `dev` / 収集 status: `ok` / 更新: 2026-09-21T09:34Z。
 
 > 数値と SVG グラフは \`scripts/retro-metrics.mjs\` / \`render-charts-svg.mjs\`（決定的）。
 > 上のまとめ文は Claude（\`metrics-report\`）。無い改善は書いていない（`C-07`）。
