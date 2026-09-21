@@ -265,11 +265,8 @@ jobs:
         if: ${{ github.event_name != 'schedule' }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          file_pattern: |
-            docs/metrics-trend.md
-            docs/metrics-tokens.svg
-            docs/metrics-score.svg
-            docs/metrics-papers.svg
+          # 空白区切りの glob。multiline だと先頭だけ拾う事例がある
+          file_pattern: docs/metrics-trend.md docs/metrics-*.svg
           commit_message: |
             docs: 指標レポートを更新
 
