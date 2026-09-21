@@ -1,14 +1,14 @@
 # 指標レポート
 
 トークン/見つけた論文と点数（`coarse_score` 平均）。
-環境: `prod` / 収集 status: `ok` / 更新: 2026-09-21T12:12Z。
+環境: `prod` / 収集 status: `ok` / 更新: 2026-09-21T12:18Z。
 
 > 数値と SVG グラフは \`scripts/retro-metrics.mjs\` / \`render-charts-svg.mjs\`（決定的）。
 > 上のまとめ文は Claude（\`metrics-report\`）。無い改善は書いていない（`C-07`）。
 
 ## 今回なにをしたか
 
-きっかけ: `workflow_dispatch`（—)
+PR [#39](https://github.com/uzak0209/AI-Research/pull/39): fix: Metrics trend Claude を 10 分定時にする
 
 ## 指標はどう動いたか
 
