@@ -1,91 +1,104 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_TERMS,
-  needsEnglishSearchTerms,
+  COMBO_SIZE,
+  MAX_INFERRED_ABBR,
+  MIN_INFERRED_ABBR,
+  collectSearchCombo,
+  extractLatinTerms,
+  isInferredAbbreviation,
   openAlexQueryFromSummary,
-  parseTermPairs,
-  parseTerms,
+  openAlexQueryFromTerms,
+  parseInferredAbbreviations,
+  pickRandomSubset,
 } from '../src/queries';
 
-const SUMMARY = 'DPDK architecture for 100Gbps packet processing on commodity NICs';
+const POOL = [
+  'DPDK',
+  'RSS',
+  'XDP',
+  'eBPF',
+  'NFV',
+  'VPP',
+  'PMD',
+  'NIC',
+  'QEMU',
+  'SR-IOV',
+  'VFIO',
+  'OVS',
+  'AF_XDP',
+  'kTLS',
+  'IPv6',
+  'VXLAN',
+  'GENEVE',
+  'DDoS',
+  'QoS',
+  'UPF',
+  'CNI',
+  'vSwitch',
+];
 
-function pairs(json: string, summary = SUMMARY) {
-  return parseTermPairs(json, summary);
-}
+describe('parseInferredAbbreviations', () => {
+  it('略語 20 件以上を採る', () => {
+    expect(POOL.length).toBeGreaterThanOrEqual(MIN_INFERRED_ABBR);
+    const got = parseInferredAbbreviations(JSON.stringify(POOL));
+    expect(got.length).toBeGreaterThanOrEqual(MIN_INFERRED_ABBR);
+    expect(got).toContain('DPDK');
+    expect(got).toContain('eBPF');
+  });
 
-describe('parseTermPairs（抽出→英訳。source は summary 字面）', () => {
-  it('source が summary にある対の en を採る', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK architecture', en: 'DPDK architecture' },
-        { source: 'packet processing', en: 'packet processing' },
-      ]),
+  it('句・URL・他分野の普通名詞は捨てる', () => {
+    const got = parseInferredAbbreviations(
+      JSON.stringify(['DPDK', 'high throughput', 'https://example.com', 'protein', 'RSS']),
     );
-    expect(got.map((p) => p.en)).toEqual(['DPDK architecture', 'packet processing']);
+    expect(got).toEqual(['DPDK', 'RSS']);
   });
 
-  it('summary に無い source は捨てる', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK architecture', en: 'DPDK architecture' },
-        { source: 'protein folding', en: 'protein folding' },
-      ]),
+  it('上限で切る', () => {
+    const many = Array.from({ length: MAX_INFERRED_ABBR + 10 }, (_, i) => `AB${i}`);
+    expect(parseInferredAbbreviations(JSON.stringify(many))).toHaveLength(MAX_INFERRED_ABBR);
+  });
+
+  it('JSON 配列でなければ捨てる', () => {
+    expect(parseInferredAbbreviations('DPDK, RSS')).toEqual([]);
+    expect(parseInferredAbbreviations('{"abbr":"DPDK"}')).toEqual([]);
+  });
+});
+
+describe('isInferredAbbreviation', () => {
+  it('大文字を 2 つ以上含む略語だけ', () => {
+    expect(isInferredAbbreviation('DPDK')).toBe(true);
+    expect(isInferredAbbreviation('eBPF')).toBe(true);
+    expect(isInferredAbbreviation('IPv6')).toBe(true);
+    expect(isInferredAbbreviation('protein')).toBe(false);
+    expect(isInferredAbbreviation('cloud native')).toBe(false);
+  });
+});
+
+describe('collectSearchCombo', () => {
+  it('summary の種語は毎回載せ、関連略語は乱択する', () => {
+    const { combo, query } = collectSearchCombo(
+      'dpdkによる高スループットの実現\nクラウドネイティブ\n\nDPDK',
+      POOL,
+      { rand: () => 0, comboSize: COMBO_SIZE },
     );
-    expect(got.map((p) => p.en)).toEqual(['DPDK architecture']);
-  });
-
-  it('ラテン source に無関係な en は捨てる', () => {
-    const got = pairs(JSON.stringify([{ source: 'DPDK', en: 'protein folding' }]));
-    expect(got).toEqual([]);
-  });
-
-  it('件数の上限で切る', () => {
-    const many = Array.from({ length: MAX_TERMS + 4 }, (_, i) => ({
-      source: 'packet processing',
-      en: `packet processing ${i}`,
-    }));
-    // source は同じでも en が違う。faithful は packet を含むので通るが上限で切る
-    expect(pairs(JSON.stringify(many))).toHaveLength(MAX_TERMS);
-  });
-
-  it('en の重複は 1 つにまとめる', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK', en: 'DPDK' },
-        { source: 'DPDK', en: 'dpdk' },
-      ]),
+    expect(extractLatinTerms('dpdkによる高スループット\nDPDK').map((t) => t.toLowerCase())).toContain(
+      'dpdk',
     );
-    expect(got.map((p) => p.en)).toEqual(['DPDK']);
+    expect(combo.some((t) => t.toLowerCase() === 'dpdk')).toBe(true);
+    expect(combo.length).toBe(1 + COMBO_SIZE);
+    expect(query).toContain(' OR ');
   });
 
-  it('JSON でなければ全部捨てる', () => {
-    expect(pairs('DPDK, packet processing')).toEqual([]);
-    expect(pairs('```json\n[{"source":"DPDK","en":"DPDK"}]\n```')).toEqual([]);
+  it('乱択が変われば組み合わせも変わる', () => {
+    const a = collectSearchCombo('DPDK', POOL.filter((t) => t !== 'DPDK'), { rand: () => 0 });
+    const b = collectSearchCombo('DPDK', POOL.filter((t) => t !== 'DPDK'), { rand: () => 0.99 });
+    expect(a.combo.slice(1)).not.toEqual(b.combo.slice(1));
   });
+});
 
-  it('配列でなければ捨てる', () => {
-    expect(pairs('{"source":"DPDK","en":"DPDK"}')).toEqual([]);
-  });
-
-  it('日本語から抽出した語の英訳を採る', () => {
-    const ja = 'dpdkによる高スループットの実現\nクラウドネイティブ';
-    expect(needsEnglishSearchTerms(ja)).toBe(true);
-    const got = parseTerms(
-      JSON.stringify([
-        { source: '高スループット', en: 'high throughput' },
-        { source: 'クラウドネイティブ', en: 'cloud native' },
-        { source: 'dpdk', en: 'DPDK' },
-      ]),
-      ja,
-    );
-    expect(got).toEqual(['high throughput', 'cloud native', 'DPDK']);
-  });
-
-  it('日本語 source が summary に無い英訳は捨てる', () => {
-    const ja = 'dpdkによる高スループットの実現';
-    expect(
-      parseTerms(JSON.stringify([{ source: 'タンパク質折りたたみ', en: 'protein folding' }]), ja),
-    ).toEqual([]);
+describe('pickRandomSubset', () => {
+  it('n 件だけ返す', () => {
+    expect(pickRandomSubset(['a', 'b', 'c', 'd'], 2, () => 0)).toHaveLength(2);
   });
 });
 
@@ -98,5 +111,11 @@ describe('openAlexQueryFromSummary', () => {
 
   it('ラテンが無ければ空', () => {
     expect(openAlexQueryFromSummary('高スループット\n実現')).toBe('');
+  });
+});
+
+describe('openAlexQueryFromTerms', () => {
+  it('略語は OR でつなぎ、訳語の空白句は載せない', () => {
+    expect(openAlexQueryFromTerms(['high throughput', 'DPDK', 'eBPF'])).toBe('DPDK OR eBPF');
   });
 });

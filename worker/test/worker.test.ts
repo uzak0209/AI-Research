@@ -12,7 +12,7 @@ import {
   utcDate,
   type CollectMessage,
 } from '../src/index';
-import { openAlexWorksUrl } from '../src/shared/openalex/adapter';
+import { openAlexWorksUrl, collectFromPublicationDate, fetchFromSource } from '../src/shared/openalex/adapter';
 import { publicWorkUrl } from '../src/shared/papers/domain';
 
 const RUN_DATE = '2026-09-20';
@@ -215,7 +215,10 @@ describe('OpenAlex URL', () => {
     const url = openAlexWorksUrl('DPDK', { apiKey: 'secret-key' });
     expect(url.searchParams.get('search')).toBe('DPDK');
     expect(url.searchParams.get('api_key')).toBe('secret-key');
-    expect(url.searchParams.get('filter')).toBe('has_abstract:true,type:article');
+    expect(url.searchParams.get('sort')).toBe('publication_date:desc');
+    expect(url.searchParams.get('filter')).toBe(
+      `has_abstract:true,type:article,from_publication_date:${collectFromPublicationDate()}`,
+    );
     expect(url.href).not.toContain('title_and_abstract.search');
   });
 
@@ -224,10 +227,50 @@ describe('OpenAlex URL', () => {
     expect(url.searchParams.get('api_key')).toBeNull();
   });
 
+  it('2 ページ目は page=2', () => {
+    expect(openAlexWorksUrl('DPDK', { page: 2 }).searchParams.get('page')).toBe('2');
+  });
+
   it('desktop の papers.url と同じ https URL にする', () => {
     expect(publicWorkUrl({ doi: 'https://doi.org/10.1234/foo' })).toBe('https://doi.org/10.1234/foo');
     expect(publicWorkUrl({ id: 'https://openalex.org/W1' })).toBe('https://openalex.org/W1');
     expect(publicWorkUrl({ landing: 'https://example.org/p', doi: '10.1234/foo' })).toBe('https://example.org/p');
+  });
+});
+
+describe('fetchFromSource（最新順・既知は飛ばす）', () => {
+  function work(id: string, title: string) {
+    return {
+      id: `https://openalex.org/${id}`,
+      doi: `https://doi.org/10.1234/${id}`,
+      display_name: title,
+      publication_date: '2026-09-01',
+      abstract_inverted_index: { dpdk: [0] },
+    };
+  }
+
+  it('ページが短いときは次を取りに行かない', async () => {
+    const spy = mockOpenAlex([work('W1', 'Only one')]);
+    const papers = await fetchFromSource('openalex', 'DPDK');
+    expect(papers.map((p) => p.external_id)).toEqual(['10.1234/W1']);
+    expect(spy.mock.calls.filter(([u]) => String(u).includes('api.openalex.org'))).toHaveLength(1);
+  });
+
+  it('先頭にある既知 ID は飛ばし、同じ新しい順の続きを取る', async () => {
+    const page1 = Array.from({ length: 25 }, (_, i) => work(`A${i}`, `Old ${i}`));
+    const page2 = [work('NEW', 'Brand new DPDK datapath')];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      if (url.hostname.includes('orcarouter')) return new Response('no', { status: 502 });
+      const page = Number(url.searchParams.get('page') || '1');
+      const results = page === 1 ? page1 : page === 2 ? page2 : [];
+      return new Response(JSON.stringify({ results }));
+    });
+
+    const skipIds = new Set(page1.map((w) => `10.1234/${w.id.replace('https://openalex.org/', '')}`));
+    const papers = await fetchFromSource('openalex', 'DPDK', { skipIds, take: 1 });
+    expect(papers).toHaveLength(1);
+    expect(papers[0]?.title).toBe('Brand new DPDK datapath');
   });
 });
 

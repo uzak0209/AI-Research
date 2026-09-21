@@ -1,18 +1,17 @@
 /**
- * ADR-0005 §1 の 1 段目: `summary` から検索語を作る。
+ * ADR-0005 §1 の 1 段目: 検索語を作る。
  *
- * 流れは固定:
- *   1. summary に**実際に書かれている語・短い句を抽出**する
- *   2. 日本語ならそれを英語に訳す（略語・ラテン固有名はそのまま）
- *   3. 英語側だけを OpenAlex のクエリにする
+ * 流れ:
+ *   1. summary から種になるラテン略語を取る
+ *   2. 同じ分野の関連略語を LLM が 20 件以上推測する（summary に無い語も足す）
+ *   3. プールから組み合わせを乱択し、英語略語だけを OpenAlex に載せる
  *
  * 入り口を無制限に増やさせない（§7）:
- *   - 出力は対訳の配列に閉じる。任意 URL も任意ツールも渡さない
- *   - 件数に上限を置く
- *   - `source` が summary に字面で出てこない対は捨てる
- *   - ラテンの `source` に対し、無関係な `en` は捨てる
+ *   - 出力は略語の配列に閉じる。任意 URL も任意ツールも渡さない
+ *   - 推測プールと 1 回あたりの組み合わせサイズに上限を置く
+ *   - 分野を跨ぐ語・略語の形でないものは捨てる
  *
- * LLM 失敗時はラテン種語だけ。日本語全文は OpenAlex に投げない（C-07）。
+ * LLM 失敗時は種語だけ。日本語全文は OpenAlex に投げない（C-07）。
  */
 import { chatCompletion, type OrcaChatOk } from '../../shared/orca/chat';
 import { collectPolicy } from '../../shared/orca/policy';
@@ -20,36 +19,76 @@ import type { Env } from '../../env';
 
 export const COLLECT_ENDPOINT = '/cron/collect';
 
-/** 1 回の収集で使う検索語の上限。探索が発散すると取得件数と課金が跳ねる */
-export const MAX_TERMS = 6;
-/** これ未満の語は一致の意味が薄いので捨てる */
-const MIN_TERM_LEN = 2;
+/** 推測で足す略語の下限。プロンプトに書く */
+export const MIN_INFERRED_ABBR = 20;
+/** 推測プールの上限。これ以上は捨てる */
+export const MAX_INFERRED_ABBR = 40;
+/** 1 回の収集で乱択する関連略語の数（種語は別途必ず載せる） */
+export const COMBO_SIZE = 5;
+/** summary から取る種語の上限 */
+export const MAX_SEED_TERMS = 6;
+
+/** 旧名・テスト互換。推測プールの上限と同じ */
+export const MAX_TERMS = MAX_INFERRED_ABBR;
 
 const SYSTEM = [
-  'You extract keywords from a research project summary (課題意識), then translate them into English search terms for OpenAlex.',
-  'Step 1: Pick short words or phrases that literally appear in the summary (Japanese or English).',
-  'Step 2: Translate each picked Japanese item into a concise English academic search term. Keep acronyms/proper nouns unchanged (e.g. DPDK → DPDK).',
-  'Do not add topics that are not written in the summary.',
-  'Reply with ONLY a JSON array of objects. No prose, no code fence.',
-  `Format: [{"source":"<exact substring from summary>","en":"<English search term>"}]`,
-  `At most ${MAX_TERMS} objects. "en" is 1-4 English words.`,
+  'You expand a research project summary into related technical abbreviations for OpenAlex.',
+  'Infer abbreviations and acronyms used in the SAME subfield as the summary.',
+  'Include abbreviations that appear in the summary, then add related ones that researchers in that subfield actually use.',
+  'Do not jump to another field (e.g. no biology terms for packet I/O).',
+  'Do not invent URLs. Do not call tools. Do not write full English phrases.',
+  'Reply with ONLY a JSON array of strings. No prose, no code fence.',
+  `Format: ["DPDK","RSS","XDP","eBPF",...]`,
+  `At least ${MIN_INFERRED_ABBR} items, at most ${MAX_INFERRED_ABBR}.`,
+  'Each item is 2-12 Latin characters (letters, digits, + _ - .).',
 ].join(' ');
 
-export type TermPair = { source: string; en: string };
-
-/** ラテン文字が少なく、和文からの抽出→英訳が必要か */
-export function needsEnglishSearchTerms(summary: string): boolean {
-  const chars = [...summary].filter((c) => /\S/u.test(c));
-  if (chars.length === 0) return false;
-  const latin = chars.filter((c) => /[A-Za-z]/.test(c)).length;
-  return latin / chars.length < 0.35;
+export function defaultRand(): number {
+  const buf = new Uint32Array(1);
+  crypto.getRandomValues(buf);
+  return (buf[0] as number) / 0x1_0000_0000;
 }
 
-/**
- * LLM が使えないときの OpenAlex 向けフォールバック。
- * 日本語全文は載せない。ラテン技術語だけ拾う。
- */
-export function openAlexQueryFromSummary(summary: string): string {
+/** Fisher–Yates。テストでは rand を差し込む */
+export function pickRandomSubset<T>(items: T[], n: number, rand: () => number = defaultRand): T[] {
+  if (n <= 0 || items.length === 0) return [];
+  const copy = items.slice();
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const a = copy[i]!;
+    copy[i] = copy[j]!;
+    copy[j] = a;
+  }
+  return copy.slice(0, Math.min(n, copy.length));
+}
+
+export function isInferredAbbreviation(term: string): boolean {
+  const t = term.trim();
+  if (!t || /\s/.test(t) || t.length < 2 || t.length > 12) return false;
+  if (!/^[A-Za-z][A-Za-z0-9_+.-]*$/.test(t)) return false;
+  if ((t.match(/[A-Z]/g) ?? []).length >= 2) return true;
+  return /\d/.test(t);
+}
+
+export function openAlexQueryFromTerms(terms: string[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of terms) {
+    const x = t.trim();
+    if (!x || /\s/.test(x)) continue;
+    const key = x.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+  }
+  return out.join(' OR ');
+}
+
+export function isDistinctiveSearchTerm(term: string): boolean {
+  return isInferredAbbreviation(term) || /^[A-Za-z][A-Za-z0-9_+.-]{1,11}$/.test(term.trim());
+}
+
+export function extractLatinTerms(summary: string): string[] {
   const latin = [...summary.matchAll(/[A-Za-z][A-Za-z0-9_+.-]{1,31}/g)].map((m) => m[0]);
   const seen = new Set<string>();
   const out: string[] = [];
@@ -58,52 +97,17 @@ export function openAlexQueryFromSummary(summary: string): string {
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(t);
-    if (out.length >= MAX_TERMS) break;
+    if (out.length >= MAX_SEED_TERMS) break;
   }
-  return out.join(' ');
+  return out;
 }
 
-function looksLikeEnglishTerm(term: string): boolean {
-  if (!/^[A-Za-z][A-Za-z0-9_+./\s-]{0,47}$/.test(term)) return false;
-  const parts = term.trim().split(/\s+/).filter(Boolean);
-  return parts.length >= 1 && parts.length <= 4;
+export function openAlexQueryFromSummary(summary: string): string {
+  return openAlexQueryFromTerms(extractLatinTerms(summary));
 }
 
-function hasCjk(text: string): boolean {
-  return /[\u3040-\u30ff\u3400-\u9fff]/.test(text);
-}
-
-/** source が summary に字面で含まれるか（ラテンは大小無視） */
-function sourceInSummary(source: string, summary: string): boolean {
-  const s = source.trim();
-  if (s.length < MIN_TERM_LEN) return false;
-  if (summary.includes(s)) return true;
-  if (/^[A-Za-z0-9_+.-]+$/.test(s)) {
-    return summary.toLowerCase().includes(s.toLowerCase());
-  }
-  return false;
-}
-
-/** ラテン source の en が、抜き出した語から乖離していないか */
-function enFaithfulToSource(source: string, en: string): boolean {
-  if (hasCjk(source)) return looksLikeEnglishTerm(en);
-  const sw = source
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 2);
-  const ew = en
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 2);
-  if (sw.length === 0) return looksLikeEnglishTerm(en);
-  return sw.some((w) => ew.some((e) => e.includes(w) || w.includes(e)));
-}
-
-/**
- * モデル出力を対訳配列として受け取る。
- * 形が違えば**捨てる**。source が summary に無い対・無関係な en も捨てる。
- */
-export function parseTermPairs(raw: string, summary: string): TermPair[] {
+/** モデル出力を略語配列として受け取る。形が違えば捨てる */
+export function parseInferredAbbreviations(raw: string): string[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.trim());
@@ -112,49 +116,51 @@ export function parseTermPairs(raw: string, summary: string): TermPair[] {
   }
   if (!Array.isArray(parsed)) return [];
 
-  const seenEn = new Set<string>();
-  const out: TermPair[] = [];
-
+  const seen = new Set<string>();
+  const out: string[] = [];
   for (const item of parsed) {
-    if (!item || typeof item !== 'object') continue;
-    const rec = item as { source?: unknown; en?: unknown };
-    const source = typeof rec.source === 'string' ? rec.source.trim() : '';
-    const en = typeof rec.en === 'string' ? rec.en.trim() : '';
-    if (!source || !en) continue;
-    if (!sourceInSummary(source, summary)) continue;
-    if (!looksLikeEnglishTerm(en)) continue;
-    if (!enFaithfulToSource(source, en)) continue;
-
-    const key = en.toLowerCase();
-    if (seenEn.has(key)) continue;
-    seenEn.add(key);
-    out.push({ source, en });
-    if (out.length >= MAX_TERMS) break;
+    const t = typeof item === 'string' ? item.trim() : '';
+    if (!isInferredAbbreviation(t)) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= MAX_INFERRED_ABBR) break;
   }
   return out;
 }
 
-/** OpenAlex に載せる英語側だけ。対訳形式専用 */
-export function parseTerms(raw: string, summary: string): string[] {
-  return parseTermPairs(raw, summary).map((p) => p.en);
+export function collectSearchCombo(
+  summary: string,
+  inferred: string[],
+  opts: { rand?: () => number; comboSize?: number } = {},
+): { query: string; combo: string[] } {
+  const seeds = extractLatinTerms(summary);
+  const seedKeys = new Set(seeds.map((s) => s.toLowerCase()));
+  const extra = inferred.filter((t) => !seedKeys.has(t.toLowerCase()));
+  const picked = pickRandomSubset(extra, opts.comboSize ?? COMBO_SIZE, opts.rand ?? defaultRand);
+  const combo = [...seeds, ...picked];
+  return { query: openAlexQueryFromTerms(combo), combo };
 }
 
 export type SearchTerms = {
-  /** 実際に投げる検索文字列 */
   query: string;
-  /** LLM を使えたか。false ならフォールバック */
   generated: boolean;
-  /** 記録用。generated が false でも、呼べたなら usage は残す（課金は発生している） */
   usage: OrcaChatOk | null;
+  combo: string[];
 };
 
-export async function buildSearchQuery(env: Env, summary: string): Promise<SearchTerms> {
+export async function buildSearchQuery(
+  env: Env,
+  summary: string,
+  opts: { rand?: () => number } = {},
+): Promise<SearchTerms> {
   const policy = collectPolicy(env);
   const apiKey = env.ORCAROUTER_API_KEY_CRON ?? env.ORCAROUTER_API_KEY;
-  const fallback = openAlexQueryFromSummary(summary);
+  const fallbackCombo = collectSearchCombo(summary, [], { rand: () => 0 });
 
   if (!apiKey) {
-    return { query: fallback, generated: false, usage: null };
+    return { query: fallbackCombo.query, generated: false, usage: null, combo: fallbackCombo.combo };
   }
 
   const result = await chatCompletion(
@@ -167,13 +173,19 @@ export async function buildSearchQuery(env: Env, summary: string): Promise<Searc
   );
 
   if (!result.ok) {
-    return { query: fallback, generated: false, usage: null };
+    return { query: fallbackCombo.query, generated: false, usage: null, combo: fallbackCombo.combo };
   }
 
-  const terms = parseTerms(result.text, summary);
-  if (terms.length === 0) {
-    return { query: fallback, generated: false, usage: result };
+  const inferred = parseInferredAbbreviations(result.text);
+  if (inferred.length === 0) {
+    return {
+      query: fallbackCombo.query,
+      generated: false,
+      usage: result,
+      combo: fallbackCombo.combo,
+    };
   }
 
-  return { query: terms.join(' '), generated: true, usage: result };
+  const picked = collectSearchCombo(summary, inferred, { rand: opts.rand });
+  return { query: picked.query, generated: true, usage: result, combo: picked.combo };
 }

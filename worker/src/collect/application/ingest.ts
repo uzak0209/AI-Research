@@ -18,7 +18,8 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   let failure: string | null = null;
 
   try {
-    const fetched = await deps.papers.fetch(msg.source, search.query);
+    const skipIds = await deps.runs.knownExternalIds(msg.project_id);
+    const fetched = await deps.papers.fetch(msg.source, search.query, { skipIds });
     const scored = fetched.map((p) => ({
       ...p,
       coarse_score: coarseScore(msg.summary, `${p.title} ${p.abstract ?? ''}`),

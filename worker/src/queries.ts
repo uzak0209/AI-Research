@@ -1,12 +1,18 @@
 export {
   COLLECT_ENDPOINT,
+  MIN_INFERRED_ABBR,
+  MAX_INFERRED_ABBR,
+  COMBO_SIZE,
   MAX_TERMS,
-  parseTerms,
-  parseTermPairs,
+  parseInferredAbbreviations,
+  collectSearchCombo,
+  pickRandomSubset,
   openAlexQueryFromSummary,
-  needsEnglishSearchTerms,
+  openAlexQueryFromTerms,
+  isDistinctiveSearchTerm,
+  isInferredAbbreviation,
+  extractLatinTerms,
   buildSearchQuery,
   type SearchTerms,
-  type TermPair,
 } from './collect/application/search-terms';
 export { parseProblemExcerpts } from './collect/application/problem-excerpt';
