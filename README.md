@@ -56,9 +56,16 @@
 > 上流プロバイダは各自の保持ポリシーに従う。「残らない」とは説明しない。
 
 
-## デスクトップ起動方法
+## ローカル検証
+
+入口は `just`（未導入なら `brew install just`）。`just` で一覧が出る。
 
 ```bash
-cd desktop
-npm run dev
+just env                 # worker/.dev.vars と local D1
+just worker              # BFF  http://127.0.0.1:8787
+just desktop             # Electron（ELECTRON_RUN_AS_NODE を外す）
+just verify              # worker 起動中に /health と書誌 BFF
 ```
+
+有料キーは `worker/.dev.vars` に書く。GitHub Secret からは引き戻せない。クライアントには置かない（`C-06`）。
+デスクトップはまだ `POST /bff/bibliography` を呼ばない。書誌 BFF は `just verify`。

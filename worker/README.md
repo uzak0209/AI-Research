@@ -150,12 +150,25 @@ cd worker && npx wrangler rollback --env prod
 
 ## ローカル
 
+入口はリポジトリ直下の `just`（未導入なら `brew install just`）。
+GitHub の Secret は**引き戻せない**。有料キーは `worker/.dev.vars` に一度書く（gitignore。`C-06`）。
+
 ```bash
-npm run dev                          # wrangler dev
-npx wrangler dev --test-scheduled    # cron を叩く: /__scheduled
-npx wrangler d1 migrations apply ai-research-dev --local --env dev
-npm run codegen                      # migrations から Kysely の型
-npm run test:coverage
+just env                 # .dev.vars + local D1
+# worker/.dev.vars に ORCAROUTER_API_KEY / OPENALEX_API_KEY / JEV_API_KEY を貼る
+just worker              # http://127.0.0.1:8787
+# 別端末
+just verify              # /health と POST /bff/bibliography（Bearer 無しは 401）
+```
+
+IdP 未決なので access JWT は `just token` がローカル鍵で署名する。
+Jev / Orca のキーが空なら C1 は **501**（無い鍵で動いたふりをしない）。
+
+既定は `--env dev`。トップレベルの wrangler 設定は空なので、env 無しではバインディングが無い。
+
+```bash
+npx wrangler dev --test-scheduled --env dev    # cron を叩く: /__scheduled
+npm run codegen                                # migrations から Kysely の型
 ```
 
 ## Free 枠で効く制約（ADR-0004）

@@ -88,10 +88,22 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           SCAN_TYPE: ${{ matrix.scan_type }}
+          # 実測用。値は issue に出さない（shared.md）。Cloudflare の deploy 用トークンは渡さない。
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
+          settings: |
+            {
+              "env": {
+                "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
+                "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
+                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}"
+              }
+            }
           prompt: |
             対象は ${{ github.repository }}。スキャン種別は ${{ matrix.scan_type }}。
             環境変数 DRY_RUN は "${{ github.event.inputs.dry_run || 'false' }}"。

@@ -27,7 +27,15 @@ Electron + TypeScript、ローカル SQLite、Transformers.js による関連度
 | 引用ファイル書き出し（FR-12） | **未実装** |
 | CLI（FR-11） | **未実装**（`src/shared/` を共有する形で足す） |
 
-## 画面
+## 起動
+
+入口はリポジトリ直下の `just desktop`。Cursor 経由だと `ELECTRON_RUN_AS_NODE=1` が付いて Electron が Node になるので、`npm run dev` / `just desktop` はそれを外す。
+
+```bash
+just desktop
+```
+
+作業フォルダの作成・開くは macOS なら **ファイル** メニュー。Worker の書誌 BFF はこの GUI からはまだ呼ばない。
 
 VS Code 型: 左にアクティビティバー、その右が作業領域、下にステータスバー。
 

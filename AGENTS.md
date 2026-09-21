@@ -9,6 +9,7 @@
 | `worker/` | クラウド（Workers。ADR-0004） |
 | `packages/core/` | GUI と CLI の共有コア（トークン・設定。ADR-0001） |
 | `prototypes/` | 検証用。本番ではない |
+| [justfile](justfile) | ローカル検証（`just`。秘密は `worker/.dev.vars`） |
 
 ## 要件と ADR
 

@@ -1,0 +1,8 @@
+# wrangler dev --env dev が読む。実ファイルは worker/.dev.vars（gitignore）。
+# GitHub Actions の Secret は書き込み専用で引き戻せない。手元に一度書く。
+# 空のままでも Worker は起動する。その経路は 501（C-07）。
+
+JWT_SIGNING_KEY=local-dev-signing-key-at-least-32-chars
+ORCAROUTER_API_KEY=
+OPENALEX_API_KEY=
+JEV_API_KEY=

@@ -34,4 +34,14 @@
 
 ## 禁止
 
-workflow 変更要求、ブランチ削除、未公開研究の記載。`DRY_RUN=true` ならログのみ。
+- workflow 変更要求、ブランチ削除、未公開研究の記載。`DRY_RUN=true` ならログのみ
+- **Secret の値を issue / PR / コミット / ログに書かない。** status・モデル名と数値は出してよい
+
+## 実測
+
+`JEV_API_KEY` / `ORCAROUTER_API_KEY` / `OPENALEX_API_KEY` は Claude のプロセス環境にある。
+上流の可否・価格・挙動を断定するなら、ドキュメント推測やモックではなく **そのキーで実測**する。
+キーが空なら「実測できなかった」と書いて終える。無い結果を捏造しない（`C-07`）。
+
+hourly の design-review / adr-hygiene は repo 差分が主題なので、有料 API を毎時叩かない。
+実測が要るのは research-trend と、issue で実験を求められたとき。
