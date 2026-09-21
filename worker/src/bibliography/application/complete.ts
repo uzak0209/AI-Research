@@ -27,7 +27,7 @@ export async function completeBibliography(
   let pdf_url: string | null = null;
   if (doi) {
     try {
-      pdf_url = await deps.oaPdf.pdfUrl(doi);
+      pdf_url = (await deps.oaPdf.lookup(doi))?.pdf_url ?? null;
     } catch {
       pdf_url = null;
     }

@@ -96,6 +96,7 @@ function migrate(db: Db): void {
     ['papers', 'pdf_url', 'TEXT'],
     ['papers', 'fulltext_path', 'TEXT'],
     ['papers', 'fulltext', 'TEXT'],
+    ['papers', 'authors', 'TEXT'],
   ];
 
   for (const [table, column, ddl] of added) {

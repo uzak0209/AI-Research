@@ -31,6 +31,9 @@ describe('desktop seed', () => {
     const book = listReferences(db, 'seed-demo').find((r) => r.bibtex_key === 'hamilton2020');
     expect(book?.item_type).toBe('book');
     expect(book?.read_status).toBe('read');
+    expect(book?.authors).toBe('William L. Hamilton');
+    const article = listReferences(db, 'seed-demo').find((r) => r.bibtex_key === 'buterez2024');
+    expect(article?.authors).toMatch(/Buterez/);
   });
 
   it('新着は関連度順で、ライブラリ済と未採点は出さない（C-07）', () => {

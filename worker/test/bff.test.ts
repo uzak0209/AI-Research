@@ -417,6 +417,7 @@ describe('trendPrompt', () => {
       abstract: 'abs',
       url: `https://doi.org/${i}`,
       published_at: '2026-01-01',
+      authors: null,
     }));
     const prompt = trendPrompt('DPDK', papers);
     expect(prompt).toContain('Topic: DPDK');

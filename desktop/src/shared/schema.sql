@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS papers (
   external_id       TEXT,
   source            TEXT,
   title             TEXT NOT NULL,
+  authors           TEXT,                   -- OpenAlex authorships。ライブラリへ渡す（FR-05）
   abstract          TEXT,
   url               TEXT,
   published_at      TEXT,

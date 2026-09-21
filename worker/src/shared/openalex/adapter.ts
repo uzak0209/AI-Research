@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  authorsFromAuthorships,
   doiOrNull,
   publicWorkUrl,
   rebuildAbstract,
@@ -13,6 +14,7 @@ const openAlexWorkSchema = z.object({
   doi: z.string().nullable().optional(),
   display_name: z.string().nullable().optional(),
   publication_date: z.string().nullable().optional(),
+  authorships: z.array(z.unknown()).nullable().optional(),
   abstract_inverted_index: z.record(z.string(), z.array(z.number())).nullable().optional(),
 });
 
@@ -31,7 +33,10 @@ export function openAlexWorksUrl(query: string, opts: OpenAlexOpts = {}): URL {
   url.searchParams.set('filter', 'has_abstract:true,type:article');
   url.searchParams.set('per-page', '25');
   url.searchParams.set('sort', 'publication_date:desc');
-  url.searchParams.set('select', 'id,doi,display_name,publication_date,abstract_inverted_index');
+  url.searchParams.set(
+    'select',
+    'id,doi,display_name,publication_date,authorships,abstract_inverted_index',
+  );
   if (opts.apiKey) url.searchParams.set('api_key', opts.apiKey);
   return url;
 }
@@ -66,6 +71,7 @@ export async function fetchFromSource(
     papers.push({
       external_id: doi ?? w.id,
       title,
+      authors: authorsFromAuthorships(w.authorships),
       abstract: rebuildAbstract(w.abstract_inverted_index),
       url: publicWorkUrl({ doi: w.doi, id: w.id }),
       published_at: w.publication_date ?? null,

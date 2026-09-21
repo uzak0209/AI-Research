@@ -2,13 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { completeBibliography } from '../src/bibliography/application/complete';
 import type { BibliographyDeps } from '../src/bibliography/application/ports';
 import { bibliographyPrompt, recordFromModelText } from '../src/bibliography/domain/record';
-import { httpsPdfUrl, oaPdfUrlFromWork } from '../src/bibliography/domain/oa-url';
+import { httpsPdfUrl, oaBiblioFromWork, oaPdfUrlFromWork } from '../src/bibliography/domain/oa-url';
 import { openAlexPdfUrl } from '../src/bibliography/infrastructure/adapters';
+import { authorsFromAuthorships } from '../src/shared/papers/domain';
 
 function deps(over: Partial<BibliographyDeps> = {}): BibliographyDeps {
   return {
     llm: { complete: async () => ({ ok: false }) },
-    oaPdf: { pdfUrl: async () => null },
+    oaPdf: { lookup: async () => null },
     ...over,
   };
 }
@@ -73,6 +74,55 @@ describe('recordFromModelText', () => {
     const got = recordFromModelText('```json\n{"title":"GNN","authors":null,"year":null,"doi":null,"url":null,"venue":null,"abstract":null,"item_type":"article"}\n```');
     expect(got.title).toBe('GNN');
   });
+
+  it('authors が配列でも文字列に直す。欠けたキーは null', () => {
+    const got = recordFromModelText(
+      JSON.stringify({
+        title: 'GNN',
+        authors: ['Ada Lovelace', { name: 'Alan Turing' }],
+        year: '2024',
+        doi: '10.1234/foo',
+        item_type: 'article',
+      }),
+    );
+    expect(got.authors).toBe('Ada Lovelace; Alan Turing');
+    expect(got.year).toBe(2024);
+    expect(got.venue).toBeNull();
+  });
+});
+
+describe('authorsFromAuthorships', () => {
+  it('display_name を優先し raw_author_name で補う', () => {
+    expect(
+      authorsFromAuthorships([
+        { author: { display_name: 'Ada Lovelace' } },
+        { raw_author_name: 'Alan Turing' },
+      ]),
+    ).toBe('Ada Lovelace; Alan Turing');
+    expect(authorsFromAuthorships([])).toBeNull();
+    expect(authorsFromAuthorships(null)).toBeNull();
+  });
+});
+
+describe('oaBiblioFromWork', () => {
+  it('DOI 一致の work から著者・年・会場を取る', () => {
+    const got = oaBiblioFromWork({
+      display_name: 'GNN',
+      publication_year: 2024,
+      authorships: [{ author: { display_name: 'Ada Lovelace' } }],
+      primary_location: {
+        pdf_url: 'https://arxiv.org/pdf/x.pdf',
+        source: { display_name: 'SIGCOMM' },
+      },
+    });
+    expect(got).toMatchObject({
+      title: 'GNN',
+      authors: 'Ada Lovelace',
+      year: 2024,
+      venue: 'SIGCOMM',
+      pdf_url: 'https://arxiv.org/pdf/x.pdf',
+    });
+  });
 });
 
 describe('completeBibliography', () => {
@@ -104,9 +154,15 @@ describe('completeBibliography', () => {
           }),
         },
         oaPdf: {
-          pdfUrl: async (doi) => {
+          lookup: async (doi) => {
             expect(doi).toBe('10.1234/foo');
-            return 'https://arxiv.org/pdf/x.pdf';
+            return {
+              title: null,
+              authors: null,
+              year: null,
+              venue: null,
+              pdf_url: 'https://arxiv.org/pdf/x.pdf',
+            };
           },
         },
       }),
@@ -137,7 +193,7 @@ describe('completeBibliography', () => {
           }),
         },
         oaPdf: {
-          pdfUrl: async () => {
+          lookup: async () => {
             throw new Error('openalex');
           },
         },
@@ -152,10 +208,11 @@ describe('completeBibliography', () => {
 });
 
 describe('bibliographyPrompt', () => {
-  it('hint と first_page だけ。原稿やノートを載せない', () => {
+  it('hint と first_page を載せ、原稿やノートは載せない。著者は埋める', () => {
     const p = bibliographyPrompt({ title: 'DPDK', first_page: 'Abstract: we present' });
     expect(p).toContain('DPDK');
     expect(p).toContain('we present');
+    expect(p).toContain('Fill title, authors, year');
     expect(p).not.toContain('mypaper');
     expect(p).not.toContain('note');
   });

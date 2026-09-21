@@ -21,6 +21,7 @@ export interface PaperInput {
   external_id: string;
   source: string;
   title: string;
+  authors?: string | null;
   abstract: string | null;
   url?: string | null;
   published_at?: string | null;
@@ -33,8 +34,10 @@ export interface RankedPaper {
   paper_id: string;
   external_id: string | null;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
+  published_at: string | null;
   relevance: number | null;
   sim_summary: number | null;
   nearest_chunk_id: number | null;
@@ -43,6 +46,13 @@ export interface RankedPaper {
   scored_at: string | null;
   in_library: number;
   problem_excerpt: string | null;
+}
+
+/** published_at（YYYY-MM-DD）から年だけ。形が崩れていたら null（C-07） */
+export function yearFromPublishedAt(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const y = Number(String(raw).slice(0, 4));
+  return Number.isInteger(y) && y >= 1000 && y <= 2100 ? y : null;
 }
 
 /** blend の重み。実測で最良だった配分（prototypes/judge-bench/FINDINGS.md） */
@@ -218,9 +228,15 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
   try {
     const ins = db.prepare(
       `INSERT INTO papers
-         (paper_id, project_id, run_id, external_id, source, title, abstract, url, published_at, coarse_score, problem_excerpt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at, coarse_score, problem_excerpt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (project_id, source, external_id) DO NOTHING`,
+    );
+    const fillAuthors = db.prepare(
+      `UPDATE papers SET authors = ?
+        WHERE project_id = ? AND source = ? AND external_id = ?
+          AND (authors IS NULL OR trim(authors) = '')
+          AND ? IS NOT NULL`,
     );
     for (const p of papers) {
       const r = ins.run(
@@ -230,6 +246,7 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         p.external_id,
         p.source,
         p.title,
+        p.authors ?? null,
         p.abstract ?? null,
         p.url ?? null,
         p.published_at ?? null,
@@ -237,6 +254,9 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         p.problem_excerpt ?? null,
       );
       inserted += Number(r.changes);
+      if (p.authors?.trim()) {
+        fillAuthors.run(p.authors.trim(), projectId, p.source, p.external_id, p.authors.trim());
+      }
     }
     db.exec('COMMIT');
   } catch (e) {
@@ -365,7 +385,8 @@ export function saveScore(
 export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[] {
   return db
     .prepare(
-      `SELECT p.paper_id, p.external_id, p.title, p.abstract, p.url, p.relevance, p.sim_summary,
+      `SELECT p.paper_id, p.external_id, p.title, p.authors, p.abstract, p.url, p.published_at,
+              p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
               p.scored_at, p.in_library, p.problem_excerpt
        FROM papers p

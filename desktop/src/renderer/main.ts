@@ -38,8 +38,10 @@ interface RankedPaper {
   paper_id: string;
   external_id: string | null;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
+  published_at: string | null;
   relevance: number | null;
   sim_summary: number | null;
   nearest_chunk_text: string | null;
@@ -52,6 +54,13 @@ interface Attachment {
   attachment_id: string;
   path: string;
   kind: string;
+}
+
+/** papers.published_at（YYYY-MM-DD）から年。形が崩れていたら出さない（C-07） */
+function yearFromPublishedAt(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const y = Number(String(raw).slice(0, 4));
+  return Number.isInteger(y) && y >= 1000 && y <= 2100 ? y : null;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -922,6 +931,7 @@ async function refreshFeed() {
       el(
         'span',
         { class: 'row-meta' },
+        el('span', {}, [p.authors ?? '著者不明', yearFromPublishedAt(p.published_at) ?? '年不明'].join(' / ')),
         el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(3) ?? '-'}`),
       ),
     );
@@ -941,6 +951,14 @@ function renderPaperDetail(p: RankedPaper) {
   const pane = $('feed-detail');
   pane.replaceChildren();
   pane.append(el('h2', { class: 'detail-title' }, p.title));
+  const year = yearFromPublishedAt(p.published_at);
+  pane.append(
+    el(
+      'p',
+      { class: 'detail-meta' },
+      [p.authors, year ? String(year) : null].filter(Boolean).join(' / ') || '書誌情報なし',
+    ),
+  );
 
   pane.append(
     el(
@@ -1004,6 +1022,8 @@ function renderPaperDetail(p: RankedPaper) {
     const res = await guard('ライブラリへの保存', () =>
       window.api.lib.add(projectId, {
         title: p.title,
+        authors: p.authors,
+        year: yearFromPublishedAt(p.published_at),
         abstract: p.abstract,
         url: p.url,
         doi: p.external_id && /^10\.\d{4,}/.test(p.external_id) ? p.external_id : null,

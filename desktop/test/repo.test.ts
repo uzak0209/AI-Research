@@ -63,6 +63,7 @@ describe('スキーマと拡張', () => {
     expect(cols).not.toContain('judgment');
     expect(cols).toContain('relevance');
     expect(cols).toContain('scored_at');
+    expect(cols).toContain('authors');
   });
 
   it('次元の違うベクトルは黙って入らず落ちる', () => {
@@ -101,6 +102,17 @@ describe('論文の取り込み', () => {
     upsertPapers(db, PROJ, papers);
     expect(countUnscored(db, PROJ)).toBe(1);
     expect(listRanked(db, PROJ)).toHaveLength(1);
+  });
+
+  it('既にある論文の空の authors だけ後から埋める', () => {
+    upsertPapers(db, PROJ, [{ external_id: 'doi:1', source: 'openalex', title: 'GNN', abstract: 'a' }]);
+    expect(
+      upsertPapers(db, PROJ, [
+        { external_id: 'doi:1', source: 'openalex', title: 'GNN', abstract: 'a', authors: 'Ada Lovelace' },
+      ]),
+    ).toBe(0);
+    const row = db.prepare('SELECT authors FROM papers WHERE external_id = ?').get('doi:1') as { authors: string };
+    expect(row.authors).toBe('Ada Lovelace');
   });
 });
 
