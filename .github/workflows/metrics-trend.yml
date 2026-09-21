@@ -174,8 +174,8 @@ jobs:
 
       - name: Claude narrative
         id: claude
-        # 定時（改善フロー）ではまとめを書かない。merge / 手動だけ。
-        if: ${{ github.event_name != 'schedule' && github.event.inputs.skip_claude != 'true' && env.HAS_CLAUDE_TOKEN != '' }}
+        # claude-code-action は push を受けない。手動実行だけ Claude まとめ。
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_claude != 'true' && env.HAS_CLAUDE_TOKEN != '' }}
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -196,7 +196,7 @@ jobs:
             --allowedTools "Read,Write,Glob"
 
       - name: Fallback narrative when Claude skipped
-        if: steps.claude.outcome != 'success'
+        if: ${{ github.event_name != 'schedule' && steps.claude.outcome != 'success' }}
         run: |
           set -euo pipefail
           mkdir -p metrics
