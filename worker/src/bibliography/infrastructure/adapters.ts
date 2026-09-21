@@ -26,7 +26,7 @@ export function orcaBibliographyLlm(apiKey: string): BibliographyLlm {
           {
             role: 'system',
             content:
-              'You complete public bibliographic records. Fill authors, year, venue, and title for the identified work. authors is a "; "-separated string, not an array. Never invent a DOI. Unknown fields are null.',
+              'You complete public bibliographic records. Published works always have authors; never return authors as null if you identified the work. authors is a "; "-separated string, not an array. Never invent a DOI. If you cannot identify the work, all fields are null.',
           },
           { role: 'user', content: bibliographyPrompt(hint) },
         ],

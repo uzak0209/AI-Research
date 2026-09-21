@@ -12,7 +12,7 @@ import {
   spliceManaged,
 } from '../src/bibliography/domain/cite-format.js';
 import { httpsPdfUrl } from '../src/bibliography/domain/oa-url.js';
-import { hintFromReference, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
+import { hintFromReference, isEmptyRecord, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
 import { bffBibliographyGateway } from '../src/bibliography/infrastructure/adapters.js';
 
 function client(res: Response | Error): CloudClient {
@@ -243,6 +243,43 @@ describe('bffBibliographyGateway', () => {
         ),
       ).complete(hint),
     ).rejects.toThrow(/書誌を補れなかった/);
+  });
+
+  it('著者無しは公開文献の補完成功にしない', async () => {
+    await expect(
+      bffBibliographyGateway(() =>
+        client(
+          new Response(
+            JSON.stringify({
+              classification: 'C1',
+              record: {
+                title: 'GNN',
+                authors: null,
+                year: 2024,
+                doi: '10.1234/foo',
+                url: null,
+                venue: null,
+                abstract: null,
+                item_type: 'article',
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      ).complete(hint),
+    ).rejects.toThrow(/書誌を補れなかった/);
+    expect(
+      isEmptyRecord({
+        title: 'GNN',
+        authors: null,
+        year: 2024,
+        doi: '10.1234/foo',
+        url: null,
+        venue: null,
+        abstract: null,
+        item_type: 'article',
+      }),
+    ).toBe(true);
   });
 
   it('未ログインは握りつぶさない', async () => {
