@@ -2,4 +2,10 @@ export { handleScheduled, handleQueueMessage, SOURCES, coarseScore } from './com
 export { collectMessageSchema } from './domain';
 export { ingestCollect } from './application/ingest';
 export { scheduleCollect, enqueueManualCollect, buildCollectBatch } from './application/schedule';
-export { COLLECT_ENDPOINT, MAX_TERMS, parseTerms, buildSearchQuery } from './application/search-terms';
+export {
+  COLLECT_ENDPOINT,
+  MIN_INFERRED_ABBR,
+  parseInferredAbbreviations,
+  preciseSearchQueries,
+  buildSearchQuery,
+} from './application/search-terms';

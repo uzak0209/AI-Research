@@ -56,12 +56,30 @@ export function utcClock(): CollectClock {
 
 export function openAlexFetcher(apiKey?: string): PaperFetcher {
   return {
-    fetch: (source, summary) => fetchFromSource(source, summary, { apiKey }),
+    fetch: (source, query, extra) =>
+      fetchFromSource(source, query, {
+        apiKey,
+        skipIds: extra?.skipIds,
+        take: extra?.take,
+        maxPages: extra?.maxPages,
+      }),
   };
 }
 
 export function d1Runs(d1: D1Database): RunStore {
   return {
+    async knownExternalIds(projectId) {
+      const rows = await execute<{ external_id: string }>(
+        d1,
+        sql`
+          SELECT rp.external_id AS external_id
+          FROM run_papers AS rp
+          INNER JOIN runs AS r ON r.run_id = rp.run_id
+          WHERE r.project_id = ${projectId}
+        `.compile(db),
+      );
+      return new Set(rows.map((r) => r.external_id));
+    },
     async save(msg, papers: ScoredPaper[], failure) {
       const status = failure ? 'failed' : papers.length === 0 ? 'empty' : 'ok';
       const failedJson = failure ? JSON.stringify([{ source: msg.source, error: failure }]) : null;

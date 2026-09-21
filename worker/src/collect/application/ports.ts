@@ -28,12 +28,20 @@ export type ScheduleDeps = {
   queue: CollectQueue;
 };
 
+export type FetchPapersOpts = {
+  /** このプロジェクトで既に run_papers にある ID。同じ先頭ページを新規扱いしない */
+  skipIds?: ReadonlySet<string>;
+  take?: number;
+  maxPages?: number;
+};
+
 export type PaperFetcher = {
-  fetch(source: string, query: string): Promise<FetchedPaper[]>;
+  fetch(source: string, query: string, opts?: FetchPapersOpts): Promise<FetchedPaper[]>;
 };
 
 export type RunStore = {
   save(msg: CollectMessage, papers: ScoredPaper[], failure: string | null): Promise<void>;
+  knownExternalIds(projectId: string): Promise<Set<string>>;
 };
 
 export type SearchQueryBuilder = {

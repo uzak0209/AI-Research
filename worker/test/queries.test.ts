@@ -1,91 +1,109 @@
 import { describe, expect, it } from 'vitest';
 import {
-  MAX_TERMS,
-  needsEnglishSearchTerms,
+  MAX_INFERRED_ABBR,
+  MIN_INFERRED_ABBR,
+  extractLatinTerms,
+  isInferredAbbreviation,
   openAlexQueryFromSummary,
-  parseTermPairs,
-  parseTerms,
+  openAlexQueryFromTerms,
+  parseInferredAbbreviations,
+  preciseSearchQueries,
 } from '../src/queries';
+import { mergeLatestPapers } from '../src/collect/application/ingest';
 
-const SUMMARY = 'DPDK architecture for 100Gbps packet processing on commodity NICs';
+const POOL = [
+  'DPDK',
+  'RSS',
+  'XDP',
+  'eBPF',
+  'NFV',
+  'VPP',
+  'PMD',
+  'NIC',
+  'QEMU',
+  'SR-IOV',
+  'VFIO',
+  'OVS',
+  'AF_XDP',
+  'kTLS',
+  'IPv6',
+  'VXLAN',
+  'GENEVE',
+  'DDoS',
+  'QoS',
+  'UPF',
+  'CNI',
+  'vSwitch',
+];
 
-function pairs(json: string, summary = SUMMARY) {
-  return parseTermPairs(json, summary);
-}
+describe('parseInferredAbbreviations', () => {
+  it('略語 20 件以上を採る', () => {
+    expect(POOL.length).toBeGreaterThanOrEqual(MIN_INFERRED_ABBR);
+    const got = parseInferredAbbreviations(JSON.stringify(POOL));
+    expect(got.length).toBeGreaterThanOrEqual(MIN_INFERRED_ABBR);
+    expect(got).toContain('DPDK');
+    expect(got).toContain('eBPF');
+  });
 
-describe('parseTermPairs（抽出→英訳。source は summary 字面）', () => {
-  it('source が summary にある対の en を採る', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK architecture', en: 'DPDK architecture' },
-        { source: 'packet processing', en: 'packet processing' },
-      ]),
+  it('句・URL・他分野の普通名詞は捨てる', () => {
+    const got = parseInferredAbbreviations(
+      JSON.stringify(['DPDK', 'high throughput', 'https://example.com', 'protein', 'RSS']),
     );
-    expect(got.map((p) => p.en)).toEqual(['DPDK architecture', 'packet processing']);
+    expect(got).toEqual(['DPDK', 'RSS']);
   });
 
-  it('summary に無い source は捨てる', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK architecture', en: 'DPDK architecture' },
-        { source: 'protein folding', en: 'protein folding' },
-      ]),
+  it('上限で切る', () => {
+    const many = Array.from({ length: MAX_INFERRED_ABBR + 10 }, (_, i) => `AB${i}`);
+    expect(parseInferredAbbreviations(JSON.stringify(many))).toHaveLength(MAX_INFERRED_ABBR);
+  });
+
+  it('JSON 配列でなければ捨てる', () => {
+    expect(parseInferredAbbreviations('DPDK, RSS')).toEqual([]);
+    expect(parseInferredAbbreviations('{"abbr":"DPDK"}')).toEqual([]);
+  });
+});
+
+describe('isInferredAbbreviation', () => {
+  it('大文字を 2 つ以上含む略語だけ', () => {
+    expect(isInferredAbbreviation('DPDK')).toBe(true);
+    expect(isInferredAbbreviation('eBPF')).toBe(true);
+    expect(isInferredAbbreviation('IPv6')).toBe(true);
+    expect(isInferredAbbreviation('protein')).toBe(false);
+    expect(isInferredAbbreviation('cloud native')).toBe(false);
+  });
+});
+
+describe('preciseSearchQueries', () => {
+  it('種語単独と種語×各略語の AND を全部並べる', () => {
+    const qs = preciseSearchQueries('DPDK', ['DPDK', 'RSS', 'XDP', 'eBPF']);
+    expect(qs[0]).toBe('DPDK');
+    expect(qs).toContain('DPDK RSS');
+    expect(qs).toContain('DPDK XDP');
+    expect(qs).toContain('DPDK eBPF');
+    expect(qs.some((q) => q.split(' ').length > 2)).toBe(false);
+  });
+
+  it('summary の種語は毎回載る', () => {
+    const seeds = extractLatinTerms('dpdkによる高スループットの実現\nDPDK');
+    expect(seeds.map((t) => t.toLowerCase())).toContain('dpdk');
+    const qs = preciseSearchQueries('dpdkによる高スループットの実現\nDPDK', POOL);
+    expect(qs[0]?.toLowerCase()).toBe('dpdk');
+    expect(qs.length).toBeGreaterThan(MIN_INFERRED_ABBR - 1);
+  });
+});
+
+describe('mergeLatestPapers', () => {
+  it('新しい順に通し、同じ ID は 1 件にする', () => {
+    const got = mergeLatestPapers(
+      [
+        { external_id: 'a', title: 'old', authors: null, abstract: null, url: null, published_at: '2024-01-01' },
+        { external_id: 'b', title: 'new', authors: null, abstract: null, url: null, published_at: '2026-09-01' },
+        { external_id: 'a', title: 'dup', authors: null, abstract: null, url: null, published_at: '2025-01-01' },
+      ],
+      10,
     );
-    expect(got.map((p) => p.en)).toEqual(['DPDK architecture']);
-  });
-
-  it('ラテン source に無関係な en は捨てる', () => {
-    const got = pairs(JSON.stringify([{ source: 'DPDK', en: 'protein folding' }]));
-    expect(got).toEqual([]);
-  });
-
-  it('件数の上限で切る', () => {
-    const many = Array.from({ length: MAX_TERMS + 4 }, (_, i) => ({
-      source: 'packet processing',
-      en: `packet processing ${i}`,
-    }));
-    // source は同じでも en が違う。faithful は packet を含むので通るが上限で切る
-    expect(pairs(JSON.stringify(many))).toHaveLength(MAX_TERMS);
-  });
-
-  it('en の重複は 1 つにまとめる', () => {
-    const got = pairs(
-      JSON.stringify([
-        { source: 'DPDK', en: 'DPDK' },
-        { source: 'DPDK', en: 'dpdk' },
-      ]),
-    );
-    expect(got.map((p) => p.en)).toEqual(['DPDK']);
-  });
-
-  it('JSON でなければ全部捨てる', () => {
-    expect(pairs('DPDK, packet processing')).toEqual([]);
-    expect(pairs('```json\n[{"source":"DPDK","en":"DPDK"}]\n```')).toEqual([]);
-  });
-
-  it('配列でなければ捨てる', () => {
-    expect(pairs('{"source":"DPDK","en":"DPDK"}')).toEqual([]);
-  });
-
-  it('日本語から抽出した語の英訳を採る', () => {
-    const ja = 'dpdkによる高スループットの実現\nクラウドネイティブ';
-    expect(needsEnglishSearchTerms(ja)).toBe(true);
-    const got = parseTerms(
-      JSON.stringify([
-        { source: '高スループット', en: 'high throughput' },
-        { source: 'クラウドネイティブ', en: 'cloud native' },
-        { source: 'dpdk', en: 'DPDK' },
-      ]),
-      ja,
-    );
-    expect(got).toEqual(['high throughput', 'cloud native', 'DPDK']);
-  });
-
-  it('日本語 source が summary に無い英訳は捨てる', () => {
-    const ja = 'dpdkによる高スループットの実現';
-    expect(
-      parseTerms(JSON.stringify([{ source: 'タンパク質折りたたみ', en: 'protein folding' }]), ja),
-    ).toEqual([]);
+    expect(got.map((p) => p.external_id)).toEqual(['b', 'a']);
+    expect(got[1]?.title).toBe('old');
   });
 });
 
@@ -98,5 +116,11 @@ describe('openAlexQueryFromSummary', () => {
 
   it('ラテンが無ければ空', () => {
     expect(openAlexQueryFromSummary('高スループット\n実現')).toBe('');
+  });
+});
+
+describe('openAlexQueryFromTerms', () => {
+  it('略語は AND（空白）でつなぎ、訳語の空白句は載せない', () => {
+    expect(openAlexQueryFromTerms(['high throughput', 'DPDK', 'eBPF'])).toBe('DPDK eBPF');
   });
 });

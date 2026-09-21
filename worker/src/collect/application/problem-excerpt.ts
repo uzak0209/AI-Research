@@ -8,7 +8,7 @@ import type { ScoredPaper } from '../domain';
 
 export const REVIEW_ENDPOINT = '/cron/review';
 
-const MAX_PAPERS = 20;
+const MAX_PAPERS_PER_CALL = 20;
 const ABSTRACT_MAX = 800;
 
 const SYSTEM = [
@@ -58,38 +58,59 @@ export type ProblemExcerptResult = {
   usage: OrcaChatOk | null;
 };
 
+function addUsage(a: OrcaChatOk | null, b: OrcaChatOk): OrcaChatOk {
+  if (!a) return b;
+  return {
+    ...b,
+    tokens: a.tokens + b.tokens,
+    costUsd: a.costUsd == null || b.costUsd == null ? null : a.costUsd + b.costUsd,
+    latencyMs: a.latencyMs + b.latencyMs,
+    fallbackUsed: a.fallbackUsed || b.fallbackUsed,
+  };
+}
+
 export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Promise<ProblemExcerptResult> {
-  const withNull = papers.map((p) => ({ ...p, problem_excerpt: null as string | null }));
-  if (papers.length === 0) return { papers: withNull, usage: null };
+  const excerpts = new Map<string, string | null>();
+  if (papers.length === 0) return { papers: [], usage: null };
 
   const policy = reviewPolicy(env);
   const apiKey = orcaKey(env, policy.slot);
-  if (!apiKey) return { papers: withNull, usage: null };
+  if (!apiKey) {
+    return { papers: papers.map((p) => ({ ...p, problem_excerpt: null })), usage: null };
+  }
 
-  const batch = papers.slice(0, MAX_PAPERS);
-  const allowed = new Set(batch.map((p) => p.external_id));
-  const payload = batch.map((p) => ({
-    external_id: p.external_id,
-    title: p.title,
-    abstract: truncate(p.abstract),
-  }));
+  let usage: OrcaChatOk | null = null;
+  for (let i = 0; i < papers.length; i += MAX_PAPERS_PER_CALL) {
+    const batch = papers.slice(i, i + MAX_PAPERS_PER_CALL);
+    const allowed = new Set(batch.map((p) => p.external_id));
+    const payload = batch.map((p) => ({
+      external_id: p.external_id,
+      title: p.title,
+      abstract: truncate(p.abstract),
+    }));
 
-  const result = await chatCompletion(
-    apiKey,
-    [
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: JSON.stringify(payload) },
-    ],
-    policy,
-  );
+    const result = await chatCompletion(
+      apiKey,
+      [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: JSON.stringify(payload) },
+      ],
+      policy,
+    );
+    if (!result.ok) {
+      for (const p of batch) excerpts.set(p.external_id, excerpts.get(p.external_id) ?? null);
+      continue;
+    }
+    usage = addUsage(usage, result);
+    const parsed = parseProblemExcerpts(result.text, allowed);
+    for (const [id, quote] of parsed) excerpts.set(id, quote);
+  }
 
-  if (!result.ok) return { papers: withNull, usage: null };
-
-  const excerpts = parseProblemExcerpts(result.text, allowed);
-  const merged = papers.map((p) => ({
-    ...p,
-    problem_excerpt: excerpts.get(p.external_id) ?? null,
-  }));
-
-  return { papers: merged, usage: result };
+  return {
+    papers: papers.map((p) => ({
+      ...p,
+      problem_excerpt: excerpts.get(p.external_id) ?? null,
+    })),
+    usage,
+  };
 }
