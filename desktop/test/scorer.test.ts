@@ -113,7 +113,34 @@ describe('中断と再開（NFR-06 / C-07）', () => {
     expect(listRanked(db, PROJ)).toHaveLength(2); // 済んだ分は見える
   });
 
+  it('主張のベクトルが既にあっても再採点できる', async () => {
+    setManuscript(db, PROJ, [{ text: 'we pretrain a graph neural network on molecules' }]);
+    upsertPapers(db, PROJ, PAPERS);
+    await scoreProject(db, PROJ, fakeEmbedder());
+    expect(countUnscored(db, PROJ)).toBe(0);
+
+    db.prepare("UPDATE papers SET scored_at = NULL WHERE project_id = ?").run(PROJ);
+    const n = await scoreProject(db, PROJ, fakeEmbedder());
+    expect(n).toBe(2);
+    expect(countUnscored(db, PROJ)).toBe(0);
+  });
+
   it('再開すると残りだけが採点される', async () => {
+    upsertPapers(db, PROJ, PAPERS);
+    const ac = new AbortController();
+    await scoreProject(db, PROJ, fakeEmbedder(), {
+      onProgress: () => ac.abort(),
+      signal: ac.signal,
+    });
+    expect(countUnscored(db, PROJ)).toBe(1);
+
+    const more = await scoreProject(db, PROJ, fakeEmbedder());
+    expect(more).toBe(1);
+    expect(countUnscored(db, PROJ)).toBe(0);
+  });
+
+  it('主張がある状態で中断しても再開できる', async () => {
+    setManuscript(db, PROJ, [{ text: 'graph neural networks' }]);
     upsertPapers(db, PROJ, PAPERS);
     const ac = new AbortController();
     await scoreProject(db, PROJ, fakeEmbedder(), {

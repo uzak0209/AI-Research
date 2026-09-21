@@ -1,18 +1,18 @@
 name: Claude Scan
 
 # design-review と adr-hygiene は auto-scan を付けて claude.yml が自動で PR を出す。
-# research-trend と router-retro は proposal のみ（自動 PR しない）。
+# research-trend は proposal のみ（自動 PR しない）。
+# router-retro（改善フロー）は metrics-trend.yml が約 30 分ごとに回す。ここからは手動のみ。
 #
 # 頻度はスキャンの性質で分ける。
 # - repo を見る 2 種（design-review / adr-hygiene）は毎時。実装中は repo が 1 日に何度も変わる
-# - 外部を見る research-trend と、D1 実績の router-retro は日次。
-#   価格・供給・母数は毎時見ても結果が変わらず、API 予算と通知だけが増える
-# router-retro は手動で 1 日に何回でも回せる。母数が足りるかはスキャン側が見て、
+# - 外部を見る research-trend は日次。価格・供給は毎時見ても結果が変わらず、API 予算と通知だけが増える
+# router-retro は手動で何回でも回せる。母数が足りるかはスキャン側が見て、
 # 足りなければ issue を出さずに降りる（ADR-0005）。
 on:
   schedule:
     - cron: '0 * * * *'  # 毎時: design-review + adr-hygiene
-    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00: 上記 + research-trend + router-retro
+    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00: 上記 + research-trend
   workflow_dispatch:
     inputs:
       scan_type:
@@ -56,6 +56,7 @@ jobs:
           set -euo pipefail
           all='["design-review","adr-hygiene","research-trend","router-retro"]'
           hourly='["design-review","adr-hygiene"]'
+          daily='["design-review","adr-hygiene","research-trend"]'
 
           if [ -n "${REQUESTED:-}" ]; then
             if [ "$REQUESTED" = "all" ]; then
@@ -64,10 +65,10 @@ jobs:
               matrix="[\"${REQUESTED}\"]"
             fi
           elif [ "${CRON:-}" = "0 21 * * *" ]; then
-            matrix="$all"
+            # 日次: research-trend まで。router-retro は metrics-trend の改善フローへ
+            matrix="$daily"
           else
-            # 毎時: repo を見る 2 種のみ。日次 cron と同時発火しても
-            # research-trend / router-retro はこちらに含めない
+            # 毎時: repo を見る 2 種のみ
             matrix="$hourly"
           fi
 

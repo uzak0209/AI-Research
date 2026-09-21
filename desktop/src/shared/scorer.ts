@@ -10,6 +10,7 @@ import type { Db } from './db.js';
 import { EMBED_DIM, cosine } from './db.js';
 import {
   blendScore,
+  getChunkEmbedding,
   getProject,
   listChunks,
   listUnscored,
@@ -82,8 +83,9 @@ export async function scoreProject(
   const chunks = listChunks(db, projectId);
   const chunkVecs: { chunk_id: number; vec: Float32Array }[] = [];
   for (const c of chunks) {
-    const vec = await embedder.embed(c.text);
-    setChunkEmbedding(db, c.chunk_id, vec);
+    const existing = getChunkEmbedding(db, c.chunk_id);
+    const vec = existing ?? (await embedder.embed(c.text));
+    if (!existing) setChunkEmbedding(db, c.chunk_id, vec);
     chunkVecs.push({ chunk_id: c.chunk_id, vec });
   }
 

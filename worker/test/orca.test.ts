@@ -4,8 +4,12 @@ import {
   ORCA_POLICY,
   collectPolicy,
   reviewPolicy,
+  fallbackChain,
   DEFAULT_COLLECT_ROUTER,
   DEFAULT_REVIEW_ROUTER,
+  COLLECT_MAX_TOKENS,
+  REVIEW_MAX_TOKENS,
+  BIBLIOGRAPHY_MAX_TOKENS,
 } from '../src/shared/orca/policy';
 import type { Env } from '../src/env';
 
@@ -43,20 +47,41 @@ describe('段ごとのルーター（ADR-0005 §2）', () => {
     expect(reviewPolicy(env).model).toBe('anthropic/claude-haiku-4.5');
   });
 
-  it('受け皿は Named Router 側の設定に置くので extra_body を付けない', () => {
+  it('Named Router がコンソールに無くても extra_body の次へ落ちる', () => {
     const body = chatBody(reviewPolicy({} as Env), [{ role: 'user', content: 'x' }]);
     expect(body.model).toBe(DEFAULT_REVIEW_ROUTER);
     expect(body.temperature).toBe(0);
-    expect(body.extra_body).toBeUndefined();
+    expect(body.max_tokens).toBe(REVIEW_MAX_TOKENS);
+    expect(body.extra_body).toEqual({
+      route: 'fallback',
+      models: [DEFAULT_REVIEW_ROUTER, 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
+  });
+
+  it('収集も検索語の受け皿と完了トークン上限を付ける', () => {
+    const body = chatBody(collectPolicy({} as Env), [{ role: 'user', content: 'x' }]);
+    expect(body.model).toBe(DEFAULT_COLLECT_ROUTER);
+    expect(body.max_tokens).toBe(COLLECT_MAX_TOKENS);
+    expect(body.extra_body).toEqual({
+      route: 'fallback',
+      models: [DEFAULT_COLLECT_ROUTER, 'openai/gpt-4o-mini', 'google/gemini-2.5-flash'],
+    });
   });
 
   it('C1 書誌は Named Router を使わず extra_body を付ける', () => {
     const body = chatBody(ORCA_POLICY.C1, [{ role: 'user', content: 'x' }]);
     expect(body.model).toBe('openai/gpt-4o-mini');
+    expect(body.max_tokens).toBe(BIBLIOGRAPHY_MAX_TOKENS);
     expect(body.extra_body).toEqual({
       route: 'fallback',
       models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
     });
+  });
+
+  it('fallbackChain は primary を先頭にして重複を除く', () => {
+    expect(fallbackChain('google/gemini-2.5-flash', ['google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'])).toEqual(
+      ['google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    );
   });
 
   it('明示 fallback を持つ policy なら extra_body を付ける', () => {

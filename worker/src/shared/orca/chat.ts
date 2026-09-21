@@ -59,6 +59,7 @@ export function chatBody(
     messages,
   };
   if (json) body.response_format = { type: 'json_object' };
+  if (policy.maxTokens != null) body.max_tokens = policy.maxTokens;
   if (policy.fallbacks.length > 0) {
     body.extra_body = { route: 'fallback', models: [...policy.fallbacks] };
   }
