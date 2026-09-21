@@ -565,7 +565,7 @@ function registerIpc(): void {
       const result = await syncProjectFromCloud(db, cloud.client, projectId);
       inserted += result.inserted;
       pulled += result.pulled;
-      if (result.statuses.length > 0) statuses = result.statuses;
+      if (result.statuses?.length) statuses = result.statuses;
       const current = getProject(db, projectId);
       if (current?.last_run_id === accepted.run_id || result.inserted > 0 || result.pulled > 0) {
         timedOut = false;

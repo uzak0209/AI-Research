@@ -212,7 +212,7 @@ describe('bibliographyPrompt', () => {
     const p = bibliographyPrompt({ title: 'DPDK', first_page: 'Abstract: we present' });
     expect(p).toContain('DPDK');
     expect(p).toContain('we present');
-    expect(p).toContain('Fill title, authors, year');
+    expect(p).toContain('authors is required');
     expect(p).not.toContain('mypaper');
     expect(p).not.toContain('note');
   });

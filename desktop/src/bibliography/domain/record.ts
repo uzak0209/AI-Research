@@ -34,7 +34,8 @@ export type ReferenceSnapshot = {
 };
 
 export function isEmptyRecord(r: BibliographicRecord | null | undefined): boolean {
-  return !r || (!r.title && !r.doi);
+  // 公開文献に著者が無い補完は成功と偽らない（C-07）
+  return !r || (!r.title && !r.doi) || !r.authors?.trim();
 }
 
 /** 取れた項目だけ上書き。空で既存を消さない */

@@ -38,13 +38,14 @@ export async function syncProjectFromCloud(
   let inserted = 0;
   let pulled = 0;
   const statuses: string[] = [];
-  for (const run of runs) {
+  for (const run of runs ?? []) {
     statuses.push(run.status);
-    pulled += run.papers.length;
+    const papers = run.papers ?? [];
+    pulled += papers.length;
     inserted += upsertPapers(
       db,
       projectId,
-      run.papers.map((p) => ({
+      papers.map((p) => ({
         external_id: p.external_id,
         source: p.source,
         title: p.title,

@@ -1054,6 +1054,26 @@ function libraryAddStatus(pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped
   }
 }
 
+/** 自発調査の結果表示。欠けたフィールドで落とさない（メインとレンダラの世代差） */
+function collectOutcomeMessage(res: {
+  inserted?: number;
+  pulled?: number;
+  statuses?: string[] | null;
+  timedOut?: boolean;
+}): string {
+  const inserted = res.inserted ?? 0;
+  const pulled = res.pulled ?? 0;
+  const statuses = Array.isArray(res.statuses) ? res.statuses : [];
+  if (res.timedOut && inserted === 0 && pulled === 0) {
+    return '調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください';
+  }
+  if (inserted > 0) return `${inserted} 件を取り込んだ。読む順を付けています…`;
+  if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった`;
+  if (statuses.includes('failed')) return '調査は失敗した。しばらくして「調査する」をやり直してください';
+  if (statuses.includes('empty')) return '調査は終わったが、検索ヒットが 0 件だった';
+  return '調査が終わったが、新しい候補は無かった';
+}
+
 $('feed-score').addEventListener('click', async () => {
   ($('feed-score') as HTMLButtonElement).disabled = true;
   ($('feed-cancel') as HTMLButtonElement).disabled = false;
@@ -1068,19 +1088,11 @@ $('feed-collect').addEventListener('click', async () => {
   try {
     const res = await window.api.startCollect(projectId);
     btn.disabled = false;
-    if (res.timedOut && res.inserted === 0 && res.pulled === 0) {
-      setStatus('調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください');
-    } else if (res.inserted > 0) {
-      setStatus(`${res.inserted} 件を取り込んだ。読む順を付けています…`, 'busy');
-    } else if (res.pulled > 0) {
-      setStatus(`クラウドでは ${res.pulled} 件あったが、既に手元にある候補だった`);
-    } else if (res.statuses.includes('failed')) {
-      setStatus('調査は失敗した。しばらくして「調査する」をやり直してください', 'error');
-    } else if (res.statuses.includes('empty')) {
-      setStatus('調査は終わったが、検索ヒットが 0 件だった');
-    } else {
-      setStatus('調査が終わったが、新しい候補は無かった');
-    }
+    const text = collectOutcomeMessage(res);
+    const inserted = res.inserted ?? 0;
+    const statuses = Array.isArray(res.statuses) ? res.statuses : [];
+    const tone = inserted > 0 ? 'busy' : statuses.includes('failed') ? 'error' : 'info';
+    setStatus(text, tone);
     await refreshFeed();
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
