@@ -156,7 +156,16 @@ describe('粗い採点と要旨の復元', () => {
 
   it('coarseScore は語が無いとき 0 を返す（0 除算しない）', () => {
     expect(coarseScore('', 'anything')).toBe(0);
-    expect(coarseScore('a an the', 'anything')).toBe(0); // 4 文字以下は捨てる
+    expect(coarseScore('a an the', 'anything')).toBe(0); // 4 文字未満は捨てる
+  });
+
+  it('DPDK と日本語の語も採点する', () => {
+    const topic = 'DPDKによるパケット通信の高速化';
+    const hit = coarseScore(topic, 'DPDK packet I/O on commodity NICs パケット forwarding');
+    const miss = coarseScore(topic, 'transformer attention is all you need');
+    expect(hit).toBeGreaterThan(miss);
+    expect(hit).toBeGreaterThan(0);
+    expect(miss).toBe(0);
   });
 
   it('rebuildAbstract は転置インデックスから語順を戻す', () => {

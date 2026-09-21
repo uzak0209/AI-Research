@@ -1,0 +1,17 @@
+# レビュー段 Named Router（ADR-0005 §2, §4, §5）。コンソールへの適用先。
+# 呼び出し: orcarouter/rs-review
+#
+# 公開論文の要約。auto は使わない。prefer_free は OFF（C1 以外の無料プールに載せない）。
+# 受け皿は同格のみ。完了トークンを抑えるため Default は flash 級。
+
+name: rs-review
+enabled: true
+prefer_free: false
+strategy: balanced
+allowed:
+  - google/gemini-2.5-flash
+  - anthropic/claude-haiku-4.5
+  - openai/gpt-4o-mini
+default: google/gemini-2.5-flash
+# 候補外・別ベンダーの同格 1 本（安価へ落とさない）
+fallback: anthropic/claude-haiku-4.5

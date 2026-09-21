@@ -17,19 +17,31 @@ export const collectMessageSchema = z.object({
 /**
  * 粗い採点。**文字列一致の水準に留める**（ADR-0004）。
  * 埋め込みによる精密な採点はローカル（ADR-0001, C-09）
+ *
+ * ASCII は 4 文字以上。区切りの無い日本語はカタカナ連続・漢字連続を語にする。
  */
 export function coarseScore(summary: string, text: string): number {
-  const terms = new Set(
-    summary
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((t) => t.length > 4),
-  );
+  const terms = extractTerms(summary);
   if (terms.size === 0) return 0;
   const hay = text.toLowerCase();
   let hit = 0;
   for (const t of terms) if (hay.includes(t)) hit++;
   return hit / terms.size;
+}
+
+function extractTerms(summary: string): Set<string> {
+  const terms = new Set<string>();
+  const lower = summary.toLowerCase();
+  for (const t of lower.split(/[^a-z0-9]+/)) {
+    if (t.length >= 4) terms.add(t);
+  }
+  for (const t of summary.match(/[\u30a1-\u30f4]{3,}/g) ?? []) {
+    terms.add(t);
+  }
+  for (const t of summary.match(/[\u4e00-\u9fff]{2,}/g) ?? []) {
+    terms.add(t);
+  }
+  return terms;
 }
 
 export type ScoredPaper = {

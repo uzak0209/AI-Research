@@ -13,6 +13,7 @@ import {
   listUnscored,
   makeBibtexKey,
   saveScore,
+  getChunkEmbedding,
   setChunkEmbedding,
   setManuscript,
   setProjectRoot,
@@ -168,6 +169,20 @@ describe('自分の主張とベクトル検索', () => {
     setChunkEmbedding(db, newIds[0]!, unit(1));
     const after = db.prepare('SELECT COUNT(*) AS n FROM vec_chunks').get() as { n: number };
     expect(after.n).toBe(1);
+  });
+
+  it('同じチャンクのベクトルを上書きできる（sqlite-vec は INSERT OR REPLACE 不可）', () => {
+    const [id] = setManuscript(db, PROJ, [{ text: 'claim' }]);
+    setChunkEmbedding(db, id!, unit(0));
+    setChunkEmbedding(db, id!, unit(3));
+
+    const stored = getChunkEmbedding(db, id!);
+    expect(stored).not.toBeNull();
+    expect(cosine(stored!, unit(3))).toBeCloseTo(1, 5);
+    expect(cosine(stored!, unit(0))).toBeCloseTo(0, 5);
+
+    const n = db.prepare('SELECT COUNT(*) AS n FROM vec_chunks').get() as { n: number };
+    expect(n.n).toBe(1);
   });
 
   it('sqlite-vec の KNN が最近傍を返す', () => {

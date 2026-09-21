@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
-import { toVectorBlob } from './db.js';
+import { EMBED_DIM, toVectorBlob } from './db.js';
 
 export interface Project {
   project_id: string;
@@ -166,11 +166,41 @@ export function listChunks(db: Db, projectId: string): { chunk_id: number; text:
     .all(projectId) as unknown as { chunk_id: number; text: string }[];
 }
 
+export function getChunkEmbedding(db: Db, chunkId: number): Float32Array | null {
+  const row = db
+    .prepare('SELECT embedding FROM vec_chunks WHERE rowid = ?')
+    .get(BigInt(chunkId)) as { embedding: unknown } | undefined;
+  if (!row) return null;
+  return blobToVec(row.embedding);
+}
+
+/**
+ * sqlite-vec の vec0 は INSERT OR REPLACE / UPDATE を受け付けない。
+ * 同じ rowid をもう一度 INSERT すると UNIQUE constraint で落ちるので、消してから入れる。
+ */
 export function setChunkEmbedding(db: Db, chunkId: number, vec: Float32Array): void {
-  db.prepare('INSERT OR REPLACE INTO vec_chunks (rowid, embedding) VALUES (?, ?)').run(
-    BigInt(chunkId),
-    toVectorBlob(vec),
-  );
+  const id = BigInt(chunkId);
+  const blob = toVectorBlob(vec);
+  db.prepare('DELETE FROM vec_chunks WHERE rowid = ?').run(id);
+  db.prepare('INSERT INTO vec_chunks (rowid, embedding) VALUES (?, ?)').run(id, blob);
+}
+
+function blobToVec(raw: unknown): Float32Array {
+  let bytes: Uint8Array;
+  if (raw instanceof Uint8Array) {
+    bytes = raw;
+  } else if (raw instanceof ArrayBuffer) {
+    bytes = new Uint8Array(raw);
+  } else {
+    throw new Error(`vec_chunks の埋め込みの型が読めない: ${typeof raw}`);
+  }
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const vec = new Float32Array(copy.buffer);
+  if (vec.length !== EMBED_DIM) {
+    throw new Error(`埋め込みの次元が違う: ${vec.length}（期待 ${EMBED_DIM}）`);
+  }
+  return vec;
 }
 
 // --- 論文 -------------------------------------------------------------------

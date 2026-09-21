@@ -1,16 +1,23 @@
 name: Metrics trend
 
-# ADR-0005 §8 / §10: トークンとコストが下がっているかを、実行のたびに出す。
+# ADR-0005 §10: トークン/論文と点数を出して docs に残す。
 #
-# 出し先はジョブサマリ（Actions の実行結果画面）とアーティファクト。
-# リポジトリへコミットしないので permissions は contents: read のままでよい。
+# - 数値・SVG グラフ: scripts/retro-metrics + render-charts-svg（決定的）
+# - 「何をしてどれだけ動いたか」の文章: Claude（metrics-report.md）
+# - 出し先: docs/metrics-trend.md + docs/metrics-*.svg（README に埋め込み）とジョブサマリ
+# - 改善フロー（router-retro → proposal issue）: 約 30 分ごと（schedule）
+#   定時は提案のみ。docs / Claude まとめは merge・手動実行のとき書く（コミット洪水を避ける）
 #
-# 回す回数に制限は置かない。データが無ければ「取得失敗」「データなし」と出して降りる。
-# 欠損を成功と偽らない（C-07）。
-
+# PR が dev / main に merge されたとき（= push）に走る。
+# docs/metrics-trend.md / docs/metrics-*.svg だけの push では再帰しない。
 on:
+  push:
+    branches: [dev, main]
+    paths-ignore:
+      - 'docs/metrics-trend.md'
+      - 'docs/metrics-*.svg'
   schedule:
-    - cron: '30 21 * * *' # UTC 21:30 = JST 06:30（収集 cron 20:00 UTC の後）
+    - cron: '*/30 * * * *' # 約 30 分ごと（GitHub 側で遅れることがある）
   workflow_dispatch:
     inputs:
       target_env:
@@ -22,19 +29,32 @@ on:
         description: '何日分を見るか'
         type: string
         default: '14'
+      skip_claude:
+        description: 'Claude のまとめを飛ばしてグラフだけ docs に書く'
+        type: boolean
+        default: false
+      propose_issues:
+        description: '改善提案の issue も出す（定時は常に出す）'
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: read
+  actions: write
+  id-token: write
 
-# 手動実行は毎回別グループにして、続けて何回でも回せるようにする
 concurrency:
-  group: metrics-trend-${{ github.event.inputs.target_env || 'dev' }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'sched' }}
+  group: metrics-trend-${{ github.ref_name }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.event_name }}
   cancel-in-progress: false
 
 jobs:
-  trend:
+  collect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      status: ${{ steps.collect.outputs.status }}
+      target_env: ${{ steps.env.outputs.target_env }}
     steps:
       - uses: actions/checkout@v5
 
@@ -42,37 +62,299 @@ jobs:
         with:
           node-version: '22'
 
-      # 依存は入れない。scripts/ は Node 標準 API だけで動く
+      - name: Resolve target env
+        id: env
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            te="${{ github.event.inputs.target_env }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            te=prod
+          else
+            te=dev
+          fi
+          days="${{ github.event.inputs.days || '14' }}"
+          echo "target_env=$te" >> "$GITHUB_OUTPUT"
+          echo "days=$days" >> "$GITHUB_OUTPUT"
+          echo "target_env=$te days=$days"
+
       - name: Collect metrics
         id: collect
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          TARGET_ENV: ${{ github.event.inputs.target_env || 'dev' }}
-          DAYS: ${{ github.event.inputs.days || '14' }}
+          TARGET_ENV: ${{ steps.env.outputs.target_env }}
+          DAYS: ${{ steps.env.outputs.days }}
         run: |
           set -euo pipefail
-          node scripts/retro-metrics.mjs --env "$TARGET_ENV" --days "$DAYS" > metrics.json
-          status=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync("metrics.json","utf8")).status)')
+          mkdir -p metrics
+          node scripts/retro-metrics.mjs --env "$TARGET_ENV" --days "$DAYS" > metrics/metrics.json
+          status=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync("metrics/metrics.json","utf8")).status)')
           echo "status=$status" >> "$GITHUB_OUTPUT"
           echo "status=$status"
+          node scripts/render-trend.mjs metrics/metrics.json | tee metrics/charts.md >> "$GITHUB_STEP_SUMMARY"
+          node scripts/render-charts-svg.mjs metrics/metrics.json metrics
 
-      - name: Render summary
+      - name: Resolve PR / trigger context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          node scripts/render-trend.mjs metrics.json | tee trend.md >> "$GITHUB_STEP_SUMMARY"
-
-      # 取れなかったことを警告で見えるようにする。ジョブは落とさない
-      # （データが無いのは異常ではない。異常なら retro-metrics が非 0 で落ちる）
-      - name: Warn when unavailable
-        if: steps.collect.outputs.status != 'ok'
-        run: |
-          echo "::warning::指標を取得できなかった（status=${{ steps.collect.outputs.status }}）。詳細はジョブサマリを見ること。"
+          mkdir -p metrics
+          if [ "$EVENT" = "push" ]; then
+            pr_json="$(gh api "repos/${GH_REPO}/commits/${SHA}/pulls" --jq '.[0] // empty' 2>/dev/null || true)"
+            if [ -n "${pr_json}" ]; then
+              printf '%s\n' "$pr_json" | node -e '
+                const fs=require("node:fs");
+                const p=JSON.parse(fs.readFileSync(0,"utf8"));
+                const out={
+                  trigger:"merge",
+                  branch:process.env.REF,
+                  sha:process.env.SHA,
+                  pr:{
+                    number:p.number,
+                    title:p.title,
+                    url:p.html_url,
+                    body:(p.body||"").slice(0,4000),
+                    merged_at:p.merged_at,
+                    user:p.user&&p.user.login,
+                  },
+                };
+                fs.writeFileSync("metrics/pr-context.json", JSON.stringify(out,null,2)+"\n");
+              '
+            else
+              node -e '
+                const fs=require("node:fs");
+                fs.writeFileSync("metrics/pr-context.json", JSON.stringify({
+                  trigger:"push", branch:process.env.REF, sha:process.env.SHA,
+                  pr:null, note:"この commit に紐づく merged PR が見つからなかった",
+                },null,2)+"\n");
+              '
+            fi
+          elif [ "$EVENT" = "schedule" ]; then
+            printf '%s\n' '{"trigger":"schedule","pr":null}' > metrics/pr-context.json
+          else
+            printf '%s\n' '{"trigger":"workflow_dispatch","pr":null}' > metrics/pr-context.json
+          fi
+          cat metrics/pr-context.json
 
       - uses: actions/upload-artifact@v4
         with:
-          name: metrics-${{ github.event.inputs.target_env || 'dev' }}-${{ github.run_id }}
+          name: metrics-${{ steps.env.outputs.target_env }}-${{ github.run_id }}
           path: |
-            metrics.json
-            trend.md
+            metrics/metrics.json
+            metrics/charts.md
+            metrics/pr-context.json
+            metrics/metrics-tokens.svg
+            metrics/metrics-score.svg
+            metrics/metrics-papers.svg
           retention-days: 30
+
+  report:
+    needs: collect
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: metrics-${{ needs.collect.outputs.target_env }}-${{ github.run_id }}
+          path: metrics
+
+      - name: Claude narrative
+        id: claude
+        # 定時（改善フロー）ではまとめを書かない。merge / 手動だけ。
+        if: ${{ github.event_name != 'schedule' && github.event.inputs.skip_claude != 'true' && secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
+          prompt: |
+            対象は ${{ github.repository }}。指標レポート用のまとめを書く。
+
+            次を Read し、指示だけに従え。
+            - `.github/claude-scans/shared.md`
+            - `.github/claude-scans/metrics-report.md`
+
+            入力は `metrics/pr-context.json`・`metrics/metrics.json`・`metrics/charts.md`。
+            出力は `metrics/narrative.md` のみ。コミットしない。issue も作らない。
+          claude_args: |
+            --allowedTools "Read,Write,Glob"
+
+      - name: Fallback narrative when Claude skipped
+        if: steps.claude.outcome != 'success'
+        run: |
+          set -euo pipefail
+          mkdir -p metrics
+          if [ ! -f metrics/narrative.md ]; then
+            {
+              echo '## 今回なにをしたか'
+              echo
+              node -e '
+                const fs=require("node:fs");
+                const c=JSON.parse(fs.readFileSync("metrics/pr-context.json","utf8"));
+                if(c.pr){
+                  console.log(`PR [#${c.pr.number}](${c.pr.url}): ${c.pr.title}`);
+                } else {
+                  console.log(`きっかけ: \`${c.trigger}\`（${c.branch||"—"})`);
+                }
+              '
+              echo
+              echo '## 指標はどう動いたか'
+              echo
+              echo 'Claude のまとめはスキップされた。下のグラフと明細を直接読むこと。'
+              echo
+              echo '## いま言えること / 言えないこと'
+              echo
+              echo '文章の要約は無し。数値は決定的スクリプトの結果のみ。'
+            } > metrics/narrative.md
+          fi
+
+      - name: Assemble docs/metrics-trend.md + SVG
+        if: ${{ github.event_name != 'schedule' }}
+        env:
+          TARGET_ENV: ${{ needs.collect.outputs.target_env }}
+          STATUS: ${{ needs.collect.outputs.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p docs
+          cp metrics/metrics-tokens.svg metrics/metrics-score.svg metrics/metrics-papers.svg docs/
+          {
+            echo '# 指標レポート'
+            echo
+            echo 'トークン/見つけた論文と点数（`coarse_score` 平均）。'
+            echo "環境: \`${TARGET_ENV}\` / 収集 status: \`${STATUS}\` / 更新: $(date -u +%Y-%m-%dT%H:%MZ)。"
+            echo
+            echo '> 数値と SVG グラフは \`scripts/retro-metrics.mjs\` / \`render-charts-svg.mjs\`（決定的）。'
+            echo '> 上のまとめ文は Claude（\`metrics-report\`）。無い改善は書いていない（`C-07`）。'
+            echo
+            cat metrics/narrative.md
+            echo
+            echo '---'
+            echo
+            echo '## グラフ'
+            echo
+            echo '![トークン/論文](metrics-tokens.svg)'
+            echo
+            echo '![点数 (coarse_score 平均)](metrics-score.svg)'
+            echo
+            echo '![取得論文数](metrics-papers.svg)'
+            echo
+            echo '---'
+            echo
+            cat metrics/charts.md
+            echo
+          } > docs/metrics-trend.md
+          tee -a "$GITHUB_STEP_SUMMARY" < docs/metrics-trend.md >/dev/null
+
+      - name: Commit docs metrics report
+        if: ${{ github.event_name != 'schedule' }}
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          file_pattern: |
+            docs/metrics-trend.md
+            docs/metrics-tokens.svg
+            docs/metrics-score.svg
+            docs/metrics-papers.svg
+          commit_message: |
+            docs: 指標レポートを更新
+
+            Metrics trend が SVG グラフとまとめを docs/ に書いた。
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+
+  # 定時、または手動で propose_issues=true のときだけ。
+  # 改善点があれば proposal issue（router-retro。上限 3・自動 PR なし）
+  propose:
+    needs: [collect, report]
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.propose_issues == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Dump D1 aggregates for router-retro
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LOOKBACK_DAYS: '14'
+          D1_TARGET: live
+        run: |
+          set -euo pipefail
+          npm ci
+          bash scripts/dump-retro.sh
+          mkdir -p ../d1-retro
+          cp -R tmp/d1-retro/. ../d1-retro/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: metrics-${{ needs.collect.outputs.target_env }}-${{ github.run_id }}
+          path: metrics
+
+      - uses: anthropics/claude-code-action@v1
+        if: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: 'false'
+          SCAN_TYPE: router-retro
+          LOOKBACK_DAYS: '14'
+          D1_TARGET: live
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude
+          additional_permissions: |
+            actions: read
+          settings: |
+            {
+              "env": {
+                "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
+                "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
+                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}",
+                "LOOKBACK_DAYS": "14",
+                "D1_TARGET": "live"
+              }
+            }
+          prompt: |
+            対象は ${{ github.repository }}。スキャン種別は router-retro。
+            環境変数 DRY_RUN は "false"。D1_TARGET は "live"。
+            D1 の集計は `d1-retro/`。あわせて `metrics/metrics.json` も読んでよい
+            （主指標はトークン/論文と点数。無い数値は捏造しない）。
+
+            次の 2 ファイルを Read し、そこに書いてある指示だけに従え。
+            - `.github/claude-scans/shared.md`
+            - `.github/claude-scans/router-retro.md`
+
+            改善点があれば `proposal,router` issue を出す（上限 3）。
+            0 件なら、何を見てなぜ出さなかったかを出力する。
+          claude_args: |
+            --allowedTools "Bash,Read,Grep,Glob,WebSearch,WebFetch"

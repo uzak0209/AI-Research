@@ -189,13 +189,18 @@ describe('POST /bff/trends（C1）', () => {
     const sent = JSON.parse(String(orca?.init?.body)) as {
       model: string;
       temperature: number;
+      max_tokens?: number;
       extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
-    // /bff/trends は 2 段目（レビュー）。受け皿は Named Router 側の設定なので extra_body は付けない
+    // Named Router + 受け皿（コンソール未解決時は次のモデルへ）
     expect(sent.model).toBe('orcarouter/rs-review');
     expect(sent.temperature).toBe(0);
-    expect(sent.extra_body).toBeUndefined();
+    expect(sent.max_tokens).toBe(700);
+    expect(sent.extra_body).toEqual({
+      route: 'fallback',
+      models: ['orcarouter/rs-review', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
     const user = sent.messages.find((m) => m.content.includes('Topic: DPDK'));
     expect(user?.content).toContain('DPDK architecture for 100Gbps');
     expect(user?.content).not.toContain('unpublished');
@@ -263,7 +268,7 @@ describe('POST /bff/trends（C1）', () => {
     const body = (await res.json()) as { model: string };
     expect(body.model).toBe('google/gemini-2.5-flash');
 
-    // 要求は rs-review、応答は gemini。宛先ごとに比べられるよう別列で残す
+    // 要求は rs-review、応答は fallback ヘッダの gemini。宛先ごとに比べられるよう別列で残す
     const usage = await env.DB.prepare(
       'SELECT model, resolved_model, fallback_calls FROM llm_usage WHERE user_id = ?',
     )

@@ -100,7 +100,10 @@ const SQL_USAGE = `
 `;
 
 const SQL_PAPERS = `
-  SELECT r.run_date AS d, COUNT(p.external_id) AS papers
+  SELECT r.run_date AS d,
+         COUNT(p.external_id) AS papers,
+         AVG(p.coarse_score) AS score_mean,
+         SUM(CASE WHEN p.coarse_score IS NOT NULL THEN 1 ELSE 0 END) AS scored_papers
   FROM runs r
   LEFT JOIN run_papers p ON p.run_id = r.run_id
   WHERE r.run_date >= ?
@@ -151,6 +154,8 @@ export function buildSeries(usage, papers, runs, since) {
         latency_ms_sum: 0,
         fallback_calls: 0,
         papers: 0,
+        scored_papers: 0,
+        score_mean: null,
         runs: { ok: 0, empty: 0, failed: 0, partial: 0 },
       });
     }
@@ -165,7 +170,17 @@ export function buildSeries(usage, papers, runs, since) {
     e.latency_ms_sum = Number(r.latency_ms_sum ?? 0);
     e.fallback_calls = Number(r.fallback_calls ?? 0);
   }
-  for (const r of papers) touch(r.d).papers = Number(r.papers ?? 0);
+  for (const r of papers) {
+    const e = touch(r.d);
+    e.papers = Number(r.papers ?? 0);
+    e.scored_papers = Number(r.scored_papers ?? 0);
+    // AVG が NULL（採点列が全部 NULL）のときは null のまま。0 と混ぜない（C-07）
+    e.score_mean =
+      r.score_mean === null || r.score_mean === undefined || r.score_mean === ""
+        ? null
+        : Number(r.score_mean);
+    if (!Number.isFinite(e.score_mean)) e.score_mean = null;
+  }
   for (const r of runs) {
     const e = touch(r.d);
     if (r.status in e.runs) e.runs[r.status] = Number(r.n ?? 0);
@@ -268,10 +283,10 @@ async function main() {
   const series = buildSeries(usage, papers, runs, since);
   const sum = (key) => series.reduce((a, e) => a + e[key], 0);
 
-  // 比率は論文 0 本の日に出せない。3 指標を同じ窓で比べないと
-  // 「0 本の日が後半に入ったせいで本数が減った」という誤検出が出る。
-  // 取得できた日だけで比べ、除外した日数は別に数える（C-07）。
+  // 比率は論文 0 本の日に出せない。同じ窓で比べないと誤検出になる。
+  // 点数は coarse_score がある行だけの平均。未採点だけの日は比較から外す（C-07）。
   const comparable = series.filter((e) => e.papers > 0);
+  const scored = series.filter((e) => e.score_mean !== null && Number.isFinite(e.score_mean));
 
   return {
     ...base,
@@ -281,17 +296,21 @@ async function main() {
       days_with_data: series.length,
       days_compared: comparable.length,
       days_without_papers: series.length - comparable.length,
+      days_scored: scored.length,
       calls: sum("calls"),
       tokens: sum("tokens"),
       cost_usd: sum("cost_usd"),
       papers: sum("papers"),
+      scored_papers: sum("scored_papers"),
       latency_ms_sum: sum("latency_ms_sum"),
       fallback_calls: sum("fallback_calls"),
     },
     trend: {
       tokens_per_paper: trend(comparable, "tokens_per_paper"),
-      cost_per_paper: trend(comparable, "cost_per_paper"),
+      score_mean: trend(scored, "score_mean"),
       papers: trend(comparable, "papers"),
+      // 以下は補助。主指標はトークン/論文と点数
+      cost_per_paper: trend(comparable, "cost_per_paper"),
       papers_per_sec: trend(comparable, "papers_per_sec"),
     },
     by_route: routeRows(byRoute),
