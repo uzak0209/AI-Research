@@ -91,6 +91,7 @@ function migrate(db: Db): void {
     ['annotations', 'path_json', 'TEXT'],
     ['annotations', 'stroke_width', 'REAL'],
     ['annotations', 'updated_at', 'TEXT'],
+    ['projects', 'root_path', 'TEXT'],
   ];
 
   for (const [table, column, ddl] of added) {

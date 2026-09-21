@@ -2,7 +2,7 @@
 
 `.github/claude-scans/shared.md` を先に Read して従え。
 
-有効 ADR は **0001 / 0002 / 0003**。要件は `docs/requirements.md` 1 本。
+有効 ADR は **0001 / 0002 / 0003 / 0004 / 0005**。要件は `docs/requirements.md` 1 本。
 書式は adr-hygiene、外部動向は research-trend。
 
 ## 調べる対象

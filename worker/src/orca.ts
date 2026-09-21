@@ -33,7 +33,10 @@ export function orcaKey(env: Env, slot: OrcaKeySlot): string | undefined {
   return env.ORCAROUTER_API_KEY_SENSITIVE;
 }
 
-export function chatBody(policy: OrcaClassPolicy, messages: { role: 'system' | 'user'; content: string }[]) {
+export function chatBody(
+  policy: OrcaClassPolicy,
+  messages: { role: 'system' | 'user'; content: string }[],
+) {
   const body: Record<string, unknown> = {
     model: policy.model,
     temperature: policy.temperature,

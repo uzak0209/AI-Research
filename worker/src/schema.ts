@@ -69,3 +69,37 @@ export const TrendResponseSchema = z
     papers: z.array(TrendPaperSchema),
   })
   .openapi('TrendResponse');
+
+export const BibliographyBodySchema = z
+  .object({
+    title: z.string().trim().max(500).optional(),
+    authors: z.string().trim().max(500).optional(),
+    year: z.number().int().min(1000).max(2100).optional(),
+    doi: z.string().trim().max(200).optional(),
+    url: z.string().trim().max(2000).optional(),
+    venue: z.string().trim().max(300).optional(),
+    abstract: z.string().trim().max(2000).optional(),
+  })
+  .refine((h) => Boolean(h.title || h.doi), { message: 'title or doi required' })
+  .openapi('BibliographyBody');
+
+export const BibliographyRecordSchema = z
+  .object({
+    title: z.string().nullable(),
+    authors: z.string().nullable(),
+    year: z.number().int().nullable(),
+    doi: z.string().nullable(),
+    url: z.string().nullable(),
+    venue: z.string().nullable(),
+    abstract: z.string().nullable(),
+    item_type: z.string(),
+  })
+  .openapi('BibliographyRecord');
+
+export const BibliographyResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    record: BibliographyRecordSchema,
+  })
+  .openapi('BibliographyResponse');

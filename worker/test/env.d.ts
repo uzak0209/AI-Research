@@ -7,5 +7,6 @@ declare module 'cloudflare:test' {
     JWT_SIGNING_KEY: string;
     ORCAROUTER_API_KEY: string;
     OPENALEX_API_KEY: string;
+    JEV_API_KEY: string;
   }
 }

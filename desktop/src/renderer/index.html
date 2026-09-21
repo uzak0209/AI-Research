@@ -10,25 +10,50 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <header class="app-header">
-      <h1 class="app-title">AI-Research</h1>
-
-      <div class="tabs" role="tablist" aria-label="画面の切り替え">
-        <button class="tab" role="tab" id="tab-library" aria-selected="true" aria-controls="view-library">
-          ライブラリ
-        </button>
-        <button class="tab" role="tab" id="tab-feed" aria-selected="false" aria-controls="view-feed">
-          新着候補
-        </button>
-        <button class="tab" role="tab" id="tab-project" aria-selected="false" aria-controls="view-project">
-          プロジェクト
-        </button>
-      </div>
-
-      <!-- 状態は読み上げにも届くようにする -->
-      <p class="status" id="status" role="status" aria-live="polite"></p>
+    <header class="titlebar" aria-hidden="false">
+      <p class="titlebar-title" id="titlebar-title">AI-Research</p>
     </header>
 
+    <div class="shell">
+      <nav class="activity-bar" role="tablist" aria-label="画面の切り替え">
+        <button class="activity-btn" role="tab" id="tab-library" aria-selected="true" aria-controls="view-library" title="ライブラリ">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              d="M5 4.5h5.5A2.5 2.5 0 0 1 13 7v12.5H7.5A2.5 2.5 0 0 0 5 22V4.5Zm0 0V22m14-17.5h-5.5A2.5 2.5 0 0 0 11 7v12.5h5.5A2.5 2.5 0 0 1 19 22V4.5Z"
+            />
+          </svg>
+          <span class="visually-hidden">ライブラリ</span>
+        </button>
+        <button class="activity-btn" role="tab" id="tab-feed" aria-selected="false" aria-controls="view-feed" title="新着候補">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              d="M5 7h14M5 12h14M5 17h9"
+            />
+          </svg>
+          <span class="visually-hidden">新着候補</span>
+        </button>
+        <button class="activity-btn" role="tab" id="tab-project" aria-selected="false" aria-controls="view-project" title="プロジェクト">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+              d="M4 7.5h6l1.5 2H20v9.5H4V7.5Z"
+            />
+          </svg>
+          <span class="visually-hidden">プロジェクト</span>
+        </button>
+      </nav>
+
+      <div class="workbench">
     <!-- ================= ライブラリ ================= -->
     <div class="view" id="view-library" role="tabpanel" aria-labelledby="tab-library" data-active="true">
       <nav class="sidebar" aria-label="ライブラリの絞り込み">
@@ -107,8 +132,34 @@
 
     <!-- ================= プロジェクト ================= -->
     <div class="view" id="view-project" role="tabpanel" aria-labelledby="tab-project" data-active="false">
-      <section class="detail-pane" style="flex: 1 1 auto; max-width: 860px">
-        <h2 class="detail-title">プロジェクト</h2>
+      <nav class="sidebar explorer" aria-label="作業フォルダ">
+        <div class="field">
+          <label for="proj-title">名前</label>
+          <input id="proj-title" type="text" autocomplete="off" />
+        </div>
+
+        <div id="proj-empty">
+          <p class="hint">
+            メニューバーの <strong>ファイル → フォルダを作る / フォルダを開く</strong> からも同じ操作ができます。
+            中身のある既存フォルダには作りません。
+          </p>
+          <button class="btn" data-variant="primary" id="proj-mkdir">フォルダを作る</button>
+          <button class="btn" data-variant="secondary" id="proj-open">フォルダを開く</button>
+        </div>
+
+        <div id="proj-tree" hidden>
+          <p class="side-label">作業フォルダ</p>
+          <ul class="tree" aria-label="フォルダ構成">
+            <li>references</li>
+            <li>mypaper</li>
+            <li>claims</li>
+          </ul>
+          <button class="btn" data-variant="secondary" id="proj-reveal">Finder で表示</button>
+        </div>
+      </nav>
+
+      <section class="detail-pane" aria-label="プロジェクトの編集">
+        <h2 class="detail-title">概要と提案手法</h2>
 
         <div class="field">
           <label for="summary">概要</label>
@@ -119,16 +170,16 @@
         </div>
 
         <div class="field">
-          <label for="claims">自分の主張</label>
+          <label for="claims">提案手法とその根拠</label>
           <p class="hint">
-            1 行に 1 つ。未公開で構いません。<strong>ローカルから出ません。</strong>
-            各候補が「どの主張に近いか」の判定に使います。
+            1 行に 1 つ。自分がやる手法と、なぜそれかを書く。未公開で構いません。<strong>ローカルから出ません。</strong>
+            新着が「どの手法に近いか」を出すために使います。判定ではありません。
           </p>
           <textarea id="claims" rows="10"></textarea>
         </div>
 
         <div class="callout">
-          概要や主張を変えると採点の前提が変わるため、<strong>採点済みの印を落として採点し直し</strong>になります。
+          概要や手法を変えると採点の前提が変わるため、<strong>採点済みの印を落として採点し直し</strong>になります。
         </div>
 
         <div class="actions" data-align="end">
@@ -136,6 +187,13 @@
         </div>
       </section>
     </div>
+      </div>
+    </div>
+
+    <footer class="statusbar">
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <p class="statusbar-path" id="proj-root"></p>
+    </footer>
 
     <script type="module" src="./main.ts"></script>
   </body>
