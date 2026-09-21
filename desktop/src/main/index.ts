@@ -5,22 +5,25 @@
 //   - レンダラに Node を渡さない。contextIsolation を切らない
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
-import { BrowserWindow, app, dialog, ipcMain, shell, utilityProcess, type UtilityProcess } from 'electron';
+import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
 import { appendFileSync, readFileSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, join } from 'node:path';
 import { EOL } from 'node:os';
-import { join } from 'node:path';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
   countUnscored,
   createProject,
+  getProject,
   listChunks,
   listProjects,
   listRanked,
   setManuscript,
+  setProjectRoot,
   updateSummary,
+  updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
+import { WorkspaceError, createProjectWorkspace } from '../shared/workspace.js';
 import {
   addAttachment,
   addReference,
@@ -65,6 +68,27 @@ const dbPath = () => join(app.getPath('userData'), 'ai-research.db');
 const modelCacheDir = () => join(app.getPath('userData'), 'models');
 
 /**
+ * タイトルバーは OS の流儀に合わせる（VS Code と同じ）。
+ * macOS: 信号機は左。Windows: キャプションボタンは右。Linux: 枠は OS に任せる。
+ */
+function windowChrome(dark: boolean): BrowserWindowConstructorOptions {
+  if (process.platform === 'darwin') {
+    return { titleBarStyle: 'hiddenInset' };
+  }
+  if (process.platform === 'win32') {
+    return {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: {
+        color: dark ? '#1b1f23' : '#ffffff',
+        symbolColor: dark ? '#e9ecef' : '#1a1d21',
+        height: 38,
+      },
+    };
+  }
+  return {};
+}
+
+/**
  * Windows の GUI プロセスは stdout が端末に出ない。
  * 起動時の失敗を黙って消さないよう userData にログを残す（C-07）。
  */
@@ -77,10 +101,12 @@ function logStartup(line: string): void {
 }
 
 function createWindow(): void {
+  const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
+    ...windowChrome(dark),
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -136,6 +162,110 @@ function startScoring(projectId: string, model: string): void {
   scorer.postMessage(req);
 }
 
+type WorkspaceOk = { ok: true; root: string; title: string; action: 'create' | 'open' };
+type WorkspaceFail = { ok: false; canceled?: true; error?: string };
+type WorkspaceResult = WorkspaceOk | WorkspaceFail;
+
+function currentProject() {
+  return (
+    listProjects(db)[0] ??
+    createProject(db, { title: '新しいプロジェクト', summary: '', embed_model: DEFAULT_MODEL })
+  );
+}
+
+function attachWorkspace(root: string, title: string, action: 'create' | 'open'): WorkspaceOk {
+  const p = currentProject();
+  setProjectRoot(db, p.project_id, root);
+  updateTitle(db, p.project_id, title);
+  return { ok: true, root, title, action };
+}
+
+function failWorkspace(e: unknown): WorkspaceFail {
+  const error = e instanceof WorkspaceError || e instanceof Error ? e.message : String(e);
+  return { ok: false, error };
+}
+
+/** ファイルメニュー／ダイアログから。名前は保存パネルで付ける（Mac の流儀） */
+async function createWorkspaceFromDialog(): Promise<WorkspaceResult> {
+  const p = currentProject();
+  const picked = await dialog.showSaveDialog({
+    title: 'プロジェクトフォルダを作る',
+    defaultPath: p.title || '新しいプロジェクト',
+    buttonLabel: '作る',
+    nameFieldLabel: 'フォルダ名',
+    properties: ['createDirectory', 'showOverwriteConfirmation'],
+  });
+  if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
+  try {
+    createProjectWorkspace(picked.filePath);
+  } catch (e) {
+    return failWorkspace(e);
+  }
+  return attachWorkspace(picked.filePath, basename(picked.filePath), 'create');
+}
+
+/** 既存の作業フォルダを開く。空なら 3 ディレクトリを足す。中身のある未知のフォルダは拒否（C-08） */
+async function openWorkspaceFromDialog(): Promise<WorkspaceResult> {
+  const picked = await dialog.showOpenDialog({
+    title: 'プロジェクトフォルダを開く',
+    buttonLabel: '開く',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+  const root = picked.filePaths[0];
+  try {
+    createProjectWorkspace(root);
+  } catch (e) {
+    return failWorkspace(e);
+  }
+  const p = currentProject();
+  const title =
+    p.title && p.title !== '新しいプロジェクト' ? p.title : basename(root);
+  return attachWorkspace(root, title, 'open');
+}
+
+function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
+  if (res.ok) {
+    win?.webContents.send('workspace:changed', res);
+    return res;
+  }
+  if (!res.canceled && res.error) {
+    void dialog.showMessageBox({ type: 'error', title: '作業フォルダ', message: res.error });
+    win?.webContents.send('workspace:error', res.error);
+  }
+  return res;
+}
+
+function installAppMenu(): void {
+  const isMac = process.platform === 'darwin';
+  const fileSubmenu: MenuItemConstructorOptions[] = [
+    {
+      label: 'フォルダを作る…',
+      accelerator: 'CmdOrCtrl+Shift+N',
+      click: () => {
+        void createWorkspaceFromDialog().then(publishWorkspace);
+      },
+    },
+    {
+      label: 'フォルダを開く…',
+      accelerator: 'CmdOrCtrl+O',
+      click: () => {
+        void openWorkspaceFromDialog().then(publishWorkspace);
+      },
+    },
+    { type: 'separator' },
+    isMac ? { role: 'close' } : { role: 'quit' },
+  ];
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [{ role: 'appMenu' as const }] : []),
+    { label: 'ファイル', submenu: fileSubmenu },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 // --- IPC --------------------------------------------------------------------
 
 function registerIpc(): void {
@@ -147,6 +277,25 @@ function registerIpc(): void {
 
   ipcMain.handle('projects:updateSummary', (_e, projectId: string, summary: string) => {
     updateSummary(db, projectId, summary);
+  });
+
+  ipcMain.handle('projects:updateTitle', (_e, projectId: string, title: string) => {
+    updateTitle(db, projectId, title);
+  });
+
+  /**
+   * 保存パネルで名前と場所を決め、references / mypaper / claims を作る。
+   * 空でない既存フォルダには作らない（C-08）。ファイルメニューからも同じ処理。
+   */
+  ipcMain.handle('projects:createWorkspace', () => createWorkspaceFromDialog());
+
+  ipcMain.handle('projects:openWorkspace', () => openWorkspaceFromDialog());
+
+  ipcMain.handle('projects:revealWorkspace', async (_e, projectId: string) => {
+    const p = getProject(db, projectId);
+    if (!p?.root_path) return { ok: false as const, error: '作業フォルダが未設定' };
+    const err = await shell.openPath(p.root_path);
+    return err ? { ok: false as const, error: err } : { ok: true as const };
   });
 
   ipcMain.handle('claims:list', (_e, projectId: string) => listChunks(db, projectId));
@@ -332,6 +481,8 @@ void app.whenReady().then(() => {
 
   try {
     registerIpc();
+    app.setName('AI-Research');
+    installAppMenu();
     createWindow();
     logStartup('ウィンドウを作った');
   } catch (e) {

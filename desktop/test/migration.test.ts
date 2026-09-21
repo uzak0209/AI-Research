@@ -58,6 +58,10 @@ describe('既存 DB の移行', () => {
     for (const c of ['venue', 'abstract', 'item_type', 'starred', 'read_status', 'updated_at']) {
       expect(cols).toContain(c);
     }
+    const projCols = (db.prepare('PRAGMA table_info(projects)').all() as unknown as { name: string }[]).map(
+      (c) => c.name,
+    );
+    expect(projCols).toContain('root_path');
 
     const r = db.prepare('SELECT title, starred, read_status FROM reference_items WHERE reference_id = ?').get('r1') as {
       title: string;
