@@ -40,7 +40,12 @@ export type PaperFetcher = {
 };
 
 export type RunStore = {
-  save(msg: CollectMessage, papers: ScoredPaper[], failure: string | null): Promise<void>;
+  save(
+    msg: CollectMessage,
+    papers: ScoredPaper[],
+    failure: string | null,
+    searchTerms?: string[],
+  ): Promise<void>;
   knownExternalIds(projectId: string): Promise<Set<string>>;
 };
 

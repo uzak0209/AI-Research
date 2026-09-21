@@ -196,6 +196,7 @@ export type SyncRun = {
   run_date: string;
   status: string;
   failed_sources_json: string | null;
+  search_terms?: string[];
   created_at: string;
   papers: SyncPaper[];
 };

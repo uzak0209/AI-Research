@@ -14,6 +14,7 @@ export interface Project {
   summary: string;
   embed_model: string;
   last_run_id: string | null;
+  last_search_terms: string | null;
   root_path: string | null;
 }
 
@@ -68,7 +69,8 @@ export function blendScore(simSummary: number, nearestChunkSim: number | null): 
 
 // --- プロジェクト -----------------------------------------------------------
 
-const PROJECT_COLS = 'project_id, title, summary, embed_model, last_run_id, root_path';
+const PROJECT_COLS =
+  'project_id, title, summary, embed_model, last_run_id, last_search_terms, root_path';
 
 export function createProject(
   db: Db,
@@ -84,6 +86,7 @@ export function createProject(
     summary: p.summary,
     embed_model: p.embed_model,
     last_run_id: null,
+    last_search_terms: null,
     root_path: p.root_path ?? null,
   };
 }
@@ -114,6 +117,24 @@ export function setProjectRoot(db: Db, projectId: string, rootPath: string): voi
  */
 export function setLastRunId(db: Db, projectId: string, runId: string | null): void {
   db.prepare('UPDATE projects SET last_run_id = ? WHERE project_id = ?').run(runId, projectId);
+}
+
+export function parseSearchTerms(raw: string | null | undefined): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((s) => s.trim());
+  } catch {
+    return [];
+  }
+}
+
+export function setLastSearchTerms(db: Db, projectId: string, terms: string[]): void {
+  db.prepare('UPDATE projects SET last_search_terms = ? WHERE project_id = ?').run(
+    JSON.stringify(terms),
+    projectId,
+  );
 }
 
 export function updateSummary(db: Db, projectId: string, summary: string): void {
@@ -349,6 +370,43 @@ export function getPaperFulltextRow(
     .get(paperId) as
     | { fulltext_path: string | null; fulltext: string | null; pdf_url: string | null }
     | undefined;
+}
+
+/** 著者が空の候補。PDF / 本文があれば LLM に 1 ページ目を読ませる */
+export function listPapersMissingAuthors(db: Db, projectId: string, limit = 40) {
+  return db
+    .prepare(
+      `SELECT paper_id, title, url, external_id, pdf_url, fulltext_path, fulltext
+       FROM papers
+       WHERE project_id = ?
+         AND in_library = 0
+         AND (authors IS NULL OR trim(authors) = '')
+       ORDER BY published_at DESC NULLS LAST, rowid
+       LIMIT ?`,
+    )
+    .all(projectId, limit) as unknown as {
+    paper_id: string;
+    title: string;
+    url: string | null;
+    external_id: string | null;
+    pdf_url: string | null;
+    fulltext_path: string | null;
+    fulltext: string | null;
+  }[];
+}
+
+/** 空の authors だけ埋める。既にある値は消さない */
+export function fillPaperAuthors(db: Db, paperId: string, authors: string): boolean {
+  const t = authors.trim();
+  if (!t) return false;
+  const r = db
+    .prepare(
+      `UPDATE papers SET authors = ?
+        WHERE paper_id = ?
+          AND (authors IS NULL OR trim(authors) = '')`,
+    )
+    .run(t, paperId);
+  return Number(r.changes) > 0;
 }
 
 /** 1 件ずつ確定させる。途中で終了しても済んだ分は残る（NFR-06） */

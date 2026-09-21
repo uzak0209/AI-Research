@@ -6,6 +6,7 @@ export {
   parseInferredAbbreviations,
   preciseSearchQueries,
   andSearchQuery,
+  parseSearchTermsJson,
   openAlexQueryFromSummary,
   openAlexQueryFromTerms,
   isDistinctiveSearchTerm,

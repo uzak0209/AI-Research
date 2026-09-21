@@ -22,6 +22,7 @@ import {
   listChunks,
   listProjects,
   listRanked,
+  parseSearchTerms,
   setManuscript,
   setProjectRoot,
   updateSummary,
@@ -30,7 +31,7 @@ import {
 } from '../shared/repo.js';
 import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
 import { mypaperHasContent } from '../shared/mypaper.js';
-import { ensureCandidateFulltexts } from '../shared/candidate-pdf.js';
+import { ensureCandidateFulltexts, fillMissingPaperAuthors } from '../shared/candidate-pdf.js';
 import {
   WorkspaceError,
   createProjectWorkspace,
@@ -158,19 +159,28 @@ async function prepareAndStartScoring(projectId: string, model: string): Promise
 
   scoringPrep = (async () => {
     const project = getProject(db, projectId);
-    if (project?.root_path && mypaperHasContent(project.root_path) && biblio) {
+    if (project?.root_path && biblio) {
+      const pdfDeps = { gateway: biblio.gateway, pdfs: biblio.pdfs };
       try {
-        await ensureCandidateFulltexts(db, projectId, project.root_path, {
-          gateway: biblio.gateway,
-          pdfs: biblio.pdfs,
-        });
+        await fillMissingPaperAuthors(db, projectId, project.root_path, pdfDeps);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         win?.webContents.send('score:event', {
           type: 'error',
-          message: `候補 PDF の取得に失敗: ${message}`,
+          message: `著者の補完に失敗: ${message}`,
         });
-        // 取れた分だけで採点を続ける
+      }
+      if (mypaperHasContent(project.root_path)) {
+        try {
+          await ensureCandidateFulltexts(db, projectId, project.root_path, pdfDeps);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          win?.webContents.send('score:event', {
+            type: 'error',
+            message: `候補 PDF の取得に失敗: ${message}`,
+          });
+          // 取れた分だけで採点を続ける
+        }
       }
     }
     startScoring(projectId, model);
@@ -559,6 +569,7 @@ function registerIpc(): void {
     let pulled = 0;
     let timedOut = true;
     let statuses: string[] = [];
+    let searchTerms: string[] = [];
     const deadline = Date.now() + 10 * 60_000; // NFR-01: 文献調査に時間をかけてよい
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
@@ -566,6 +577,7 @@ function registerIpc(): void {
       inserted += result.inserted;
       pulled += result.pulled;
       if (result.statuses?.length) statuses = result.statuses;
+      if (result.searchTerms?.length) searchTerms = result.searchTerms;
       const current = getProject(db, projectId);
       if (current?.last_run_id === accepted.run_id || result.inserted > 0 || result.pulled > 0) {
         timedOut = false;
@@ -584,6 +596,7 @@ function registerIpc(): void {
       inserted,
       pulled,
       statuses,
+      searchTerms,
       timedOut,
     };
   });
@@ -609,6 +622,7 @@ function registerIpc(): void {
       unscored: countUnscored(db, projectId),
       unscoredMissingPdf: mode === 'mypaper' ? countUnscoredMissingFulltext(db, projectId) : 0,
       scoreMode: mode as 'mypaper' | 'blend',
+      searchTerms: parseSearchTerms(project?.last_search_terms),
     };
   });
 

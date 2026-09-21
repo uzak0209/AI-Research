@@ -26,7 +26,7 @@ export function orcaBibliographyLlm(apiKey: string): BibliographyLlm {
           {
             role: 'system',
             content:
-              'You complete public bibliographic records. Published works always have authors; never return authors as null if you identified the work. authors is a "; "-separated string, not an array. Never invent a DOI. If you cannot identify the work, all fields are null.',
+              'You complete public bibliographic records from the hint and first_page. Read author names from the title page when first_page is present. Published works always have authors; never return authors as null if you identified the work or the names appear on first_page. authors is a "; "-separated string, not an array. Never invent a DOI. If you cannot identify the work and first_page has no author names, all fields are null.',
           },
           { role: 'user', content: bibliographyPrompt(hint) },
         ],

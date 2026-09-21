@@ -7,9 +7,11 @@ import {
   openAlexQueryFromSummary,
   openAlexQueryFromTerms,
   parseInferredAbbreviations,
+  parseSearchTermsJson,
   preciseSearchQueries,
 } from '../src/queries';
-import { mergeLatestPapers } from '../src/collect/application/ingest';
+import { mergeLatestPapers, pickTopPapers } from '../src/collect/application/ingest';
+import { COLLECT_DELIVER } from '../src/collect/application/search-terms';
 
 const POOL = [
   'DPDK',
@@ -89,6 +91,45 @@ describe('preciseSearchQueries', () => {
     const qs = preciseSearchQueries('dpdkによる高スループットの実現\nDPDK', POOL);
     expect(qs[0]?.toLowerCase()).toBe('dpdk');
     expect(qs.length).toBeGreaterThan(MIN_INFERRED_ABBR - 1);
+  });
+});
+
+describe('parseSearchTermsJson', () => {
+  it('JSON 配列だけ採る', () => {
+    expect(parseSearchTermsJson('["DPDK","RSS"]')).toEqual(['DPDK', 'RSS']);
+    expect(parseSearchTermsJson(null)).toEqual([]);
+    expect(parseSearchTermsJson('not-json')).toEqual([]);
+    expect(parseSearchTermsJson('{"a":1}')).toEqual([]);
+  });
+});
+
+describe('pickTopPapers', () => {
+  it('粗い一致を優先し、同点なら新しい順。件数は 5', () => {
+    const base = {
+      authors: null,
+      abstract: null,
+      url: null,
+      problem_excerpt: null,
+    };
+    const got = pickTopPapers(
+      [
+        { ...base, external_id: 'old-high', title: 'old high', published_at: '2024-01-01', coarse_score: 0.9 },
+        { ...base, external_id: 'new-low', title: 'new low', published_at: '2026-09-01', coarse_score: 0.1 },
+        { ...base, external_id: 'new-high', title: 'new high', published_at: '2026-08-01', coarse_score: 0.9 },
+        { ...base, external_id: 'mid-1', title: 'mid 1', published_at: '2025-01-01', coarse_score: 0.4 },
+        { ...base, external_id: 'mid-2', title: 'mid 2', published_at: '2025-06-01', coarse_score: 0.4 },
+        { ...base, external_id: 'mid-3', title: 'mid 3', published_at: '2025-03-01', coarse_score: 0.4 },
+      ],
+      COLLECT_DELIVER,
+    );
+    expect(got).toHaveLength(5);
+    expect(got.map((p) => p.external_id)).toEqual([
+      'new-high',
+      'old-high',
+      'mid-2',
+      'mid-3',
+      'mid-1',
+    ]);
   });
 });
 

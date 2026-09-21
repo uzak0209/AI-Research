@@ -3,7 +3,7 @@
 
 import type { CloudClient } from '@ai-research/core';
 import type { Db } from './db.js';
-import { getProject, listChunks, setLastRunId, upsertPapers } from './repo.js';
+import { getProject, listChunks, parseSearchTerms, setLastRunId, setLastSearchTerms, upsertPapers } from './repo.js';
 
 /** クラウド収集材料。課題意識＋関連技術（未公開の提案手法は載せない）。 */
 export function cloudSummaryFromLocal(
@@ -26,6 +26,7 @@ export async function syncProjectFromCloud(
   pulled: number;
   lastRunId: string | null;
   statuses: string[];
+  searchTerms: string[];
 }> {
   const project = getProject(db, projectId);
   if (!project) throw new Error(`project not found: ${projectId}`);
@@ -38,8 +39,10 @@ export async function syncProjectFromCloud(
   let inserted = 0;
   let pulled = 0;
   const statuses: string[] = [];
+  let searchTerms: string[] = parseSearchTerms(project.last_search_terms);
   for (const run of runs ?? []) {
     statuses.push(run.status);
+    if (run.search_terms?.length) searchTerms = run.search_terms;
     const papers = run.papers ?? [];
     pulled += papers.length;
     inserted += upsertPapers(
@@ -63,7 +66,8 @@ export async function syncProjectFromCloud(
   const lastRunId = runs.length > 0 ? runs[runs.length - 1]!.run_id : project.last_run_id;
   if (runs.length > 0) {
     setLastRunId(db, projectId, lastRunId);
+    if (searchTerms.length) setLastSearchTerms(db, projectId, searchTerms);
   }
 
-  return { inserted, pulled, lastRunId, statuses };
+  return { inserted, pulled, lastRunId, statuses, searchTerms };
 }

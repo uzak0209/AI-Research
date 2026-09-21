@@ -3,13 +3,16 @@
 
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import type { Db } from './db.js';
-import { extractFullTextFromPdf } from './pdf-import.js';
+import { extractFromPdf, extractFullTextFromPdf } from './pdf-import.js';
 import {
+  fillPaperAuthors,
+  listPapersMissingAuthors,
   listPapersNeedingFulltext,
   setPaperFulltext,
   setPaperPdfUrl,
 } from './repo.js';
 import { candidatePdfPath, ensureCandidatesDir } from './workspace.js';
+import { doiFromExternalId } from '../bibliography/domain/doi.js';
 import { httpsPdfUrl } from '../bibliography/domain/oa-url.js';
 import type { BibliographyGateway } from '../bibliography/application/ports.js';
 import type { PdfStore } from '../bibliography/application/ports.js';
@@ -82,6 +85,87 @@ export async function ensureCandidateFulltexts(
   }
 
   return result;
+}
+
+const FIRST_PAGE_MAX = 4000;
+
+/**
+ * 著者が空の候補について、手元の PDF（なければ OA）の 1 ページ目を LLM に読ませる。
+ * 公開書誌の穴埋め（ADR-0002 C1）。採点用の全文は載せない。
+ */
+export async function fillMissingPaperAuthors(
+  db: Db,
+  projectId: string,
+  root: string,
+  deps: CandidatePdfDeps,
+  opts: { limit?: number; signal?: AbortSignal } = {},
+): Promise<{ attempted: number; filled: number }> {
+  ensureCandidatesDir(root);
+  const papers = listPapersMissingAuthors(db, projectId, opts.limit ?? 40);
+  let attempted = 0;
+  let filled = 0;
+
+  for (const p of papers) {
+    if (opts.signal?.aborted) break;
+    attempted++;
+
+    const dest = candidatePdfPath(root, p.paper_id);
+    let path = p.fulltext_path && existsSync(p.fulltext_path) ? p.fulltext_path : null;
+    if (!path && existsSync(dest)) path = dest;
+
+    let page: string | null = null;
+    let infoAuthors: string | null = null;
+    if (path) {
+      const extracted = await firstPageFromFile(path);
+      page = extracted.page;
+      infoAuthors = extracted.authors;
+    }
+    if (!page && p.fulltext?.trim()) page = p.fulltext.trim().slice(0, FIRST_PAGE_MAX);
+
+    if (!page) {
+      const url = await resolvePdfUrl(db, p, deps);
+      if (!url) continue;
+      const dl = await deps.pdfs.download(url, dest);
+      if (dl !== 'ok' && dl !== 'exists') continue;
+      const extracted = await firstPageFromFile(dest);
+      page = extracted.page;
+      infoAuthors = extracted.authors;
+    }
+
+    if (!page) {
+      if (infoAuthors && fillPaperAuthors(db, p.paper_id, infoAuthors)) filled++;
+      continue;
+    }
+
+    try {
+      const doi = doiFromExternalId(p.external_id);
+      const got = await deps.gateway.complete({
+        title: p.title.trim() || undefined,
+        doi: doi ?? undefined,
+        url: p.url ?? undefined,
+        authors: infoAuthors ?? undefined,
+        first_page: page,
+      });
+      const names = got?.record?.authors?.trim() || infoAuthors;
+      if (names && fillPaperAuthors(db, p.paper_id, names)) filled++;
+    } catch {
+      if (infoAuthors && fillPaperAuthors(db, p.paper_id, infoAuthors)) filled++;
+    }
+  }
+
+  return { attempted, filled };
+}
+
+async function firstPageFromFile(path: string): Promise<{ page: string | null; authors: string | null }> {
+  try {
+    const meta = await extractFromPdf(new Uint8Array(readFileSync(path)));
+    return {
+      page: meta.firstPageText?.trim() ? meta.firstPageText.trim().slice(0, FIRST_PAGE_MAX) : null,
+      authors: meta.authors?.trim() || null,
+    };
+  } catch {
+    return { page: null, authors: null };
+  }
 }
 
 async function resolvePdfUrl(

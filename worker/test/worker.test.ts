@@ -100,6 +100,10 @@ describe('HTTP', () => {
     const body = (await res.json()) as { project_id: string; runs: { run_id: string }[] };
     expect(body.project_id).toBe(PROJECT);
     expect(body.runs.some((r) => r.run_id === `${PROJECT}:sync`)).toBe(true);
+    const run = (body.runs as { run_id: string; search_terms: string[] }[]).find(
+      (r) => r.run_id === `${PROJECT}:sync`,
+    );
+    expect(run?.search_terms).toEqual([]);
   });
 
   it('PUT /projects は summary を upsert する', async () => {
@@ -404,6 +408,12 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(papers?.external_id).toBe('10.1234/a');
     expect(papers?.url).toBe('https://doi.org/10.1234/a');
     expect(papers?.authors).toBe('Ada Lovelace; Alan Turing');
+
+    const terms = await env.DB.prepare('SELECT search_terms_json FROM runs WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ search_terms_json: string }>();
+    const parsed = JSON.parse(terms?.search_terms_json ?? '[]') as string[];
+    expect(parsed).toContain('graph');
   });
 
   it('0 件は empty。failed にしない', async () => {
@@ -477,10 +487,15 @@ describe('収集の記録（FR-08 / C-07）', () => {
     await handleQueueMessage(message(), env);
 
     const statements = spy.mock.calls[0]?.[0] ?? [];
-    // runs 1 文 + run_papers を 10 件ずつ（100 バインド ÷ 10 列）= 3 文。合計 4 文
-    expect(statements.length).toBe(4);
+    // 利用者に渡すのは上位 5 件。runs 1 文 + run_papers 1 文
+    expect(statements.length).toBe(2);
     // Free 枠は 1 実行 50 クエリまで
     expect(statements.length).toBeLessThanOrEqual(50);
+
+    const saved = await env.DB.prepare('SELECT COUNT(*) AS n FROM run_papers WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ n: number }>();
+    expect(saved?.n).toBe(5);
   });
 
   it('未知のソースは failed として残る（黙って握りつぶさない）', async () => {

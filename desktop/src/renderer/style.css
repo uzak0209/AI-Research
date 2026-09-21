@@ -948,6 +948,27 @@ textarea::placeholder {
   padding: var(--space-6) var(--space-4);
 }
 
+.feed-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 var(--space-3);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  background: var(--sidebar);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.feed-keywords-label {
+  font-weight: 600;
+  color: var(--fg);
+  margin-right: 4px;
+}
+
 .callout {
   border-left: 3px solid var(--warning-fg);
   background: var(--warning-bg);

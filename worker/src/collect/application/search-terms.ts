@@ -27,8 +27,10 @@ export const MIN_INFERRED_ABBR = 20;
 export const MAX_INFERRED_ABBR = 40;
 /** summary から取る種語の上限 */
 export const MAX_SEED_TERMS = 6;
-/** 全組み合わせをマージしたあと残す件数 */
-export const COLLECT_TAKE = 80;
+/** 内部で集めて粗い順位を付ける件数。利用者に渡すのは COLLECT_DELIVER */
+export const COLLECT_POOL = 80;
+/** 利用者に渡す件数 */
+export const COLLECT_DELIVER = 5;
 /** 1 組み合わせあたり OpenAlex から取る新規の上限 */
 export const PER_COMBO_TAKE = 25;
 /** 1 組み合わせあたり見るページ数（新しい順）。時間はかけてよいがサブリクエストは残す */
@@ -72,6 +74,28 @@ export function andSearchQuery(terms: string[]): string {
     out.push(x);
   }
   return out.join(' ');
+}
+
+export function parseSearchTermsJson(raw: string | null | undefined): string[] {
+  if (!raw?.trim()) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (typeof item !== 'string') continue;
+      const t = item.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 export function openAlexQueryFromTerms(terms: string[]): string {

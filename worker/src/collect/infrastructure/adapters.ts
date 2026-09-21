@@ -80,20 +80,22 @@ export function d1Runs(d1: D1Database): RunStore {
       );
       return new Set(rows.map((r) => r.external_id));
     },
-    async save(msg, papers: ScoredPaper[], failure) {
+    async save(msg, papers: ScoredPaper[], failure, searchTerms = []) {
       const status = failure ? 'failed' : papers.length === 0 ? 'empty' : 'ok';
       const failedJson = failure ? JSON.stringify([{ source: msg.source, error: failure }]) : null;
+      const termsJson = JSON.stringify(searchTerms);
 
       const statements = [
         sql`
-          INSERT INTO runs (run_id, project_id, run_date, status, failed_sources_json)
-          VALUES (${msg.run_id}, ${msg.project_id}, ${msg.run_date}, ${status}, ${failedJson})
+          INSERT INTO runs (run_id, project_id, run_date, status, failed_sources_json, search_terms_json)
+          VALUES (${msg.run_id}, ${msg.project_id}, ${msg.run_date}, ${status}, ${failedJson}, ${termsJson})
           ON CONFLICT (run_id) DO UPDATE SET
             status = CASE
               WHEN runs.status = excluded.status THEN runs.status
               ELSE 'partial'
             END,
-            failed_sources_json = COALESCE(excluded.failed_sources_json, runs.failed_sources_json)
+            failed_sources_json = COALESCE(excluded.failed_sources_json, runs.failed_sources_json),
+            search_terms_json = excluded.search_terms_json
         `.compile(db),
       ];
 

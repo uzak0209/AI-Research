@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CloudClient } from '@ai-research/core';
 import { openDb, type Db } from '../src/shared/db.js';
-import { createProject, countUnscored, getProject, setManuscript } from '../src/shared/repo.js';
+import { createProject, countUnscored, getProject, parseSearchTerms, setManuscript } from '../src/shared/repo.js';
 import { cloudSummaryFromLocal, syncProjectFromCloud } from '../src/shared/sync.js';
 
 let db: Db;
@@ -65,6 +65,7 @@ describe('syncProjectFromCloud', () => {
             run_date: '2026-01-01',
             status: 'ok',
             failed_sources_json: null,
+            search_terms: ['DPDK', 'RSS', 'XDP'],
             created_at: '2026-01-01T00:00:00Z',
             papers: [
               {
@@ -105,6 +106,7 @@ describe('syncProjectFromCloud', () => {
     expect(inserted).toBe(1);
     expect(lastRunId).toBe('run-2');
     expect(getProject(db, PROJ)?.last_run_id).toBe('run-2');
+    expect(parseSearchTerms(getProject(db, PROJ)?.last_search_terms)).toEqual(['DPDK', 'RSS', 'XDP']);
     expect(countUnscored(db, PROJ)).toBe(1);
 
     const row = db

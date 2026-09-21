@@ -147,8 +147,11 @@ export function bffBibliographyGateway(getClient: () => CloudClient | null): Bib
         throw new Error(`書誌を取れなかった (${detail})`);
       }
       const body = (await res.json()) as { record?: BibliographicRecord; pdf_url?: string | null };
-      if (isEmptyRecord(body.record)) throw new Error('書誌を補れなかった');
-      return { record: body.record!, pdf_url: httpsPdfUrl(body.pdf_url ?? null) };
+      const pdf_url = httpsPdfUrl(body.pdf_url ?? null);
+      const record = isEmptyRecord(body.record) ? null : body.record!;
+      // 著者無しは成功にしない（C-07）。ただし OA の直 PDF は後で 1 ページ目を読ませるために残す
+      if (!record && !pdf_url) throw new Error('書誌を補れなかった');
+      return { record, pdf_url };
     },
   };
 }

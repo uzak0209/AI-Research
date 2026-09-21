@@ -119,9 +119,10 @@ export function recordFromModelText(text: string): BibliographyRecord {
 export function bibliographyPrompt(hint: BibliographyHint): string {
   return [
     'Complete a public bibliographic record for one published scholarly work identified by the hint (and first_page if present).',
-    'A published work always has authors. authors is required: one string of names separated by "; " (example: "Ada Lovelace; Alan Turing"), never a JSON array, never null if you identified the work.',
+    'If first_page is present, READ the author names from that title page. Names are usually under the title, before Abstract/Keywords.',
+    'A published work always has authors. authors is required: one string of names separated by "; " (example: "Ada Lovelace; Alan Turing"), never a JSON array, never null if you identified the work or the names appear on first_page.',
     'Also fill title, year, venue, url, and abstract. Do not invent a DOI that is not in the hint or first_page.',
-    'If you cannot identify the work, every field is JSON null (including authors). item_type must be one of: article, inproceedings, book, phdthesis, misc.',
+    'If you cannot identify the work and first_page has no author names, every field is JSON null (including authors). item_type must be one of: article, inproceedings, book, phdthesis, misc.',
     'Reply with a JSON object only: title, authors, year, doi, url, venue, abstract, item_type.',
     `hint: ${JSON.stringify({
       title: hint.title ?? null,

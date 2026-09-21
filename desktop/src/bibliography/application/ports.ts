@@ -38,7 +38,9 @@ export interface ReferenceRepo {
 
 export interface BibliographyGateway {
   /** 未ログインなら null。失敗は throw */
-  complete(hint: BibliographyHint): Promise<{ record: BibliographicRecord; pdf_url: string | null } | null>;
+  complete(
+    hint: BibliographyHint,
+  ): Promise<{ record: BibliographicRecord | null; pdf_url: string | null } | null>;
 }
 
 export interface PdfStore {

@@ -129,6 +129,7 @@ export const RunSchema = z
     run_date: z.string(),
     status: z.enum(['ok', 'empty', 'failed', 'partial']),
     failed_sources_json: z.string().nullable(),
+    search_terms: z.array(z.string()),
     created_at: z.string(),
     papers: z.array(RunPaperSchema),
   })

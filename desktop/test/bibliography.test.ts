@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NotSignedInError, type CloudClient } from '@ai-research/core';
 import { followReference } from '../src/bibliography/application/follow-reference.js';
@@ -13,6 +16,7 @@ import {
 } from '../src/bibliography/domain/cite-format.js';
 import { httpsPdfUrl } from '../src/bibliography/domain/oa-url.js';
 import { hintFromReference, isEmptyRecord, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
+import { candidatePdfPath } from '../src/shared/workspace.js';
 import { bffBibliographyGateway } from '../src/bibliography/infrastructure/adapters.js';
 
 function client(res: Response | Error): CloudClient {
@@ -220,6 +224,32 @@ describe('bffBibliographyGateway', () => {
     expect(got?.pdf_url).toBe('https://arxiv.org/pdf/x.pdf');
   });
 
+  it('著者無しでも OA の pdf_url は残す（1 ページ目を後で読ませる）', async () => {
+    const got = await bffBibliographyGateway(() =>
+      client(
+        new Response(
+          JSON.stringify({
+            classification: 'C1',
+            record: {
+              title: 'GNN',
+              authors: null,
+              year: 2024,
+              doi: '10.1234/foo',
+              url: null,
+              venue: null,
+              abstract: null,
+              item_type: 'article',
+            },
+            pdf_url: 'https://arxiv.org/pdf/x.pdf',
+          }),
+          { status: 200 },
+        ),
+      ),
+    ).complete(hint);
+    expect(got?.record).toBeNull();
+    expect(got?.pdf_url).toBe('https://arxiv.org/pdf/x.pdf');
+  });
+
   it('空レコードは成功にしない', async () => {
     await expect(
       bffBibliographyGateway(() =>
@@ -358,6 +388,92 @@ describe('followReference', () => {
     );
     expect(got.pdf).toBe('skipped');
     expect(repo.get('r1')?.title).toBe('GNN');
+  });
+
+  it('候補 PDF の 1 ページ目を先に渡す', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'biblio-cand-'));
+    try {
+      const repo = memoryRepo([snapshot({ authors: null })]);
+      repo.paperId = () => 'paper-1';
+      repo.projectRoot = () => dir;
+      const complete = vi.fn(async (hint: { first_page?: string }) => {
+        expect(hint.first_page).toContain('Ada Lovelace');
+        return { record: { ...record, authors: 'Ada Lovelace; Alan Turing' }, pdf_url: null };
+      });
+      const extract = {
+        fromBytes: async () => ({
+          title: null,
+          authors: null,
+          year: null,
+          doi: null,
+          firstPageText: null,
+          titleSource: null,
+        }),
+        firstPageFromPath: async (path: string) =>
+          path.includes('paper-1') ? 'Ada Lovelace; Alan Turing\nHigh-speed I/O' : null,
+      };
+      const src = candidatePdfPath(dir, 'paper-1');
+      mkdirSync(join(dir, 'candidates'), { recursive: true });
+      mkdirSync(join(dir, 'references'), { recursive: true });
+      writeFileSync(src, '%PDF-1.4\n');
+
+      const got = await followReference(
+        deps({
+          refs: repo,
+          gateway: { complete },
+          extract,
+          paths: {
+            resolve: (p) => p,
+            basename: (p) => p.split('/').pop() ?? p,
+            isPdf: (p) => p.toLowerCase().endsWith('.pdf'),
+            oaDest: (root, key) => join(root, 'references', `${key}.pdf`),
+          },
+        }),
+        'p1',
+        'r1',
+      );
+      expect(got.pdf).toBe('exists');
+      expect(repo.get('r1')?.authors).toBe('Ada Lovelace; Alan Turing');
+      expect(complete).toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('PDF を取ったあと 1 ページ目で著者を取り直す', async () => {
+    const repo = memoryRepo([snapshot({ authors: null })]);
+    const complete = vi.fn(async (hint: { first_page?: string }) => {
+      if (!hint.first_page) {
+        return { record: null, pdf_url: 'https://arxiv.org/pdf/x.pdf' };
+      }
+      expect(hint.first_page).toContain('title page');
+      return { record: { ...record, authors: 'From PDF' }, pdf_url: 'https://arxiv.org/pdf/x.pdf' };
+    });
+    const download = vi.fn(async () => 'ok' as const);
+    const got = await followReference(
+      deps({
+        refs: repo,
+        gateway: { complete },
+        pdfs: { download, rememberWrite() {}, wasWritten: () => false },
+        extract: {
+          fromBytes: async () => ({
+            title: null,
+            authors: null,
+            year: null,
+            doi: null,
+            firstPageText: null,
+            titleSource: null,
+          }),
+          firstPageFromPath: async (path: string) => (path.includes('references') ? 'title page authors' : null),
+        },
+      }),
+      'p1',
+      'r1',
+    );
+    expect(got.pdf).toBe('ok');
+    expect(download).toHaveBeenCalled();
+    expect(complete.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(repo.get('r1')?.authors).toBe('From PDF');
   });
 });
 

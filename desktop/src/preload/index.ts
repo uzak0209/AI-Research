@@ -29,6 +29,7 @@ const api = {
       inserted: number;
       pulled: number;
       statuses: string[];
+      searchTerms?: string[];
       timedOut: boolean;
     }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {

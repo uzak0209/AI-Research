@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { openDb, type Db } from '../src/shared/db.js';
-import { createProject, upsertPapers } from '../src/shared/repo.js';
-import { ensureCandidateFulltexts, promoteCandidatePdf } from '../src/shared/candidate-pdf.js';
+import { ensureCandidateFulltexts, fillMissingPaperAuthors, promoteCandidatePdf } from '../src/shared/candidate-pdf.js';
+import { createProject, setPaperFulltext, upsertPapers } from '../src/shared/repo.js';
 import { createProjectWorkspace, candidatePdfPath } from '../src/shared/workspace.js';
 
 let db: Db;
@@ -77,6 +77,43 @@ describe('ensureCandidateFulltexts', () => {
 
     expect(download).toHaveBeenCalled();
     expect(result.downloaded).toBe(1);
+  });
+});
+
+describe('fillMissingPaperAuthors', () => {
+  it('本文の 1 ページ目を LLM に渡して空の著者を埋める', async () => {
+    upsertPapers(db, 'p1', [{ external_id: 'a', source: 's', title: 'Paper', abstract: null }]);
+    const paperId = (db.prepare('SELECT paper_id FROM papers').get() as { paper_id: string }).paper_id;
+    setPaperFulltext(db, paperId, {
+      path: join(root, 'missing.pdf'),
+      text: 'Ada Lovelace; Alan Turing\nHigh-speed packet I/O with DPDK\nAbstract: we present',
+    });
+
+    const complete = vi.fn(async (hint: { first_page?: string }) => {
+      expect(hint.first_page).toContain('Ada Lovelace');
+      return {
+        record: {
+          title: 'Paper',
+          authors: 'Ada Lovelace; Alan Turing',
+          year: 2026,
+          doi: null,
+          url: null,
+          venue: null,
+          abstract: null,
+          item_type: 'article',
+        },
+        pdf_url: null,
+      };
+    });
+
+    const got = await fillMissingPaperAuthors(db, 'p1', root, {
+      gateway: { complete },
+      pdfs: { download: async () => 'failed' as const, rememberWrite() {}, wasWritten: () => false },
+    });
+
+    expect(got.filled).toBe(1);
+    const row = db.prepare('SELECT authors FROM papers WHERE paper_id = ?').get(paperId) as { authors: string };
+    expect(row.authors).toBe('Ada Lovelace; Alan Turing');
   });
 });
 

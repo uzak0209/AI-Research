@@ -902,6 +902,7 @@ async function refreshFeed() {
         unscored: number;
         unscoredMissingPdf?: number;
         scoreMode?: 'mypaper' | 'blend';
+        searchTerms?: string[];
       }
     | undefined;
   if (!res) return;
@@ -909,9 +910,19 @@ async function refreshFeed() {
   const scoreMode = res.scoreMode ?? 'blend';
   const missingPdf = res.unscoredMissingPdf ?? 0;
   lastScoreMode = scoreMode;
+  const hint = $('feed-score-hint');
+  if (hint) {
+    hint.textContent =
+      scoreMode === 'mypaper'
+        ? '関連度は原稿（mypaper）と候補 PDF 本文で一番近い箇所。読む順であり、有効／除外の判定ではありません。'
+        : 'mypaper が空なので、関連度は課題意識 70%＋関連技術 30%。クラウドから取ったタイトルと要旨だけを使い、手元の PDF は不要です。';
+  }
 
   const list = $('feed-list');
   list.replaceChildren();
+
+  const keywords = keywordsStrip(res.searchTerms ?? []);
+  if (keywords) list.append(keywords);
 
   if (res.ranked.length === 0) {
     const summary = ($('summary') as HTMLTextAreaElement).value.trim();
@@ -964,14 +975,24 @@ function renderPaperDetail(p: RankedPaper) {
     el(
       'div',
       { class: 'actions' },
-      el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(4) ?? '-'}`),
+      el('span', { class: 'chip', 'data-tone': 'score' }, `関連度（読む順） ${p.relevance?.toFixed(4) ?? '-'}`),
       el(
         'span',
         { class: 'chip' },
         lastScoreMode === 'mypaper'
-          ? `原稿との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`
-          : `課題意識との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`,
+          ? `原稿全体の平均 ${p.sim_summary?.toFixed(3) ?? '-'}`
+          : `課題意識だけ ${p.sim_summary?.toFixed(3) ?? '-'}`,
       ),
+    ),
+  );
+
+  pane.append(
+    el(
+      'p',
+      { class: 'note-info' },
+      lastScoreMode === 'mypaper'
+        ? '関連度は原稿と PDF で一番近い箇所。原稿全体の平均は全段落を均したもので、順位には使いません。'
+        : 'mypaper が空のため、タイトルと要旨を課題意識・関連技術と比べています。手元の論文ファイルは使っていません。関連度＝課題意識×0.7＋一番近い関連技術×0.3。',
     ),
   );
 
@@ -1055,23 +1076,37 @@ function libraryAddStatus(pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped
 }
 
 /** 自発調査の結果表示。欠けたフィールドで落とさない（メインとレンダラの世代差） */
+function keywordsStrip(terms: string[]): HTMLElement | null {
+  const cleaned = terms.map((t) => t.trim()).filter(Boolean);
+  if (cleaned.length === 0) return null;
+  return el(
+    'p',
+    { class: 'feed-keywords' },
+    el('span', { class: 'feed-keywords-label' }, '検索キーワード'),
+    ...cleaned.map((t) => el('span', { class: 'chip' }, t)),
+  );
+}
+
 function collectOutcomeMessage(res: {
   inserted?: number;
   pulled?: number;
   statuses?: string[] | null;
   timedOut?: boolean;
+  searchTerms?: string[] | null;
 }): string {
   const inserted = res.inserted ?? 0;
   const pulled = res.pulled ?? 0;
   const statuses = Array.isArray(res.statuses) ? res.statuses : [];
+  const terms = Array.isArray(res.searchTerms) ? res.searchTerms.filter((t) => t.trim()) : [];
+  const kw = terms.length ? ` キーワード: ${terms.join(' · ')}` : '';
   if (res.timedOut && inserted === 0 && pulled === 0) {
     return '調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください';
   }
-  if (inserted > 0) return `${inserted} 件を取り込んだ。読む順を付けています…`;
-  if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった`;
+  if (inserted > 0) return `上位 ${inserted} 件を取り込んだ。読む順を付けています…${kw}`;
+  if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった${kw}`;
   if (statuses.includes('failed')) return '調査は失敗した。しばらくして「調査する」をやり直してください';
-  if (statuses.includes('empty')) return '調査は終わったが、検索ヒットが 0 件だった';
-  return '調査が終わったが、新しい候補は無かった';
+  if (statuses.includes('empty')) return `調査は終わったが、検索ヒットが 0 件だった${kw}`;
+  return `調査が終わったが、新しい候補は無かった${kw}`;
 }
 
 $('feed-score').addEventListener('click', async () => {

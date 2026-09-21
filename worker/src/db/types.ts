@@ -22,6 +22,7 @@ export interface Runs {
   run_date: string;
   status: string;
   failed_sources_json: string | null;
+  search_terms_json: string | null;
   created_at: string;
 }
 

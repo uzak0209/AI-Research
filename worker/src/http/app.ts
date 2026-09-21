@@ -27,6 +27,7 @@ import { orcaKey } from '../shared/orca/chat';
 import { ORCA_POLICY, reviewPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
 import { enqueueManualCollect } from '../collect/application/schedule';
+import { parseSearchTermsJson } from '../collect/application/search-terms';
 import { queueCollect, utcClock } from '../collect/infrastructure/adapters';
 
 export type AppEnv = { Bindings: Env };
@@ -239,7 +240,7 @@ app.openapi(
 
     let runQuery = db
       .selectFrom('runs')
-      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'created_at'])
+      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'search_terms_json', 'created_at'])
       .where('project_id', '=', project_id)
       .orderBy('created_at', 'asc')
       .limit(50);
@@ -253,6 +254,7 @@ app.openapi(
       run_date: string;
       status: string;
       failed_sources_json: string | null;
+      search_terms_json: string | null;
       created_at: string;
     }>(c.env.DB, runQuery.compile());
 
@@ -306,6 +308,7 @@ app.openapi(
           run_date: r.run_date,
           status: r.status as 'ok' | 'empty' | 'failed' | 'partial',
           failed_sources_json: r.failed_sources_json,
+          search_terms: parseSearchTermsJson(r.search_terms_json),
           created_at: r.created_at,
           papers: (papersByRun.get(r.run_id) ?? []).map((p) => ({
             external_id: p.external_id,
