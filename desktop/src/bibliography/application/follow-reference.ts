@@ -1,6 +1,8 @@
+import { copyFileSync, existsSync } from 'node:fs';
 import { hintFromReference, mergeRecord } from '../domain/record.js';
 import { httpsPdfUrl } from '../domain/oa-url.js';
 import type { BibliographyDeps, PdfDownload } from './ports.js';
+import { candidatePdfPath } from '../../shared/workspace.js';
 
 export async function followReference(
   deps: BibliographyDeps,
@@ -39,15 +41,32 @@ export async function followReference(
   const latest = deps.refs.get(referenceId);
   const root = deps.refs.projectRoot(projectId);
   let pdf: PdfDownload | 'skipped' = 'skipped';
-  if (attachments.length === 0 && pdfUrl && latest && root) {
+  if (attachments.length === 0 && latest && root) {
     const dest = deps.paths.oaDest(root, latest.bibtex_key);
-    deps.pdfs.rememberWrite(dest);
-    pdf = await deps.pdfs.download(pdfUrl, dest);
-    if (pdf === 'ok' || pdf === 'exists') deps.refs.addAttachment(referenceId, dest);
+
+    // 採点用 candidates/ にあれば取り直さない（ADR-0003）
+    const paperId = deps.refs.paperId(referenceId);
+    const promoted = paperId ? copyCandidatePdf(root, paperId, dest) : null;
+    if (promoted) {
+      deps.refs.addAttachment(referenceId, promoted);
+      pdf = 'exists';
+    } else if (pdfUrl) {
+      deps.pdfs.rememberWrite(dest);
+      pdf = await deps.pdfs.download(pdfUrl, dest);
+      if (pdf === 'ok' || pdf === 'exists') deps.refs.addAttachment(referenceId, dest);
+    }
   }
 
   deps.cites.exportAll(projectId, deps.refs.citeItems(projectId));
   return { pdf };
+}
+
+function copyCandidatePdf(root: string, paperId: string, dest: string): string | null {
+  const src = candidatePdfPath(root, paperId);
+  if (!existsSync(src)) return null;
+  if (existsSync(dest)) return dest;
+  copyFileSync(src, dest);
+  return dest;
 }
 
 async function firstPage(deps: BibliographyDeps, referenceId: string): Promise<string | null> {

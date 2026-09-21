@@ -1,4 +1,5 @@
 import type { BibliographyHint } from '../domain/record';
+import type { OaBiblio } from '../domain/oa-url';
 
 export type LlmJson =
   | {
@@ -18,7 +19,8 @@ export interface BibliographyLlm {
 }
 
 export interface OaPdfLookup {
-  pdfUrl(doi: string): Promise<string | null>;
+  /** DOI 一致の 1 件。検索して同一論文かを切らない（ADR-0002） */
+  lookup(doi: string): Promise<OaBiblio | null>;
 }
 
 export type BibliographyDeps = {

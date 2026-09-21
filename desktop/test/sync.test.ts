@@ -71,6 +71,7 @@ describe('syncProjectFromCloud', () => {
                 external_id: 'x1',
                 source: 'openalex',
                 title: 'Paper one',
+                authors: 'Ada Lovelace',
                 abstract: 'ab',
                 url: null,
                 published_at: null,
@@ -107,9 +108,10 @@ describe('syncProjectFromCloud', () => {
     expect(countUnscored(db, PROJ)).toBe(1);
 
     const row = db
-      .prepare('SELECT problem_excerpt FROM papers WHERE project_id = ?')
-      .get(PROJ) as { problem_excerpt: string };
+      .prepare('SELECT problem_excerpt, authors FROM papers WHERE project_id = ?')
+      .get(PROJ) as { problem_excerpt: string; authors: string };
     expect(row.problem_excerpt).toBe('problem here');
+    expect(row.authors).toBe('Ada Lovelace');
   });
 
   it('after は last_run_id を渡す', async () => {

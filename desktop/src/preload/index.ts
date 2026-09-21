@@ -87,7 +87,11 @@ const api = {
     counts: (projectId: string) => ipcRenderer.invoke('lib:counts', projectId),
     tags: (projectId: string) => ipcRenderer.invoke('lib:tags', projectId),
 
-    add: (projectId: string, item: unknown) => ipcRenderer.invoke('lib:add', projectId, item),
+    add: (projectId: string, item: unknown) =>
+      ipcRenderer.invoke('lib:add', projectId, item) as Promise<{
+        reference_id: string;
+        pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+      }>,
     follow: (projectId: string, referenceId: string) =>
       ipcRenderer.invoke('lib:follow', projectId, referenceId),
     update: (referenceId: string, patch: unknown) =>

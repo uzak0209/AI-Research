@@ -93,6 +93,10 @@ function migrate(db: Db): void {
     ['annotations', 'updated_at', 'TEXT'],
     ['projects', 'root_path', 'TEXT'],
     ['papers', 'problem_excerpt', 'TEXT'],
+    ['papers', 'pdf_url', 'TEXT'],
+    ['papers', 'fulltext_path', 'TEXT'],
+    ['papers', 'fulltext', 'TEXT'],
+    ['papers', 'authors', 'TEXT'],
   ];
 
   for (const [table, column, ddl] of added) {

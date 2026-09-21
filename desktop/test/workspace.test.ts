@@ -1,10 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   PROJECT_WORKSPACE_DIRS,
   createProjectWorkspace,
+  ensureCandidatesDir,
   isProjectWorkspace,
   sanitizeProjectDirName,
 } from '../src/shared/workspace.js';
@@ -31,13 +32,20 @@ describe('sanitizeProjectDirName', () => {
 });
 
 describe('createProjectWorkspace', () => {
-  it('references / mypaper / claims を作る', () => {
+  it('references / mypaper / claims / candidates を作る', () => {
     const root = join(dir, 'proj');
     createProjectWorkspace(root);
     expect(isProjectWorkspace(root)).toBe(true);
     for (const d of PROJECT_WORKSPACE_DIRS) {
-      expect(isProjectWorkspace(join(root, d))).toBe(false);
+      expect(existsSync(join(root, d))).toBe(true);
     }
+  });
+
+  it('既に必須 3 つだけある作業フォルダも認識する', () => {
+    const root = join(dir, 'legacy');
+    mkdirSync(root);
+    for (const d of ['references', 'mypaper', 'claims']) mkdirSync(join(root, d));
+    expect(isProjectWorkspace(root)).toBe(true);
   });
 
   it('既に作業フォルダなら何もしない', () => {
@@ -47,7 +55,7 @@ describe('createProjectWorkspace', () => {
     expect(isProjectWorkspace(root)).toBe(true);
   });
 
-  it('空の既存フォルダなら中に 3 つを足す', () => {
+  it('空の既存フォルダなら中に作業ディレクトリを足す', () => {
     const root = join(dir, 'empty');
     mkdirSync(root);
     createProjectWorkspace(root);
@@ -65,5 +73,15 @@ describe('createProjectWorkspace', () => {
     const root = join(dir, 'file');
     writeFileSync(root, 'x');
     expect(() => createProjectWorkspace(root)).toThrow(/ファイル/);
+  });
+
+  it('ensureCandidatesDir は無いときだけ作る', () => {
+    const root = join(dir, 'legacy2');
+    mkdirSync(root);
+    for (const d of ['references', 'mypaper', 'claims']) mkdirSync(join(root, d));
+    const c = ensureCandidatesDir(root);
+    expect(existsSync(c)).toBe(true);
+    ensureCandidatesDir(root);
+    expect(existsSync(c)).toBe(true);
   });
 });

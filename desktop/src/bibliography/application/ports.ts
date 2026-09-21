@@ -31,6 +31,8 @@ export interface ReferenceRepo {
   findByDoi(projectId: string, doi: string): string | undefined;
   findByPath(path: string): { reference_id: string } | undefined;
   projectRoot(projectId: string): string | null;
+  /** 候補から保存したときの papers.paper_id。無ければ null */
+  paperId(referenceId: string): string | null;
   citeItems(projectId: string): CiteItem[];
 }
 

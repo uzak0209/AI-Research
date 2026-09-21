@@ -183,6 +183,7 @@ export type SyncPaper = {
   external_id: string;
   source: string;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
   published_at: string | null;

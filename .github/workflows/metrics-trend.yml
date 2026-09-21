@@ -5,9 +5,9 @@ name: Metrics trend
 # - 数値・SVG グラフ: scripts/retro-metrics + render-charts-svg（決定的）
 # - 「何をしてどれだけ動いたか」の文章: Claude（metrics-report.md）
 # - 出し先: docs/metrics-trend.md + docs/metrics-*.svg（README に埋め込み）とジョブサマリ
-# - 改善フロー（router-retro → proposal issue）: 約 10 分ごと（schedule）
-#   定時は提案のみ。docs / Claude まとめは merge・手動実行のとき書く（コミット洪水を避ける）
-#   ※ schedule は default branch（main）の workflow だけが発火する。dev だけでは回らない。
+# - 改善フロー（router-retro → proposal issue）: 別 workflow `Router retro`（約 10 分ごと）
+#   定時 Claude はそちら。ここは数値・SVG と（手動時の）docs まとめだけ。
+#   ※ schedule は default branch（このリポは `dev`）上の定義だけが効く。
 #
 # PR が dev / main に merge されたとき（= push）に走る。
 # docs/metrics-trend.md / docs/metrics-*.svg だけの push では再帰しない。
@@ -17,9 +17,6 @@ on:
     paths-ignore:
       - 'docs/metrics-trend.md'
       - 'docs/metrics-*.svg'
-  schedule:
-    # 毎時 0,10,20,30,40,50 分（GitHub 側で遅延・間引きされることがある）
-    - cron: '0,10,20,30,40,50 * * * *'
   workflow_dispatch:
     inputs:
       target_env:
@@ -33,10 +30,6 @@ on:
         default: '14'
       skip_claude:
         description: 'Claude のまとめを飛ばしてグラフだけ docs に書く'
-        type: boolean
-        default: false
-      propose_issues:
-        description: '改善提案の issue も出す（定時は常に出す）'
         type: boolean
         default: false
 
@@ -137,10 +130,10 @@ jobs:
                 },null,2)+"\n");
               '
             fi
-          elif [ "$EVENT" = "schedule" ]; then
-            printf '%s\n' '{"trigger":"schedule","pr":null}' > metrics/pr-context.json
-          else
+          elif [ "$EVENT" = "workflow_dispatch" ]; then
             printf '%s\n' '{"trigger":"workflow_dispatch","pr":null}' > metrics/pr-context.json
+          else
+            printf '%s\n' '{"trigger":"other","pr":null}' > metrics/pr-context.json
           fi
           cat metrics/pr-context.json
 
@@ -198,7 +191,7 @@ jobs:
             --allowedTools "Read,Write,Glob"
 
       - name: Fallback narrative when Claude skipped
-        if: ${{ github.event_name != 'schedule' && steps.claude.outcome != 'success' }}
+        if: ${{ steps.claude.outcome != 'success' }}
         run: |
           set -euo pipefail
           mkdir -p metrics
@@ -227,7 +220,6 @@ jobs:
           fi
 
       - name: Assemble docs/metrics-trend.md + SVG
-        if: ${{ github.event_name != 'schedule' }}
         env:
           TARGET_ENV: ${{ needs.collect.outputs.target_env }}
           STATUS: ${{ needs.collect.outputs.status }}
@@ -266,7 +258,6 @@ jobs:
       # Claude Code Action が remote URL / credential を書き換えることがある。
       # そのままだと auto-commit の push が "Invalid username or token" で落ちる。
       - name: Restore git remote for commit
-        if: ${{ github.event_name != 'schedule' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -274,7 +265,6 @@ jobs:
           git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
 
       - name: Commit docs metrics report
-        if: ${{ github.event_name != 'schedule' }}
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           # 空白区切りの glob。multiline だと先頭だけ拾う事例がある
@@ -285,93 +275,3 @@ jobs:
             Metrics trend が SVG グラフとまとめを docs/ に書いた。
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
-
-  # 定時、または手動で propose_issues=true のときだけ。
-  # 改善点があれば proposal issue（router-retro。上限 3・自動 PR なし）
-  # report（docs コミット）とは独立。collect の成果物だけ見ればよい。
-  propose:
-    needs: [collect]
-    if: >
-      always() &&
-      needs.collect.result == 'success' &&
-      (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && github.event.inputs.propose_issues == 'true'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-      issues: write
-      id-token: write
-      actions: read
-    env:
-      HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-
-      - name: Dump D1 aggregates for router-retro
-        working-directory: worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          LOOKBACK_DAYS: '14'
-          D1_TARGET: live
-        run: |
-          set -euo pipefail
-          npm ci
-          bash scripts/dump-retro.sh
-          mkdir -p ../d1-retro
-          cp -R tmp/d1-retro/. ../d1-retro/
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: metrics-${{ needs.collect.outputs.target_env }}-${{ github.run_id }}
-          path: metrics
-
-      - uses: anthropics/claude-code-action@v1
-        if: ${{ env.HAS_CLAUDE_TOKEN != '' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: 'false'
-          SCAN_TYPE: router-retro
-          LOOKBACK_DAYS: '14'
-          D1_TARGET: live
-          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
-          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
-          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: claude
-          additional_permissions: |
-            actions: read
-          settings: |
-            {
-              "env": {
-                "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
-                "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
-                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}",
-                "LOOKBACK_DAYS": "14",
-                "D1_TARGET": "live"
-              }
-            }
-          prompt: |
-            対象は ${{ github.repository }}。スキャン種別は router-retro。
-            環境変数 DRY_RUN は "false"。D1_TARGET は "live"。
-            D1 の集計は `d1-retro/`。あわせて `metrics/metrics.json` も読んでよい
-            （主指標はトークン/論文と点数。無い数値は捏造しない）。
-
-            次の 2 ファイルを Read し、そこに書いてある指示だけに従え。
-            - `.github/claude-scans/shared.md`
-            - `.github/claude-scans/router-retro.md`
-
-            改善点があれば `proposal,router` issue を出す（上限 3）。
-            0 件なら、何を見てなぜ出さなかったかを出力する。
-          claude_args: |
-            --allowedTools "Bash,Read,Grep,Glob,WebSearch,WebFetch"

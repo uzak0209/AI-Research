@@ -1,0 +1,129 @@
+name: Router retro
+
+# ADR-0005 §10: Named Router の改善提案（Claude）。
+# Metrics trend から切り離す。push 多用の workflow に schedule を載せると
+# GitHub 側で定時が発火しない事例がある（本リポで Metrics trend の schedule=0）。
+#
+# ※ schedule は **default branch** 上の定義だけが効く。
+#   このリポの default は `dev`（main ではない）。
+
+on:
+  schedule:
+    # 毎時 0,10,20,30,40,50 分（GitHub 側で遅延・間引きされることがある）
+    - cron: '0,10,20,30,40,50 * * * *'
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: '何日分を見るか'
+        type: string
+        default: '14'
+      dry_run:
+        description: 'issue を作らず出力だけ'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: router-retro-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'schedule' }}
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_CLAUDE_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '14' }}
+      DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Dump D1 aggregates for router-retro
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
+          D1_TARGET: live
+        run: |
+          set -euo pipefail
+          npm ci
+          bash scripts/dump-retro.sh
+          mkdir -p ../d1-retro
+          cp -R tmp/d1-retro/. ../d1-retro/
+
+      - name: Collect metrics JSON (best-effort)
+        id: metrics
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p metrics
+          if node scripts/retro-metrics.mjs --env prod --days "${{ env.LOOKBACK_DAYS }}" > metrics/metrics.json; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo '{"status":"unavailable"}' > metrics/metrics.json
+          fi
+
+      - uses: anthropics/claude-code-action@v1
+        if: ${{ env.HAS_CLAUDE_TOKEN != '' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ env.DRY_RUN }}
+          SCAN_TYPE: router-retro
+          LOOKBACK_DAYS: ${{ env.LOOKBACK_DAYS }}
+          D1_TARGET: live
+          JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: claude
+          additional_permissions: |
+            actions: read
+          settings: |
+            {
+              "env": {
+                "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
+                "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
+                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}",
+                "LOOKBACK_DAYS": "${{ env.LOOKBACK_DAYS }}",
+                "D1_TARGET": "live"
+              }
+            }
+          prompt: |
+            対象は ${{ github.repository }}。スキャン種別は router-retro。
+            環境変数 DRY_RUN は "${{ env.DRY_RUN }}"。D1_TARGET は "live"。
+            D1 の集計は `d1-retro/`。あわせて `metrics/metrics.json` も読んでよい
+            （主指標はトークン/論文と点数。無い数値は捏造しない）。
+
+            次の 2 ファイルを Read し、そこに書いてある指示だけに従え。
+            - `.github/claude-scans/shared.md`
+            - `.github/claude-scans/router-retro.md`
+
+            改善点があれば `proposal,router` issue を出す（上限 3）。
+            DRY_RUN が true なら issue を作らず、何を出す予定だったかだけ出力する。
+            0 件なら、何を見てなぜ出さなかったかを出力する。
+          claude_args: |
+            --allowedTools "Bash,Read,Grep,Glob,WebSearch,WebFetch"
+
+      - name: Fail if Claude token missing
+        if: ${{ env.HAS_CLAUDE_TOKEN == '' }}
+        run: |
+          echo '::error::CLAUDE_CODE_OAUTH_TOKEN が無い。定時 Claude は動けない'
+          exit 1

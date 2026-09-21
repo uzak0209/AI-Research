@@ -38,8 +38,10 @@ interface RankedPaper {
   paper_id: string;
   external_id: string | null;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
+  published_at: string | null;
   relevance: number | null;
   sim_summary: number | null;
   nearest_chunk_text: string | null;
@@ -52,6 +54,13 @@ interface Attachment {
   attachment_id: string;
   path: string;
   kind: string;
+}
+
+/** papers.published_at（YYYY-MM-DD）から年。形が崩れていたら出さない（C-07） */
+function yearFromPublishedAt(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const y = Number(String(raw).slice(0, 4));
+  return Number.isInteger(y) && y >= 1000 && y <= 2100 ? y : null;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -92,6 +101,8 @@ let libFilter: 'all' | 'starred' | ReadStatus = 'all';
 let libTag: string | null = null;
 let selectedRef: string | null = null;
 let selectedPaper: string | null = null;
+/** 読む順の採点式。一覧コールアウトと詳細ラベルで共有 */
+let lastScoreMode: 'mypaper' | 'blend' = 'blend';
 let viewer: PdfViewer | null = null;
 
 /** PDF ビューアの入出力。レンダラに fs を持たせず、すべて preload 経由にする */
@@ -690,7 +701,8 @@ $('lib-new').addEventListener('click', () => {
       title.input.focus();
       return;
     }
-    const id = await guard('保存', () =>
+    setStatus('保存して PDF を取得しています…', 'busy');
+    const res = await guard('保存', () =>
       window.api.lib.add(projectId, {
         title: title.input.value.trim(),
         authors: authors.input.value.trim() || null,
@@ -701,9 +713,9 @@ $('lib-new').addEventListener('click', () => {
         abstract: abs.value.trim() || null,
       }),
     );
-    if (!id) return;
-    selectedRef = id as string;
-    setStatus('保存した');
+    if (!res) return;
+    selectedRef = res.reference_id;
+    setStatus(libraryAddStatus(res.pdf));
     await refreshLibrary();
     await renderRefDetail(selectedRef);
   });
@@ -789,7 +801,12 @@ $('lib-import-pdf').addEventListener('click', async () => {
 
 // --- 新着候補 ----------------------------------------------------------------
 
-function feedEmptyState(unscored: number, summary: string): HTMLElement {
+function feedEmptyState(
+  unscored: number,
+  summary: string,
+  scoreMode: 'mypaper' | 'blend',
+  missingPdf: number,
+): HTMLElement {
   const goSettings = () => {
     const b = el('button', { class: 'btn', type: 'button' }, '設定を開く');
     b.setAttribute('data-variant', 'primary');
@@ -798,11 +815,17 @@ function feedEmptyState(unscored: number, summary: string): HTMLElement {
   };
 
   if (unscored > 0) {
+    const detail =
+      scoreMode === 'mypaper' && missingPdf > 0
+        ? `うち PDF が無いため未採点 ${missingPdf} 件。上の「読む順をつける」で取れる分だけ順位が付きます。`
+        : scoreMode === 'blend'
+          ? 'mypaper が空のため、課題意識・関連技術で採点します。「読む順をつける」を押してください。'
+          : '上の「読む順をつける」を押すと、関連度順に並びます。';
     return el(
       'div',
       { class: 'empty-state' },
       el('p', { class: 'empty-title' }, `未採点 ${unscored} 件`),
-      el('p', { class: 'empty' }, '上の「読む順をつける」を押すと、関連度順に並びます。'),
+      el('p', { class: 'empty' }, detail),
     );
   }
   if (!signedIn) {
@@ -841,31 +864,63 @@ function feedEmptyState(unscored: number, summary: string): HTMLElement {
   );
 }
 
+function unscoredCallout(
+  unscored: number,
+  scoreMode: 'mypaper' | 'blend',
+  missingPdf: number,
+): HTMLElement {
+  if (scoreMode === 'mypaper' && missingPdf > 0) {
+    return el(
+      'p',
+      { class: 'callout' },
+      el('strong', {}, `PDF が無いため未採点 ${missingPdf} 件`),
+      unscored > missingPdf
+        ? `（他に未採点 ${unscored - missingPdf} 件）。「読む順をつける」で本文がある分だけ順位が付きます`
+        : ' — 直リンクが無い・取得失敗。要旨で順位を捏造しません',
+    );
+  }
+  if (scoreMode === 'blend') {
+    return el(
+      'p',
+      { class: 'callout' },
+      el('strong', {}, `未採点 ${unscored} 件`),
+      ' — mypaper が空のため課題意識・関連技術で採点します。「読む順をつける」を押すまで順位は出ません',
+    );
+  }
+  return el(
+    'p',
+    { class: 'callout' },
+    el('strong', {}, `未採点 ${unscored} 件`),
+    ' — 「読む順をつける」を押すまで順位は出ません',
+  );
+}
+
 async function refreshFeed() {
   const res = (await guard('候補の取得', () => window.api.ranked(projectId))) as
-    | { ranked: RankedPaper[]; unscored: number }
+    | {
+        ranked: RankedPaper[];
+        unscored: number;
+        unscoredMissingPdf?: number;
+        scoreMode?: 'mypaper' | 'blend';
+      }
     | undefined;
   if (!res) return;
+
+  const scoreMode = res.scoreMode ?? 'blend';
+  const missingPdf = res.unscoredMissingPdf ?? 0;
+  lastScoreMode = scoreMode;
 
   const list = $('feed-list');
   list.replaceChildren();
 
   if (res.ranked.length === 0) {
     const summary = ($('summary') as HTMLTextAreaElement).value.trim();
-    list.append(feedEmptyState(res.unscored, summary));
+    list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf));
     return;
   }
 
   if (res.unscored > 0) {
-    // 実数で出す。残り時間の推定はしない（C-07）
-    list.append(
-      el(
-        'p',
-        { class: 'callout' },
-        el('strong', {}, `未採点 ${res.unscored} 件`),
-        ' — 「読む順をつける」を押すまで順位は出ません',
-      ),
-    );
+    list.append(unscoredCallout(res.unscored, scoreMode, missingPdf));
   }
 
   res.ranked.forEach((p, i) => {
@@ -876,8 +931,8 @@ async function refreshFeed() {
       el(
         'span',
         { class: 'row-meta' },
+        el('span', {}, [p.authors ?? '著者不明', yearFromPublishedAt(p.published_at) ?? '年不明'].join(' / ')),
         el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(3) ?? '-'}`),
-        ...(p.in_library ? [el('span', { class: 'chip' }, 'ライブラリ済')] : []),
       ),
     );
     row.addEventListener('click', () => {
@@ -896,13 +951,27 @@ function renderPaperDetail(p: RankedPaper) {
   const pane = $('feed-detail');
   pane.replaceChildren();
   pane.append(el('h2', { class: 'detail-title' }, p.title));
+  const year = yearFromPublishedAt(p.published_at);
+  pane.append(
+    el(
+      'p',
+      { class: 'detail-meta' },
+      [p.authors, year ? String(year) : null].filter(Boolean).join(' / ') || '書誌情報なし',
+    ),
+  );
 
   pane.append(
     el(
       'div',
       { class: 'actions' },
       el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(4) ?? '-'}`),
-      el('span', { class: 'chip' }, `課題意識との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`),
+      el(
+        'span',
+        { class: 'chip' },
+        lastScoreMode === 'mypaper'
+          ? `原稿との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`
+          : `課題意識との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`,
+      ),
     ),
   );
 
@@ -948,20 +1017,41 @@ function renderPaperDetail(p: RankedPaper) {
   const add = el('button', { class: 'btn', 'data-variant': 'primary' }, 'ライブラリに保存');
   add.disabled = !!p.in_library;
   add.addEventListener('click', async () => {
-    const id = await guard('ライブラリへの保存', () =>
+    add.disabled = true;
+    setStatus('ライブラリに保存し、PDF を取得しています…', 'busy');
+    const res = await guard('ライブラリへの保存', () =>
       window.api.lib.add(projectId, {
         title: p.title,
+        authors: p.authors,
+        year: yearFromPublishedAt(p.published_at),
         abstract: p.abstract,
         url: p.url,
         doi: p.external_id && /^10\.\d{4,}/.test(p.external_id) ? p.external_id : null,
         paper_id: p.paper_id,
       }),
     );
-    if (!id) return;
-    setStatus('ライブラリに保存した');
+    if (!res) {
+      add.disabled = !!p.in_library;
+      return;
+    }
+    setStatus(libraryAddStatus(res.pdf));
     await refreshFeed();
   });
   pane.append(el('div', { class: 'detail-section actions', 'data-align': 'end' }, add));
+}
+
+function libraryAddStatus(pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped'): string {
+  switch (pdf) {
+    case 'ok':
+      return 'ライブラリに保存し、PDF を取得した';
+    case 'exists':
+      return 'ライブラリに保存した（PDF は既にあった）';
+    case 'not_pdf':
+    case 'failed':
+      return 'ライブラリに保存した。PDF は取得できなかった';
+    case 'skipped':
+      return 'ライブラリに保存した。公開の直 PDF は無かった';
+  }
 }
 
 $('feed-score').addEventListener('click', async () => {

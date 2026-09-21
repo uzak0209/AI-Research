@@ -114,6 +114,7 @@ export const RunPaperSchema = z
     external_id: z.string(),
     source: z.string(),
     title: z.string(),
+    authors: z.string().nullable(),
     abstract: z.string().nullable(),
     url: z.string().nullable(),
     published_at: z.string().nullable(),

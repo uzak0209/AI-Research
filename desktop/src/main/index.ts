@@ -16,6 +16,7 @@ import { hintFromReference } from '../bibliography/domain/record.js';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
   countUnscored,
+  countUnscoredMissingFulltext,
   createProject,
   getProject,
   listChunks,
@@ -28,7 +29,15 @@ import {
   upsertPapers,
 } from '../shared/repo.js';
 import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
-import { WorkspaceError, createProjectWorkspace, pathUnderProjectsRoot, ensureProjectsRoot } from '../shared/workspace.js';
+import { mypaperHasContent } from '../shared/mypaper.js';
+import { ensureCandidateFulltexts } from '../shared/candidate-pdf.js';
+import {
+  WorkspaceError,
+  createProjectWorkspace,
+  pathUnderProjectsRoot,
+  ensureProjectsRoot,
+  ensureCandidatesDir,
+} from '../shared/workspace.js';
 import {
   addAttachment,
   addReference,
@@ -142,6 +151,36 @@ function createWindow(): void {
 
 // --- 採点（utilityProcess） ---------------------------------------------------
 
+let scoringPrep: Promise<void> | null = null;
+
+async function prepareAndStartScoring(projectId: string, model: string): Promise<void> {
+  if (scorer || scoringPrep) return;
+
+  scoringPrep = (async () => {
+    const project = getProject(db, projectId);
+    if (project?.root_path && mypaperHasContent(project.root_path) && biblio) {
+      try {
+        await ensureCandidateFulltexts(db, projectId, project.root_path, {
+          gateway: biblio.gateway,
+          pdfs: biblio.pdfs,
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        win?.webContents.send('score:event', {
+          type: 'error',
+          message: `候補 PDF の取得に失敗: ${message}`,
+        });
+        // 取れた分だけで採点を続ける
+      }
+    }
+    startScoring(projectId, model);
+  })().finally(() => {
+    scoringPrep = null;
+  });
+
+  await scoringPrep;
+}
+
 function startScoring(projectId: string, model: string): void {
   if (scorer) return; // 二重起動させない
 
@@ -211,6 +250,11 @@ function attachWorkspace(root: string, title: string, action: 'create' | 'open')
   } else if (action === 'create') {
     // createProject で root を入れた。タイトルだけ揃える
     updateTitle(db, p.project_id, title);
+  }
+  try {
+    ensureCandidatesDir(root);
+  } catch {
+    // 開けた作業フォルダで candidates が作れなくても落とさない
   }
   restartRefWatch();
   return { ok: true, root, title, action };
@@ -322,7 +366,7 @@ async function syncAllProjectsFromCloud(): Promise<void> {
     try {
       const { inserted } = await syncProjectFromCloud(db, cloud.client, p.project_id);
       if (inserted > 0 || countUnscored(db, p.project_id) > 0) {
-        startScoring(p.project_id, DEFAULT_MODEL);
+        void prepareAndStartScoring(p.project_id, DEFAULT_MODEL);
       }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -494,7 +538,7 @@ function registerIpc(): void {
     if (!cloud) throw new Error('クラウドクライアントが無い');
     const result = await syncProjectFromCloud(db, cloud.client, projectId);
     if (result.inserted > 0 || countUnscored(db, projectId) > 0) {
-      startScoring(projectId, DEFAULT_MODEL);
+      void prepareAndStartScoring(projectId, DEFAULT_MODEL);
     }
     return result;
   });
@@ -530,7 +574,7 @@ function registerIpc(): void {
     }
 
     if (inserted > 0 || countUnscored(db, projectId) > 0) {
-      startScoring(projectId, DEFAULT_MODEL);
+      void prepareAndStartScoring(projectId, DEFAULT_MODEL);
     }
 
     return {
@@ -556,18 +600,24 @@ function registerIpc(): void {
     return ids;
   });
 
-  ipcMain.handle('papers:ranked', (_e, projectId: string) => ({
-    ranked: listRanked(db, projectId),
-    // 「未採点 n 件」を実数で返す。推定しない（C-07）
-    unscored: countUnscored(db, projectId),
-  }));
+  ipcMain.handle('papers:ranked', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    const mode = mypaperHasContent(project?.root_path) ? 'mypaper' : 'blend';
+    return {
+      ranked: listRanked(db, projectId),
+      // 「未採点 n 件」を実数で返す。推定しない（C-07）
+      unscored: countUnscored(db, projectId),
+      unscoredMissingPdf: mode === 'mypaper' ? countUnscoredMissingFulltext(db, projectId) : 0,
+      scoreMode: mode as 'mypaper' | 'blend',
+    };
+  });
 
   ipcMain.handle('papers:import', (_e, projectId: string, papers: Parameters<typeof upsertPapers>[2]) =>
     upsertPapers(db, projectId, papers),
   );
 
   ipcMain.handle('score:start', (_e, projectId: string) => {
-    startScoring(projectId, DEFAULT_MODEL);
+    void prepareAndStartScoring(projectId, DEFAULT_MODEL);
   });
 
   ipcMain.handle('score:cancel', () => {
@@ -582,10 +632,20 @@ function registerIpc(): void {
   ipcMain.handle('lib:counts', (_e, projectId: string) => libraryCounts(db, projectId));
   ipcMain.handle('lib:tags', (_e, projectId: string) => listTags(db, projectId));
 
-  ipcMain.handle('lib:add', (_e, projectId: string, item: ReferenceInput) => {
-    const id = addReference(db, projectId, item);
-    void biblio?.follow(projectId, id).then(notifyLibrary);
-    return id;
+  ipcMain.handle('lib:add', async (_e, projectId: string, item: ReferenceInput) => {
+    const reference_id = addReference(db, projectId, item);
+    let pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped' = 'skipped';
+    if (biblio) {
+      try {
+        const got = await biblio.follow(projectId, reference_id);
+        pdf = got.pdf;
+      } catch {
+        // 書誌／PDF 失敗でも文献行は残す（C-07）
+        pdf = 'failed';
+      }
+      notifyLibrary();
+    }
+    return { reference_id, pdf };
   });
 
   ipcMain.handle('lib:follow', async (_e, projectId: string, referenceId: string) => {

@@ -101,6 +101,9 @@ export function sqliteReferenceRepo(db: Db): ReferenceRepo {
     projectRoot(projectId) {
       return getProject(db, projectId)?.root_path ?? null;
     },
+    paperId(referenceId) {
+      return getReference(db, referenceId)?.paper_id ?? null;
+    },
     citeItems(projectId): CiteItem[] {
       return listReferences(db, projectId).map((r) => ({
         bibtex_key: r.bibtex_key,

@@ -335,6 +335,10 @@ describe('収集の記録（FR-08 / C-07）', () => {
         doi: 'https://doi.org/10.1234/a',
         display_name: 'GNN for molecular property prediction',
         publication_date: '2026-09-01',
+        authorships: [
+          { author: { display_name: 'Ada Lovelace' } },
+          { raw_author_name: 'Alan Turing' },
+        ],
         abstract_inverted_index: { graph: [0], neural: [1], networks: [2] },
       },
     ]);
@@ -348,14 +352,15 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(run?.failed_sources_json).toBeNull();
 
     const papers = await env.DB.prepare(
-      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url FROM run_papers WHERE run_id = ?',
+      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url, MIN(authors) AS authors FROM run_papers WHERE run_id = ?',
     )
       .bind(`${PROJECT}:${RUN_DATE}`)
-      .first<{ n: number; external_id: string; url: string }>();
+      .first<{ n: number; external_id: string; url: string; authors: string }>();
     expect(papers?.n).toBe(1);
     // desktop の papers.external_id / url と同じ形。DOI 生文字列を URL にしない
     expect(papers?.external_id).toBe('10.1234/a');
     expect(papers?.url).toBe('https://doi.org/10.1234/a');
+    expect(papers?.authors).toBe('Ada Lovelace; Alan Turing');
   });
 
   it('0 件は empty。failed にしない', async () => {
@@ -429,7 +434,7 @@ describe('収集の記録（FR-08 / C-07）', () => {
     await handleQueueMessage(message(), env);
 
     const statements = spy.mock.calls[0]?.[0] ?? [];
-    // runs 1 文 + run_papers を 11 件ずつ（100 バインド ÷ 9 列）= 3 文。合計 4 文
+    // runs 1 文 + run_papers を 10 件ずつ（100 バインド ÷ 10 列）= 3 文。合計 4 文
     expect(statements.length).toBe(4);
     // Free 枠は 1 実行 50 クエリまで
     expect(statements.length).toBeLessThanOrEqual(50);

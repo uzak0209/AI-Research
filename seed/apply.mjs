@@ -60,10 +60,10 @@ export function applyDesktopSeed(db) {
 
     const insPaper = db.prepare(
       `INSERT INTO papers (
-         paper_id, project_id, run_id, external_id, source, title, abstract, url, published_at,
+         paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at,
          coarse_score, relevance, sim_summary, nearest_chunk_id, nearest_chunk_sim,
          embed_model, scored_at, in_library
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const p of catalog.papers) {
       const scored = p.scored !== false;
@@ -75,6 +75,7 @@ export function applyDesktopSeed(db) {
         p.external_id,
         SOURCE,
         p.title,
+        p.authors ?? null,
         p.abstract ?? null,
         p.url ?? null,
         p.published_at ?? null,
@@ -164,7 +165,7 @@ export function cloudSeedSql() {
       const p = paperById[paperId];
       if (!p) throw new Error(`unknown paper in run: ${paperId}`);
       lines.push(
-        `INSERT INTO run_papers (run_id, external_id, source, title, abstract, url, published_at, coarse_score) VALUES (${q(run.run_id)}, ${q(p.external_id)}, ${q(SOURCE)}, ${q(p.title)}, ${q(p.abstract ?? null)}, ${q(p.url ?? null)}, ${q(p.published_at ?? null)}, ${q(p.coarse_score ?? null)});`,
+        `INSERT INTO run_papers (run_id, external_id, source, title, authors, abstract, url, published_at, coarse_score) VALUES (${q(run.run_id)}, ${q(p.external_id)}, ${q(SOURCE)}, ${q(p.title)}, ${q(p.authors ?? null)}, ${q(p.abstract ?? null)}, ${q(p.url ?? null)}, ${q(p.published_at ?? null)}, ${q(p.coarse_score ?? null)});`,
       );
     }
   }

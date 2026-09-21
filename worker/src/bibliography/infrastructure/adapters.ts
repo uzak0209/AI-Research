@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { chatCompletion } from '../../shared/orca/chat';
 import { ORCA_POLICY } from '../../shared/orca/policy';
 import { bibliographyPrompt, type BibliographyHint } from '../domain/record';
-import { oaPdfUrlFromWork } from '../domain/oa-url';
+import { oaBiblioFromWork } from '../domain/oa-url';
 import { normalizeDoi } from '../domain/doi';
 import type { BibliographyLlm, OaPdfLookup } from '../application/ports';
 
@@ -26,7 +26,7 @@ export function orcaBibliographyLlm(apiKey: string): BibliographyLlm {
           {
             role: 'system',
             content:
-              'You extract public bibliographic fields. Never invent a DOI or authors that are not supported by the input. Unknown fields are null.',
+              'You complete public bibliographic records. Fill authors, year, venue, and title for the identified work. authors is a "; "-separated string, not an array. Never invent a DOI. Unknown fields are null.',
           },
           { role: 'user', content: bibliographyPrompt(hint) },
         ],
@@ -50,13 +50,13 @@ export function orcaBibliographyLlm(apiKey: string): BibliographyLlm {
 
 export function openAlexOaPdf(apiKey?: string): OaPdfLookup {
   return {
-    async pdfUrl(doi) {
+    async lookup(doi) {
       const res = await fetch(openAlexPdfUrl(doi, { apiKey }), { headers: { accept: 'application/json' } });
       if (!res.ok) return null;
       const parsed = resultsSchema.safeParse(await res.json());
       if (!parsed.success) return null;
       const first = parsed.data.results?.[0];
-      return first ? oaPdfUrlFromWork(first) : null;
+      return first ? oaBiblioFromWork(first) : null;
     },
   };
 }

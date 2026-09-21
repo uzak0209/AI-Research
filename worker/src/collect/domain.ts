@@ -47,6 +47,7 @@ function extractTerms(summary: string): Set<string> {
 export type ScoredPaper = {
   external_id: string;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
   published_at: string | null;

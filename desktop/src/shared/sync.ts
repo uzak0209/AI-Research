@@ -48,6 +48,7 @@ export async function syncProjectFromCloud(
         external_id: p.external_id,
         source: p.source,
         title: p.title,
+        authors: p.authors,
         abstract: p.abstract,
         url: p.url,
         published_at: p.published_at,

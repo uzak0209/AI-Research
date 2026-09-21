@@ -265,6 +265,7 @@ app.openapi(
             external_id: string;
             source: string;
             title: string;
+            authors: string | null;
             abstract: string | null;
             url: string | null;
             published_at: string | null;
@@ -279,6 +280,7 @@ app.openapi(
                 'external_id',
                 'source',
                 'title',
+                'authors',
                 'abstract',
                 'url',
                 'published_at',
@@ -309,6 +311,7 @@ app.openapi(
             external_id: p.external_id,
             source: p.source,
             title: p.title,
+            authors: p.authors,
             abstract: p.abstract,
             url: p.url,
             published_at: p.published_at,
