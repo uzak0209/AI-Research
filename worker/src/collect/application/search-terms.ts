@@ -3,12 +3,14 @@
  *
  * 流れ:
  *   1. summary から種になるラテン略語を取る
- *   2. 同じ分野の関連略語を LLM が 20 件以上推測する（summary に無い語も足す）
- *   3. プールから組み合わせを乱択し、英語略語だけを OpenAlex に載せる
+ *   2. 同じ分野の関連略語を LLM が 20 件以上推測する
+ *   3. 種語単独 ＋ 種語×各略語の AND を全部 OpenAlex に当て、公開日の新しい順で取る
+ *
+ * 時間はかけてよい（NFR-01）。精度優先。乱択で組み合わせを間引かない。
  *
  * 入り口を無制限に増やさせない（§7）:
  *   - 出力は略語の配列に閉じる。任意 URL も任意ツールも渡さない
- *   - 推測プールと 1 回あたりの組み合わせサイズに上限を置く
+ *   - 推測プールに上限を置く
  *   - 分野を跨ぐ語・略語の形でないものは捨てる
  *
  * LLM 失敗時は種語だけ。日本語全文は OpenAlex に投げない（C-07）。
@@ -23,10 +25,16 @@ export const COLLECT_ENDPOINT = '/cron/collect';
 export const MIN_INFERRED_ABBR = 20;
 /** 推測プールの上限。これ以上は捨てる */
 export const MAX_INFERRED_ABBR = 40;
-/** 1 回の収集で乱択する関連略語の数（種語は別途必ず載せる） */
-export const COMBO_SIZE = 5;
 /** summary から取る種語の上限 */
 export const MAX_SEED_TERMS = 6;
+/** 全組み合わせをマージしたあと残す件数 */
+export const COLLECT_TAKE = 80;
+/** 1 組み合わせあたり OpenAlex から取る新規の上限 */
+export const PER_COMBO_TAKE = 25;
+/** 1 組み合わせあたり見るページ数（新しい順）。時間はかけてよいがサブリクエストは残す */
+export const PER_COMBO_PAGES = 2;
+/** 1 収集で当てる組み合わせ数の上限（種語＋略語 AND） */
+export const MAX_COMBO_QUERIES = 22;
 
 /** 旧名・テスト互換。推測プールの上限と同じ */
 export const MAX_TERMS = MAX_INFERRED_ABBR;
@@ -43,25 +51,6 @@ const SYSTEM = [
   'Each item is 2-12 Latin characters (letters, digits, + _ - .).',
 ].join(' ');
 
-export function defaultRand(): number {
-  const buf = new Uint32Array(1);
-  crypto.getRandomValues(buf);
-  return (buf[0] as number) / 0x1_0000_0000;
-}
-
-/** Fisher–Yates。テストでは rand を差し込む */
-export function pickRandomSubset<T>(items: T[], n: number, rand: () => number = defaultRand): T[] {
-  if (n <= 0 || items.length === 0) return [];
-  const copy = items.slice();
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    const a = copy[i]!;
-    copy[i] = copy[j]!;
-    copy[j] = a;
-  }
-  return copy.slice(0, Math.min(n, copy.length));
-}
-
 export function isInferredAbbreviation(term: string): boolean {
   const t = term.trim();
   if (!t || /\s/.test(t) || t.length < 2 || t.length > 12) return false;
@@ -70,7 +59,8 @@ export function isInferredAbbreviation(term: string): boolean {
   return /\d/.test(t);
 }
 
-export function openAlexQueryFromTerms(terms: string[]): string {
+/** OpenAlex の search は空白区切りが AND */
+export function andSearchQuery(terms: string[]): string {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const t of terms) {
@@ -81,7 +71,11 @@ export function openAlexQueryFromTerms(terms: string[]): string {
     seen.add(key);
     out.push(x);
   }
-  return out.join(' OR ');
+  return out.join(' ');
+}
+
+export function openAlexQueryFromTerms(terms: string[]): string {
+  return andSearchQuery(terms);
 }
 
 export function isDistinctiveSearchTerm(term: string): boolean {
@@ -103,7 +97,24 @@ export function extractLatinTerms(summary: string): string[] {
 }
 
 export function openAlexQueryFromSummary(summary: string): string {
-  return openAlexQueryFromTerms(extractLatinTerms(summary));
+  return andSearchQuery(extractLatinTerms(summary));
+}
+
+/**
+ * 精度優先のクエリ列。種語だけで最新を取り、続けて種語×各略語を AND する。
+ * 時間をかけて全部当てる（NFR-01）。
+ */
+export function preciseSearchQueries(summary: string, inferred: string[]): string[] {
+  const seeds = extractLatinTerms(summary);
+  const primary = seeds[0] ?? null;
+  const seedKeys = new Set(seeds.map((s) => s.toLowerCase()));
+  const extras = inferred.filter((t) => !seedKeys.has(t.toLowerCase()));
+  const queries: string[] = [];
+  if (primary) queries.push(primary);
+  for (const t of extras) {
+    queries.push(primary ? andSearchQuery([primary, t]) : t);
+  }
+  return queries.filter(Boolean);
 }
 
 /** モデル出力を略語配列として受け取る。形が違えば捨てる */
@@ -130,38 +141,27 @@ export function parseInferredAbbreviations(raw: string): string[] {
   return out;
 }
 
-export function collectSearchCombo(
-  summary: string,
-  inferred: string[],
-  opts: { rand?: () => number; comboSize?: number } = {},
-): { query: string; combo: string[] } {
-  const seeds = extractLatinTerms(summary);
-  const seedKeys = new Set(seeds.map((s) => s.toLowerCase()));
-  const extra = inferred.filter((t) => !seedKeys.has(t.toLowerCase()));
-  const picked = pickRandomSubset(extra, opts.comboSize ?? COMBO_SIZE, opts.rand ?? defaultRand);
-  const combo = [...seeds, ...picked];
-  return { query: openAlexQueryFromTerms(combo), combo };
-}
-
 export type SearchTerms = {
   query: string;
+  queries: string[];
   generated: boolean;
   usage: OrcaChatOk | null;
   combo: string[];
 };
 
-export async function buildSearchQuery(
-  env: Env,
-  summary: string,
-  opts: { rand?: () => number } = {},
-): Promise<SearchTerms> {
+export async function buildSearchQuery(env: Env, summary: string): Promise<SearchTerms> {
   const policy = collectPolicy(env);
   const apiKey = env.ORCAROUTER_API_KEY_CRON ?? env.ORCAROUTER_API_KEY;
-  const fallbackCombo = collectSearchCombo(summary, [], { rand: () => 0 });
+  const fallbackQueries = preciseSearchQueries(summary, []);
+  const fallback: SearchTerms = {
+    query: fallbackQueries[0] ?? '',
+    queries: fallbackQueries,
+    generated: false,
+    usage: null,
+    combo: extractLatinTerms(summary),
+  };
 
-  if (!apiKey) {
-    return { query: fallbackCombo.query, generated: false, usage: null, combo: fallbackCombo.combo };
-  }
+  if (!apiKey) return fallback;
 
   const result = await chatCompletion(
     apiKey,
@@ -172,20 +172,19 @@ export async function buildSearchQuery(
     policy,
   );
 
-  if (!result.ok) {
-    return { query: fallbackCombo.query, generated: false, usage: null, combo: fallbackCombo.combo };
-  }
+  if (!result.ok) return fallback;
 
   const inferred = parseInferredAbbreviations(result.text);
   if (inferred.length === 0) {
-    return {
-      query: fallbackCombo.query,
-      generated: false,
-      usage: result,
-      combo: fallbackCombo.combo,
-    };
+    return { ...fallback, usage: result };
   }
 
-  const picked = collectSearchCombo(summary, inferred, { rand: opts.rand });
-  return { query: picked.query, generated: true, usage: result, combo: picked.combo };
+  const queries = preciseSearchQueries(summary, inferred);
+  return {
+    query: queries[0] ?? '',
+    queries,
+    generated: true,
+    usage: result,
+    combo: inferred,
+  };
 }

@@ -57,7 +57,12 @@ export function utcClock(): CollectClock {
 export function openAlexFetcher(apiKey?: string): PaperFetcher {
   return {
     fetch: (source, query, extra) =>
-      fetchFromSource(source, query, { apiKey, skipIds: extra?.skipIds }),
+      fetchFromSource(source, query, {
+        apiKey,
+        skipIds: extra?.skipIds,
+        take: extra?.take,
+        maxPages: extra?.maxPages,
+      }),
   };
 }
 

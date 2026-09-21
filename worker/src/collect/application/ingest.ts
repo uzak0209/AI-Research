@@ -1,6 +1,23 @@
 import type { CollectMessage } from '../../env';
+import type { FetchedPaper } from '../../shared/papers/domain';
 import { coarseScore, collectMessageSchema, type ScoredPaper } from '../domain';
 import type { IngestDeps } from './ports';
+import {
+  COLLECT_TAKE,
+  MAX_COMBO_QUERIES,
+  PER_COMBO_PAGES,
+  PER_COMBO_TAKE,
+} from './search-terms';
+
+export function mergeLatestPapers(papers: FetchedPaper[], take: number): FetchedPaper[] {
+  const byId = new Map<string, FetchedPaper>();
+  for (const p of papers) {
+    if (!byId.has(p.external_id)) byId.set(p.external_id, p);
+  }
+  return [...byId.values()]
+    .sort((a, b) => (b.published_at ?? '').localeCompare(a.published_at ?? ''))
+    .slice(0, take);
+}
 
 export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Promise<void> {
   const parsed = collectMessageSchema.safeParse(raw);
@@ -18,8 +35,27 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   let failure: string | null = null;
 
   try {
-    const skipIds = await deps.runs.knownExternalIds(msg.project_id);
-    const fetched = await deps.papers.fetch(msg.source, search.query, { skipIds });
+    const skipIds = new Set(await deps.runs.knownExternalIds(msg.project_id));
+    const queries = (search.queries?.length ? search.queries : [search.query]).filter((q) => q.trim());
+    const collected: FetchedPaper[] = [];
+    let queriesRun = 0;
+
+    for (const q of queries) {
+      if (queriesRun >= MAX_COMBO_QUERIES) break;
+      const batch = await deps.papers.fetch(msg.source, q, {
+        skipIds,
+        take: PER_COMBO_TAKE,
+        maxPages: PER_COMBO_PAGES,
+      });
+      queriesRun += 1;
+      for (const p of batch) {
+        if (skipIds.has(p.external_id)) continue;
+        skipIds.add(p.external_id);
+        collected.push(p);
+      }
+    }
+
+    const fetched = mergeLatestPapers(collected, COLLECT_TAKE);
     const scored = fetched.map((p) => ({
       ...p,
       coarse_score: coarseScore(msg.summary, `${p.title} ${p.abstract ?? ''}`),

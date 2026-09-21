@@ -31,6 +31,8 @@ export type ScheduleDeps = {
 export type FetchPapersOpts = {
   /** このプロジェクトで既に run_papers にある ID。同じ先頭ページを新規扱いしない */
   skipIds?: ReadonlySet<string>;
+  take?: number;
+  maxPages?: number;
 };
 
 export type PaperFetcher = {

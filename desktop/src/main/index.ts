@@ -559,7 +559,7 @@ function registerIpc(): void {
     let pulled = 0;
     let timedOut = true;
     let statuses: string[] = [];
-    const deadline = Date.now() + 90_000;
+    const deadline = Date.now() + 10 * 60_000; // NFR-01: 文献調査に時間をかけてよい
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
       const result = await syncProjectFromCloud(db, cloud.client, projectId);

@@ -6,5 +6,6 @@ export {
   COLLECT_ENDPOINT,
   MIN_INFERRED_ABBR,
   parseInferredAbbreviations,
+  preciseSearchQueries,
   buildSearchQuery,
 } from './application/search-terms';
