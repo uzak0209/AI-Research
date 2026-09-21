@@ -1,14 +1,14 @@
 # 指標レポート
 
 トークン/見つけた論文と点数（`coarse_score` 平均）。
-環境: `dev` / 収集 status: `ok` / 更新: 2026-09-21T13:36Z。
+環境: `dev` / 収集 status: `ok` / 更新: 2026-09-21T13:47Z。
 
 > 数値と SVG グラフは \`scripts/retro-metrics.mjs\` / \`render-charts-svg.mjs\`（決定的）。
 > 上のまとめ文は Claude（\`metrics-report\`）。無い改善は書いていない（`C-07`）。
 
 ## 今回なにをしたか
 
-PR [#42](https://github.com/uzak0209/AI-Research/pull/42): fix: ADR-0005 の relation/reason/evidence 残存記述を課題文抜粋に統一
+きっかけ: `push`（dev)
 
 ## 指標はどう動いたか
 
