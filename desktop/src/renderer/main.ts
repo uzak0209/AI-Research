@@ -87,6 +87,7 @@ const READ_LABEL: Record<ReadStatus, string> = {
 
 let projectId = '';
 let projectRoot: string | null = null;
+let signedIn = false;
 let libFilter: 'all' | 'starred' | ReadStatus = 'all';
 let libTag: string | null = null;
 let selectedRef: string | null = null;
@@ -128,17 +129,70 @@ async function guard<T>(what: string, fn: () => Promise<T>): Promise<T | undefin
 
 // --- タブ --------------------------------------------------------------------
 
-for (const id of ['library', 'feed', 'project'] as const) {
+for (const id of ['feed', 'library'] as const) {
   $(`tab-${id}`).addEventListener('click', () => {
-    for (const other of ['library', 'feed', 'project'] as const) {
-      const active = other === id;
-      $(`tab-${other}`).setAttribute('aria-selected', String(active));
-      $(`view-${other}`).setAttribute('data-active', String(active));
-      $(`nav-${other}`).hidden = !active;
-    }
-    if (id === 'library') void refreshLibrary();
-    if (id === 'feed') void refreshFeed();
+    showTab(id);
   });
+}
+
+function showTab(id: 'feed' | 'library'): void {
+  for (const other of ['feed', 'library'] as const) {
+    const active = other === id;
+    $(`tab-${other}`).setAttribute('aria-selected', String(active));
+    $(`view-${other}`).setAttribute('data-active', String(active));
+    $(`nav-${other}`).hidden = !active;
+  }
+  if (id === 'library') void refreshLibrary();
+  if (id === 'feed') void refreshFeed();
+}
+
+function settingsDialog(): HTMLDialogElement {
+  return $('settings') as HTMLDialogElement;
+}
+
+function openSettings(): void {
+  if ($('shell').hidden) return;
+  const dlg = settingsDialog();
+  const show = () => {
+    if (!dlg.open) dlg.showModal();
+    ($('summary') as HTMLTextAreaElement).focus();
+  };
+  // shell を出した直後だと dialog が描画されないことがある
+  requestAnimationFrame(() => requestAnimationFrame(show));
+}
+
+function closeSettings(): void {
+  const dlg = settingsDialog();
+  if (dlg.open) dlg.close();
+}
+
+/** 収集に必要な最低限（課題意識＋ログイン）が揃っていなければ未設定 */
+function needsSettings(p: { summary: string }, loggedIn = signedIn): boolean {
+  return !p.summary.trim() || !loggedIn;
+}
+
+function settingsDoneKey(id: string): string {
+  return `ai-research:settings-done:${id}`;
+}
+
+function hasCompletedSettings(projectId: string): boolean {
+  try {
+    return localStorage.getItem(settingsDoneKey(projectId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function markSettingsCompleted(projectId: string): void {
+  try {
+    localStorage.setItem(settingsDoneKey(projectId), '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function currentSettingsSnapshot(): { summary: string } {
+  return { summary: ($('summary') as HTMLTextAreaElement).value };
 }
 
 // --- ライブラリ：一覧 ---------------------------------------------------------
@@ -205,7 +259,9 @@ async function refreshLibrary() {
         el(
           'p',
           { class: 'empty' },
-          none ? 'PDF か「追加」から文献を入れます。' : '絞り込みや検索を変えてみてください。',
+          none
+            ? '新着から入れるか、右上の PDF / 追加で入れます。'
+            : '絞り込みや検索を変えてみてください。',
         ),
       ),
     );
@@ -733,6 +789,58 @@ $('lib-import-pdf').addEventListener('click', async () => {
 
 // --- 新着候補 ----------------------------------------------------------------
 
+function feedEmptyState(unscored: number, summary: string): HTMLElement {
+  const goSettings = () => {
+    const b = el('button', { class: 'btn', type: 'button' }, '設定を開く');
+    b.setAttribute('data-variant', 'primary');
+    b.addEventListener('click', () => openSettings());
+    return b;
+  };
+
+  if (unscored > 0) {
+    return el(
+      'div',
+      { class: 'empty-state' },
+      el('p', { class: 'empty-title' }, `未採点 ${unscored} 件`),
+      el('p', { class: 'empty' }, '上の「読む順をつける」を押すと、関連度順に並びます。'),
+    );
+  }
+  if (!signedIn) {
+    return el(
+      'div',
+      { class: 'empty-state' },
+      el('p', { class: 'empty-title' }, 'まだログインしていません'),
+      el(
+        'p',
+        { class: 'empty' },
+        'メニューの設定（' +
+          (window.api.platform === 'darwin' ? '⌘,' : 'Ctrl+,') +
+          '）で Google ログインと課題意識を保存してください。',
+      ),
+      goSettings(),
+    );
+  }
+  if (!summary) {
+    return el(
+      'div',
+      { class: 'empty-state' },
+      el('p', { class: 'empty-title' }, '課題意識が空です'),
+      el('p', { class: 'empty' }, '設定で課題意識を書いて保存すると、収集の材料になります。'),
+      goSettings(),
+    );
+  }
+  return el(
+    'div',
+    { class: 'empty-state' },
+    el('p', { class: 'empty-title' }, '候補はまだありません'),
+    el(
+      'p',
+      { class: 'empty' },
+      '上の「調査する」で収集を始めます。溜まっている分だけ取るときは「取り込む」。',
+    ),
+  );
+}
+
 async function refreshFeed() {
   const res = (await guard('候補の取得', () => window.api.ranked(projectId))) as
     | { ranked: RankedPaper[]; unscored: number }
@@ -742,6 +850,12 @@ async function refreshFeed() {
   const list = $('feed-list');
   list.replaceChildren();
 
+  if (res.ranked.length === 0) {
+    const summary = ($('summary') as HTMLTextAreaElement).value.trim();
+    list.append(feedEmptyState(res.unscored, summary));
+    return;
+  }
+
   if (res.unscored > 0) {
     // 実数で出す。残り時間の推定はしない（C-07）
     list.append(
@@ -749,20 +863,9 @@ async function refreshFeed() {
         'p',
         { class: 'callout' },
         el('strong', {}, `未採点 ${res.unscored} 件`),
-        '（採点するまで順位は出ません）',
+        ' — 「読む順をつける」を押すまで順位は出ません',
       ),
     );
-  }
-
-  if (res.ranked.length === 0) {
-    list.append(
-      el(
-        'p',
-        { class: 'empty' },
-        res.unscored > 0 ? '採点すると順位が出ます。' : '候補はまだありません。',
-      ),
-    );
-    return;
   }
 
   res.ranked.forEach((p, i) => {
@@ -799,7 +902,7 @@ function renderPaperDetail(p: RankedPaper) {
       'div',
       { class: 'actions' },
       el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(4) ?? '-'}`),
-      el('span', { class: 'chip' }, `概要との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`),
+      el('span', { class: 'chip' }, `課題意識との近さ ${p.sim_summary?.toFixed(3) ?? '-'}`),
     ),
   );
 
@@ -818,7 +921,7 @@ function renderPaperDetail(p: RankedPaper) {
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, `最も近い提案手法（${p.nearest_chunk_sim?.toFixed(3)}）`),
+        el('h3', {}, `最も近い関連技術（${p.nearest_chunk_sim?.toFixed(3)}）`),
         el('p', { class: 'abstract' }, p.nearest_chunk_text),
         el('p', { class: 'note-info' }, 'これは最も近いという事実で、競合しているという判定ではありません。'),
       ),
@@ -864,23 +967,40 @@ function renderPaperDetail(p: RankedPaper) {
 $('feed-score').addEventListener('click', async () => {
   ($('feed-score') as HTMLButtonElement).disabled = true;
   ($('feed-cancel') as HTMLButtonElement).disabled = false;
-  setStatus('採点を開始した…', 'busy');
-  await guard('採点の開始', () => window.api.startScoring(projectId));
+  setStatus('読む順を付けています…', 'busy');
+  await guard('読む順の付与', () => window.api.startScoring(projectId));
+});
+
+$('feed-collect').addEventListener('click', async () => {
+  const btn = $('feed-collect') as HTMLButtonElement;
+  btn.disabled = true;
+  setStatus('調査を開始しています…', 'busy');
+  const res = await guard('調査の開始', () => window.api.startCollect(projectId));
+  btn.disabled = false;
+  if (!res) return;
+  if (res.timedOut && res.inserted === 0) {
+    setStatus('調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください');
+  } else if (res.inserted > 0) {
+    setStatus(`${res.inserted} 件を取り込んだ。読む順を付けています…`, 'busy');
+  } else {
+    setStatus('調査が終わったが、新しい候補は無かった');
+  }
+  await refreshFeed();
 });
 
 $('feed-sync').addEventListener('click', async () => {
   const btn = $('feed-sync') as HTMLButtonElement;
   btn.disabled = true;
-  setStatus('クラウドから同期中…', 'busy');
-  const res = await guard('同期', () => window.api.syncProject(projectId));
+  setStatus('クラウドから取り込んでいます…', 'busy');
+  const res = await guard('取り込み', () => window.api.syncProject(projectId));
   btn.disabled = false;
   if (!res) return;
-  setStatus(res.inserted > 0 ? `同期: ${res.inserted} 件を取り込んだ` : '同期: 新しい run はありません');
+  setStatus(res.inserted > 0 ? `${res.inserted} 件を取り込んだ` : '新しい候補はありません');
   await refreshFeed();
   if (res.inserted > 0) {
     ($('feed-score') as HTMLButtonElement).disabled = true;
     ($('feed-cancel') as HTMLButtonElement).disabled = false;
-    await guard('採点の開始', () => window.api.startScoring(projectId));
+    await guard('読む順の付与', () => window.api.startScoring(projectId));
   }
 });
 
@@ -896,7 +1016,7 @@ window.api.onScoreEvent((raw) => {
     | { type: 'error'; message: string };
 
   if (e.type === 'progress') {
-    setStatus(`採点中 ${e.done} / ${e.total} 件`, 'busy');
+    setStatus(`読む順を付けています ${e.done} / ${e.total} 件`, 'busy');
     if (e.done % 5 === 0) void refreshFeed();
     return;
   }
@@ -904,8 +1024,8 @@ window.api.onScoreEvent((raw) => {
   ($('feed-score') as HTMLButtonElement).disabled = false;
   ($('feed-cancel') as HTMLButtonElement).disabled = true;
 
-  if (e.type === 'done') setStatus(`採点した: ${e.scored} 件`);
-  else setStatus('採点に失敗: ' + e.message, 'error');
+  if (e.type === 'done') setStatus(`読む順を付けた: ${e.scored} 件`);
+  else setStatus('読む順の付与に失敗: ' + e.message, 'error');
 
   void refreshFeed();
 });
@@ -917,6 +1037,7 @@ function showWorkspace(root: string | null): void {
   const empty = $('proj-empty');
   const tree = $('proj-tree');
   const pathEl = $('proj-root');
+  const settingsPath = $('settings-root-path');
   const titleEl = $('titlebar-title');
   const name = ($('proj-title') as HTMLInputElement).value.trim();
   const label = name || (root ? root.replace(/^.*[/\\]/, '') : 'AI-Research');
@@ -926,14 +1047,20 @@ function showWorkspace(root: string | null): void {
     empty.hidden = true;
     tree.hidden = false;
     pathEl.textContent = root;
+    settingsPath.textContent = root;
   } else {
     empty.hidden = false;
     tree.hidden = true;
     pathEl.textContent = '';
+    settingsPath.textContent = '';
   }
 }
 
 $('proj-save').addEventListener('click', async () => {
+  if (!projectId) {
+    setStatus('先にプロジェクトを作ってください', 'error');
+    return;
+  }
   const title = ($('proj-title') as HTMLInputElement).value.trim();
   const summary = ($('summary') as HTMLTextAreaElement).value.trim();
   const claims = ($('claims') as HTMLTextAreaElement).value
@@ -941,20 +1068,48 @@ $('proj-save').addEventListener('click', async () => {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  if (!summary) {
+    setStatus('課題意識を書いてから保存してください', 'error');
+    ($('summary') as HTMLTextAreaElement).focus();
+    return;
+  }
+  if (!signedIn) {
+    setStatus('先に Google でログインしてください', 'error');
+    return;
+  }
+
   const ok = await guard('保存', async () => {
     if (title) await window.api.updateTitle(projectId, title);
     await window.api.updateSummary(projectId, summary);
     await window.api.setClaims(projectId, claims);
     return true;
   });
-  if (ok) setStatus('保存した。採点し直しが必要です。');
+  if (ok) {
+    markSettingsCompleted(projectId);
+    showWorkspace(projectRoot);
+    setStatus('設定を保存した');
+    closeSettings();
+    void refreshFeed();
+  }
 });
 
 function applyWorkspace(res: { root: string; title: string; action: 'create' | 'open' }): void {
   ($('proj-title') as HTMLInputElement).value = res.title;
   showWorkspace(res.root);
-  setStatus(res.action === 'open' ? '作業フォルダを開いた' : '作業フォルダを作った');
-  $('tab-project').click();
+  setStatus(res.action === 'open' ? 'プロジェクトを開いた' : 'プロジェクトを作った');
+
+  void (async () => {
+    const projects = ((await window.api.listProjects()) ?? []) as ProjectRow[];
+    const p =
+      projects.find((x) => x.root_path === res.root) ??
+      projects.find((x) => x.title === res.title) ??
+      projects[0];
+    if (!p) return;
+    await enterApp(
+      { ...p, title: res.title, root_path: res.root },
+      { forceSettings: res.action === 'create' },
+    );
+  })();
 }
 
 $('proj-mkdir').addEventListener('click', async () => {
@@ -963,7 +1118,7 @@ $('proj-mkdir').addEventListener('click', async () => {
     | { ok: false; canceled?: boolean; error?: string };
   if (!res.ok) {
     if (res.canceled) return;
-    setStatus(res.error ?? 'フォルダを作れなかった', 'error');
+    setStatus(res.error ?? 'プロジェクトを作れなかった', 'error');
     return;
   }
   applyWorkspace(res);
@@ -975,7 +1130,7 @@ $('proj-open').addEventListener('click', async () => {
     | { ok: false; canceled?: boolean; error?: string };
   if (!res.ok) {
     if (res.canceled) return;
-    setStatus(res.error ?? 'フォルダを開けなかった', 'error');
+    setStatus(res.error ?? 'プロジェクトを開けなかった', 'error');
     return;
   }
   applyWorkspace(res);
@@ -983,17 +1138,54 @@ $('proj-open').addEventListener('click', async () => {
 
 $('proj-reveal').addEventListener('click', async () => {
   const res = (await window.api.revealWorkspace(projectId)) as { ok: boolean; error?: string };
-  if (!res.ok) setStatus(res.error ?? 'フォルダを開けなかった', 'error');
+  if (!res.ok) setStatus(res.error ?? 'プロジェクトを開けなかった', 'error');
 });
 
 window.api.onWorkspaceChanged((e) => applyWorkspace(e));
 window.api.onWorkspaceError((message) => setStatus(message, 'error'));
+$('settings-form').addEventListener('submit', (e) => {
+  const submitter = (e as SubmitEvent).submitter as HTMLElement | null;
+  if (submitter?.id !== 'settings-close') {
+    e.preventDefault();
+    return;
+  }
+  // 未設定のまま閉じさせない
+  if (needsSettings(currentSettingsSnapshot()) || !hasCompletedSettings(projectId)) {
+    e.preventDefault();
+    setStatus(
+      !signedIn
+        ? 'ログインと課題意識の保存が必要です'
+        : '課題意識を書いて保存してください',
+      'error',
+    );
+  }
+});
 
-function showAuth(signedIn: boolean): void {
-  $('auth-chip').textContent = signedIn ? 'クラウド: ログイン済み' : 'クラウド: 未ログイン';
-  $('auth-label').textContent = signedIn ? 'ログイン済み' : '未ログイン';
-  ($('auth-login') as HTMLButtonElement).hidden = signedIn;
-  ($('auth-logout') as HTMLButtonElement).hidden = !signedIn;
+settingsDialog().addEventListener('cancel', (e) => {
+  if (needsSettings(currentSettingsSnapshot()) || !hasCompletedSettings(projectId)) {
+    e.preventDefault();
+    setStatus(
+      !signedIn
+        ? 'ログインと課題意識の保存が必要です'
+        : '課題意識を書いて保存してください',
+      'error',
+    );
+  }
+});
+
+window.api.onOpenSettings?.(() => openSettings());
+
+function showAuth(next: boolean): void {
+  signedIn = next;
+  $('auth-chip').textContent = next ? 'クラウド: ログイン済み' : 'クラウド: 未ログイン';
+  const label = $('auth-label');
+  const login = $('auth-login') as HTMLButtonElement | null;
+  const logout = $('auth-logout') as HTMLButtonElement | null;
+  if (label) {
+    label.textContent = next ? 'ログイン済み' : '未ログイン — 新着の取り込みに必要です';
+  }
+  if (login) login.hidden = next;
+  if (logout) logout.hidden = !next;
 }
 
 $('auth-login').addEventListener('click', async () => {
@@ -1001,7 +1193,11 @@ $('auth-login').addEventListener('click', async () => {
   const res = await guard('ログイン', () => window.api.auth.login());
   if (res?.signedIn) {
     showAuth(true);
-    setStatus('Google でログインした');
+    setStatus(
+      needsSettings(currentSettingsSnapshot(), true)
+        ? 'ログインした。課題意識を書いて保存してください'
+        : 'ログインした',
+    );
   }
 });
 
@@ -1019,23 +1215,35 @@ window.api.lib.onChanged(() => {
 
 // --- 起動 --------------------------------------------------------------------
 
-async function boot() {
-  document.body.dataset.platform = window.api.platform;
-  $('proj-reveal').textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
-  const projects = (await window.api.listProjects()) as {
-    project_id: string;
-    title: string;
-    summary: string;
-    root_path: string | null;
-  }[];
-  const p =
-    projects[0] ??
-    ((await window.api.createProject('新しいプロジェクト', '')) as {
-      project_id: string;
-      title: string;
-      summary: string;
-      root_path: string | null;
-    });
+type ProjectRow = {
+  project_id: string;
+  title: string;
+  summary: string;
+  root_path: string | null;
+};
+
+/** 自動生成の空スタブは「まだ作っていない」扱い */
+function isUnsetProject(p: ProjectRow): boolean {
+  const defaultName = !p.title.trim() || p.title === '新しいプロジェクト';
+  return defaultName && !p.summary.trim() && !p.root_path;
+}
+
+function showWelcome(): void {
+  $('welcome').hidden = false;
+  $('shell').hidden = true;
+  $('auth-chip').textContent = '';
+  $('proj-root').textContent = '';
+  $('titlebar-title').textContent = 'AI-Research';
+  document.title = 'AI-Research';
+  ($('welcome-title') as HTMLInputElement).focus();
+}
+
+async function enterApp(
+  p: ProjectRow,
+  opts: { forceSettings?: boolean } = {},
+): Promise<void> {
+  $('welcome').hidden = true;
+  $('shell').hidden = false;
 
   projectId = p.project_id;
   ($('proj-title') as HTMLInputElement).value = p.title ?? '';
@@ -1048,7 +1256,73 @@ async function boot() {
   const auth = await window.api.auth.status();
   showAuth(auth.signedIn);
 
-  await refreshLibrary();
+  showTab('feed');
+
+  const mustSetup =
+    opts.forceSettings ||
+    !hasCompletedSettings(p.project_id) ||
+    needsSettings(p, auth.signedIn);
+  if (mustSetup) {
+    setStatus(
+      !auth.signedIn
+        ? 'まず Google でログインし、課題意識を保存してください'
+        : '課題意識を書いて保存してください',
+    );
+    openSettings();
+  } else {
+    setStatus('');
+  }
+}
+
+$('welcome-create').addEventListener('click', () => void createFromWelcome());
+$('welcome-title').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    void createFromWelcome();
+  }
+});
+
+async function createFromWelcome(): Promise<void> {
+  const title = ($('welcome-title') as HTMLInputElement).value.trim();
+  if (!title) {
+    setStatus('プロジェクト名を入れてください', 'error');
+    ($('welcome-title') as HTMLInputElement).focus();
+    return;
+  }
+
+  const res = await guard('プロジェクトの作成', () => window.api.createUnderRecycle(title));
+  if (!res) return;
+  if (!res.ok) {
+    setStatus(res.error ?? 'プロジェクトを作れなかった', 'error');
+    return;
+  }
+
+  const projects = ((await window.api.listProjects()) ?? []) as ProjectRow[];
+  const p = projects.find((x) => x.root_path === res.root) ?? projects[0];
+  if (!p) {
+    setStatus('プロジェクトを作れなかった', 'error');
+    return;
+  }
+
+  setStatus(`「${res.title}」を ~/Recycle に作った`);
+  await enterApp({ ...p, title: res.title, root_path: res.root }, { forceSettings: true });
+}
+
+async function boot() {
+  document.body.dataset.platform = window.api.platform;
+  $('proj-reveal').textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
+
+  // ウェルカム中でもログイン状態は分かるようにする
+  const auth = await window.api.auth.status();
+  showAuth(auth.signedIn);
+
+  const projects = ((await window.api.listProjects()) ?? []) as ProjectRow[];
+  const ready = projects.find((p) => !isUnsetProject(p));
+  if (!ready) {
+    showWelcome();
+    return;
+  }
+  await enterApp(ready);
 }
 
 void boot().catch((e) => setStatus('起動に失敗: ' + String(e), 'error'));

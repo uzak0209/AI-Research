@@ -3,7 +3,19 @@
 
 import type { CloudClient } from '@ai-research/core';
 import type { Db } from './db.js';
-import { getProject, setLastRunId, upsertPapers } from './repo.js';
+import { getProject, listChunks, setLastRunId, upsertPapers } from './repo.js';
+
+/** クラウド収集材料。課題意識＋関連技術（未公開の提案手法は載せない）。 */
+export function cloudSummaryFromLocal(
+  problem: string,
+  relatedTech: { text: string }[],
+): string {
+  const tech = relatedTech.map((c) => c.text.trim()).filter(Boolean);
+  const head = problem.trim();
+  if (tech.length === 0) return head;
+  const block = tech.join('\n');
+  return head ? `${head}\n\n${block}` : block;
+}
 
 export async function syncProjectFromCloud(
   db: Db,
@@ -13,7 +25,8 @@ export async function syncProjectFromCloud(
   const project = getProject(db, projectId);
   if (!project) throw new Error(`project not found: ${projectId}`);
 
-  await client.putProject(projectId, { title: project.title, summary: project.summary });
+  const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
+  await client.putProject(projectId, { title: project.title, summary });
 
   const { runs } = await client.pullRuns(projectId, project.last_run_id);
 

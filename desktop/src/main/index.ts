@@ -27,8 +27,8 @@ import {
   updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
-import { syncProjectFromCloud } from '../shared/sync.js';
-import { WorkspaceError, createProjectWorkspace } from '../shared/workspace.js';
+import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
+import { WorkspaceError, createProjectWorkspace, pathUnderProjectsRoot, ensureProjectsRoot } from '../shared/workspace.js';
 import {
   addAttachment,
   addReference,
@@ -176,10 +176,7 @@ type WorkspaceFail = { ok: false; canceled?: true; error?: string };
 type WorkspaceResult = WorkspaceOk | WorkspaceFail;
 
 function currentProject() {
-  return (
-    listProjects(db)[0] ??
-    createProject(db, { title: '新しいプロジェクト', summary: '', embed_model: DEFAULT_MODEL })
-  );
+  return listProjects(db)[0] ?? null;
 }
 
 function notifyLibrary(): void {
@@ -191,13 +188,30 @@ function restartRefWatch(): void {
   refWatch = null;
   if (!biblio) return;
   const p = currentProject();
+  if (!p?.root_path) return;
   refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
 }
 
 function attachWorkspace(root: string, title: string, action: 'create' | 'open'): WorkspaceOk {
-  const p = currentProject();
-  setProjectRoot(db, p.project_id, root);
-  updateTitle(db, p.project_id, title);
+  const existing =
+    action === 'open'
+      ? listProjects(db).find((p) => p.root_path === root)
+      : undefined;
+  const p =
+    existing ??
+    createProject(db, {
+      title,
+      summary: '',
+      embed_model: DEFAULT_MODEL,
+      root_path: root,
+    });
+  if (existing) {
+    setProjectRoot(db, p.project_id, root);
+    updateTitle(db, p.project_id, title);
+  } else if (action === 'create') {
+    // createProject で root を入れた。タイトルだけ揃える
+    updateTitle(db, p.project_id, title);
+  }
   restartRefWatch();
   return { ok: true, root, title, action };
 }
@@ -207,14 +221,19 @@ function failWorkspace(e: unknown): WorkspaceFail {
   return { ok: false, error };
 }
 
-/** ファイルメニュー／ダイアログから。名前は保存パネルで付ける（Mac の流儀） */
+/** ファイルメニュー／ダイアログから。規定の置き場は ~/Recycle。毎回新しいプロジェクト行を作る。 */
 async function createWorkspaceFromDialog(): Promise<WorkspaceResult> {
-  const p = currentProject();
+  let defaultPath: string;
+  try {
+    defaultPath = pathUnderProjectsRoot('新しいプロジェクト');
+  } catch (e) {
+    return failWorkspace(e);
+  }
   const picked = await dialog.showSaveDialog({
-    title: 'プロジェクトフォルダを作る',
-    defaultPath: p.title || '新しいプロジェクト',
+    title: 'プロジェクトを作る',
+    defaultPath,
     buttonLabel: '作る',
-    nameFieldLabel: 'フォルダ名',
+    nameFieldLabel: 'プロジェクト名',
     properties: ['createDirectory', 'showOverwriteConfirmation'],
   });
   if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
@@ -226,10 +245,17 @@ async function createWorkspaceFromDialog(): Promise<WorkspaceResult> {
   return attachWorkspace(picked.filePath, basename(picked.filePath), 'create');
 }
 
-/** 既存の作業フォルダを開く。空なら 3 ディレクトリを足す。中身のある未知のフォルダは拒否（C-08） */
+/** 既存プロジェクトを開く。規定の場所 ~/Recycle から選ぶ。 */
 async function openWorkspaceFromDialog(): Promise<WorkspaceResult> {
+  let defaultPath: string;
+  try {
+    defaultPath = ensureProjectsRoot();
+  } catch (e) {
+    return failWorkspace(e);
+  }
   const picked = await dialog.showOpenDialog({
-    title: 'プロジェクトフォルダを開く',
+    title: 'プロジェクトを開く',
+    defaultPath,
     buttonLabel: '開く',
     properties: ['openDirectory', 'createDirectory'],
   });
@@ -240,10 +266,20 @@ async function openWorkspaceFromDialog(): Promise<WorkspaceResult> {
   } catch (e) {
     return failWorkspace(e);
   }
-  const p = currentProject();
-  const title =
-    p.title && p.title !== '新しいプロジェクト' ? p.title : basename(root);
-  return attachWorkspace(root, title, 'open');
+  return attachWorkspace(root, basename(root), 'open');
+}
+
+/** ウェルカム用。ダイアログなしで ~/Recycle/<名前> に**新しい**プロジェクトを作る。 */
+function createProjectUnderRecycle(title: string): WorkspaceResult & { project_id?: string } {
+  try {
+    const root = pathUnderProjectsRoot(title);
+    createProjectWorkspace(root);
+    const attached = attachWorkspace(root, basename(root), 'create');
+    const p = listProjects(db).find((x) => x.root_path === root);
+    return { ...attached, project_id: p?.project_id };
+  } catch (e) {
+    return failWorkspace(e);
+  }
 }
 
 function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
@@ -252,7 +288,7 @@ function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
     return res;
   }
   if (!res.canceled && res.error) {
-    void dialog.showMessageBox({ type: 'error', title: '作業フォルダ', message: res.error });
+    void dialog.showMessageBox({ type: 'error', title: 'プロジェクト', message: res.error });
     win?.webContents.send('workspace:error', res.error);
   }
   return res;
@@ -262,6 +298,7 @@ function publishAuth(): { signedIn: boolean } {
   if (!cloud) return { signedIn: false };
   const signedIn = cloudSignedIn(cloud.session);
   win?.webContents.send('auth:changed', { signedIn });
+  installAppMenu();
   return { signedIn };
 }
 
@@ -269,8 +306,9 @@ function pushProjectToCloud(projectId: string): void {
   if (!cloud || !cloudSignedIn(cloud.session)) return;
   const p = getProject(db, projectId);
   if (!p) return;
+  const summary = cloudSummaryFromLocal(p.summary, listChunks(db, projectId));
   void cloud.client
-    .putProject(projectId, { title: p.title, summary: p.summary })
+    .putProject(projectId, { title: p.title, summary })
     .catch((e) => {
       const message = e instanceof Error ? e.message : String(e);
       if (e instanceof NotSignedInError) win?.webContents.send('auth:error', message);
@@ -313,18 +351,23 @@ function logoutCloud(): { signedIn: boolean } {
   return publishAuth();
 }
 
+function openSettingsFromMenu(): void {
+  win?.webContents.send('settings:open');
+}
+
 function installAppMenu(): void {
   const isMac = process.platform === 'darwin';
+  const signedIn = cloud ? cloudSignedIn(cloud.session) : false;
   const fileSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'フォルダを作る…',
+      label: 'プロジェクトを作る…',
       accelerator: 'CmdOrCtrl+Shift+N',
       click: () => {
         void createWorkspaceFromDialog().then(publishWorkspace);
       },
     },
     {
-      label: 'フォルダを開く…',
+      label: 'プロジェクトを開く…',
       accelerator: 'CmdOrCtrl+O',
       click: () => {
         void openWorkspaceFromDialog().then(publishWorkspace);
@@ -333,12 +376,16 @@ function installAppMenu(): void {
     { type: 'separator' },
     isMac ? { role: 'close' } : { role: 'quit' },
   ];
-  const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { label: 'ファイル', submenu: fileSubmenu },
-    {
-      label: 'アカウント',
-      submenu: [
+  const accountItems: MenuItemConstructorOptions[] = signedIn
+    ? [
+        {
+          label: 'ログアウト',
+          click: () => {
+            logoutCloud();
+          },
+        },
+      ]
+    : [
         {
           label: 'Google でログイン',
           click: () => {
@@ -348,13 +395,45 @@ function installAppMenu(): void {
             });
           },
         },
-        {
-          label: 'ログアウト',
-          click: () => {
-            logoutCloud();
-          },
-        },
-      ],
+      ];
+
+  const macAppMenu: MenuItemConstructorOptions = {
+    label: app.name,
+    submenu: [
+      { role: 'about' },
+      { type: 'separator' },
+      {
+        label: '設定…',
+        accelerator: 'Command+,',
+        click: () => openSettingsFromMenu(),
+      },
+      { type: 'separator' },
+      { role: 'services' },
+      { type: 'separator' },
+      { role: 'hide' },
+      { role: 'hideOthers' },
+      { role: 'unhide' },
+      { type: 'separator' },
+      { role: 'quit' },
+    ],
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [macAppMenu] : []),
+    { label: 'ファイル', submenu: fileSubmenu },
+    {
+      label: isMac ? 'アカウント' : '設定',
+      submenu: isMac
+        ? accountItems
+        : [
+            {
+              label: '設定…',
+              accelerator: 'Ctrl+,',
+              click: () => openSettingsFromMenu(),
+            },
+            { type: 'separator' },
+            ...accountItems,
+          ],
     },
     { role: 'editMenu' },
     { role: 'viewMenu' },
@@ -395,9 +474,18 @@ function registerIpc(): void {
 
   ipcMain.handle('projects:openWorkspace', () => openWorkspaceFromDialog());
 
+  ipcMain.handle('projects:createUnderRecycle', (_e, title: string) => {
+    const res = createProjectUnderRecycle(title);
+    if (res.ok) {
+      const p = currentProject();
+      if (p) pushProjectToCloud(p.project_id);
+    }
+    return res;
+  });
+
   ipcMain.handle('projects:revealWorkspace', async (_e, projectId: string) => {
     const p = getProject(db, projectId);
-    if (!p?.root_path) return { ok: false as const, error: '作業フォルダが未設定' };
+    if (!p?.root_path) return { ok: false as const, error: 'プロジェクトの場所が未設定' };
     const err = await shell.openPath(p.root_path);
     return err ? { ok: false as const, error: err } : { ok: true as const };
   });
@@ -411,15 +499,56 @@ function registerIpc(): void {
     return result;
   });
 
+  ipcMain.handle('projects:startCollect', async (_e, projectId: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    if (!cloudSignedIn(cloud.session)) throw new NotSignedInError();
+
+    const project = getProject(db, projectId);
+    if (!project) throw new Error(`project not found: ${projectId}`);
+    if (!project.summary.trim()) throw new Error('課題意識が空です');
+
+    const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
+    await cloud.client.putProject(projectId, { title: project.title, summary });
+    const accepted = await cloud.client.startCollect(projectId);
+
+    let inserted = 0;
+    let timedOut = true;
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const result = await syncProjectFromCloud(db, cloud.client, projectId);
+      inserted += result.inserted;
+      const current = getProject(db, projectId);
+      if (current?.last_run_id === accepted.run_id || result.inserted > 0) {
+        timedOut = false;
+        break;
+      }
+    }
+
+    if (inserted > 0 || countUnscored(db, projectId) > 0) {
+      startScoring(projectId, DEFAULT_MODEL);
+    }
+
+    return {
+      run_id: accepted.run_id,
+      run_date: accepted.run_date,
+      enqueued: accepted.enqueued,
+      inserted,
+      timedOut,
+    };
+  });
+
   ipcMain.handle('claims:list', (_e, projectId: string) => listChunks(db, projectId));
 
-  ipcMain.handle('claims:set', (_e, projectId: string, claims: string[]) =>
-    setManuscript(
+  ipcMain.handle('claims:set', (_e, projectId: string, claims: string[]) => {
+    const ids = setManuscript(
       db,
       projectId,
       claims.map((t) => ({ text: t })),
-    ),
-  );
+    );
+    pushProjectToCloud(projectId);
+    return ids;
+  });
 
   ipcMain.handle('papers:ranked', (_e, projectId: string) => ({
     ranked: listRanked(db, projectId),
@@ -605,6 +734,7 @@ void app.whenReady().then(() => {
     db = openDb({ path: dbPath() });
     cloud = createCloud(db);
     biblio = createBibliographyApp(db, () => cloud?.client ?? null);
+    logStartup('クラウド API: ' + cloud.endpoint);
     logStartup('DB を開いた: ' + dbPath());
   } catch (e) {
     // ベクトル拡張が読めないまま起動すると検索が静かに壊れる。

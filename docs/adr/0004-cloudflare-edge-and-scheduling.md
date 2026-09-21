@@ -139,16 +139,17 @@ flowchart LR
 - **D1 は 1 実行 50 クエリまで（Free）**。1 件ずつ INSERT せず複数行を 1 文にまとめる
 - **サブリクエストは 1 実行 50 まで（Free）**。ページングは分割して次のメッセージへ回す
 - **UTC のみ**。夏時間の影響を受けない時刻を選ぶ
-- **cron・Queues とも at-least-once**。`runs` の一意キーを `(project_id, run_date)` にし、重複実行は無視する
+- **cron・Queues とも at-least-once**。`runs.run_id` を一意キーにする（日次は `{project_id}:{YYYY-MM-DD}`、自発は `{project_id}:manual:{unix}`）。同じ `run_id` の再配送は無視／統合する
 - 失敗と 0 件は `runs.status`、ソース単位の失敗は `failed_sources_json`（FR-08）
 - **cron はアカウントで 5 本まで（Free）**。日次収集に使うのは `dev` / `prod` の各 1 本。`test` には付けない。プロジェクトごとに cron を増やす設計にしない
+- **自発調査（FR-17）**: 認証済み `POST /projects/{project_id}/collect` は **Queue への投入だけ**（OpenAlex / Orca は HTTP 内で回さない）。対象は所有者の **1 プロジェクト**。`summary` 空は 400。短時間の連打は抑止する
 
 ### 同期 API（FR-02 / FR-15 のクラウド側）
 
 - ローカルの `last_run_id` より後の `runs` と `run_papers` を返す（ADR-0001）
 - **判定結果の書き戻しは作らない**（未公開データ由来。C-01）
 - **`summary`（と title）の upsert は許可する**——収集材料であり判定ではない。`PUT /projects/{project_id}`
-- Electron 起動時の「未取得確認 → 取込 → **ローカル**埋め込みで提案手法類似の採点」は [ADR-0001](0001-runtime-local-data-extensibility.md) の工程。クラウドは候補の受け渡しまで
+- Electron 起動時の「未取得確認 → 取込 → **ローカル**埋め込みで候補論文の順位付け」は [ADR-0001](0001-runtime-local-data-extensibility.md) の工程。クラウドは候補の受け渡しまで
 
 #### 起動時プル（クラウドが見る範囲）
 

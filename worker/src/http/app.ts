@@ -17,6 +17,7 @@ import {
   RunsResponseSchema,
   ProjectPutBodySchema,
   ProjectResponseSchema,
+  CollectAcceptedSchema,
 } from './schema';
 import { db } from '../db/kysely';
 import { execute } from '../db/execute';
@@ -25,6 +26,8 @@ import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } 
 import { orcaKey } from '../shared/orca/chat';
 import { ORCA_POLICY, reviewPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
+import { enqueueManualCollect } from '../collect/application/schedule';
+import { queueCollect, utcClock } from '../collect/infrastructure/adapters';
 
 export type AppEnv = { Bindings: Env };
 
@@ -38,7 +41,7 @@ function abort(fail: AuthFail): never {
   });
 }
 
-function fail(status: 400 | 401 | 403 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
+function fail(status: 400 | 401 | 403 | 404 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
   throw new HTTPException(status, {
     res: Response.json(body, { status }),
   });
@@ -384,6 +387,84 @@ app.openapi(
     }
 
     return c.json({ project_id, title, summary }, 200);
+  },
+);
+
+/** 自発調査の連打抑止（秒）。Queue 投入だけなので短め */
+const MANUAL_COLLECT_COOLDOWN_SEC = 60;
+
+app.openapi(
+  createRoute({
+    method: 'post',
+    path: '/projects/{project_id}/collect',
+    request: {
+      params: z.object({ project_id: z.string().min(1) }),
+    },
+    responses: {
+      202: {
+        description: 'Queue へ投入した。収集本体は consumer（FR-17）',
+        content: { 'application/json': { schema: CollectAcceptedSchema } },
+      },
+      400: { description: 'summary 空など', ...jsonError },
+      ...unauthorized,
+      403: { description: '他ユーザーの project', ...jsonError },
+      404: { description: 'project が無い', ...jsonError },
+      429: { description: '短時間の連打', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const { project_id } = c.req.valid('param');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const cooldownKey = `collect:manual:${userId}`;
+    const cool = await c.env.IDEMPOTENCY.get(cooldownKey);
+    if (cool) {
+      fail(429, { error: 'rate_limited', detail: `wait ${MANUAL_COLLECT_COOLDOWN_SEC}s before next collect` });
+    }
+
+    const rows = await execute<{ user_id: string; summary: string; title: string }>(
+      c.env.DB,
+      db
+        .selectFrom('projects')
+        .select(['user_id', 'summary', 'title'])
+        .where('project_id', '=', project_id)
+        .compile(),
+    );
+    const project = rows[0];
+    if (!project) fail(404, { error: 'not_found', detail: 'project not found' });
+    if (project.user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+    if (!project.summary.trim()) {
+      fail(400, { error: 'bad_request', detail: 'summary is empty' });
+    }
+
+    const got = await enqueueManualCollect(
+      { clock: utcClock(), queue: queueCollect(c.env.COLLECT_QUEUE) },
+      {
+        project_id,
+        summary: project.summary,
+        user_id: userId,
+      },
+    );
+
+    await c.env.IDEMPOTENCY.put(cooldownKey, '1', {
+      expirationTtl: MANUAL_COLLECT_COOLDOWN_SEC,
+    });
+
+    return c.json(
+      {
+        project_id,
+        run_id: got.run_id,
+        run_date: got.run_date,
+        enqueued: got.enqueued,
+      },
+      202,
+    );
   },
 );
 

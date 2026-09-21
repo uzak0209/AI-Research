@@ -95,9 +95,12 @@ export class CloudClient {
   }
 
   async googleClientId(): Promise<string> {
-    const res = await this.fetchImpl(new URL('/auth/google', this.endpoint));
+    const url = new URL('/auth/google', this.endpoint.endsWith('/') ? this.endpoint : `${this.endpoint}/`);
+    // Hono は末尾スラッシュ付きを 404 にする。必ずスラッシュ無しに正規化する
+    url.pathname = '/auth/google';
+    const res = await this.fetchImpl(url);
     if (res.status === 501) throw new Error('Google ログインがクラウド側で閉じている');
-    if (!res.ok) throw new Error(`google client_id failed: ${res.status}`);
+    if (!res.ok) throw new Error(`google client_id failed: ${res.status} (${url.href})`);
     const body = (await res.json()) as { client_id?: string };
     if (!body.client_id) throw new Error('google client_id failed: empty');
     return body.client_id;
@@ -136,6 +139,16 @@ export class CloudClient {
     });
     if (!res.ok) throw new Error(`putProject failed: ${res.status}`);
     return (await res.json()) as { project_id: string; title: string; summary: string };
+  }
+
+  /** 自発調査。Queue 投入のみ（FR-17）。収集本体は worker consumer */
+  async startCollect(projectId: string): Promise<CollectAccepted> {
+    const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}/collect`, {
+      method: 'POST',
+    });
+    if (res.status === 429) throw new Error('startCollect rate limited');
+    if (!res.ok) throw new Error(`startCollect failed: ${res.status}`);
+    return (await res.json()) as CollectAccepted;
   }
 }
 
@@ -184,3 +197,10 @@ export type SyncRun = {
 };
 
 export type SyncRunsResponse = { project_id: string; runs: SyncRun[] };
+
+export type CollectAccepted = {
+  project_id: string;
+  run_id: string;
+  run_date: string;
+  enqueued: number;
+};

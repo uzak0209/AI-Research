@@ -1,6 +1,8 @@
 // 関連度の採点。ADR-0001 の 2 段目だけを行い、生成 LLM は使わない。
 //
-// 採点式は blend = 概要 cos × 0.7 ＋ 最近傍チャンク cos × 0.3。
+// 採点式は blend = 課題意識 cos × 0.7 ＋ 最近傍の関連技術 cos × 0.3。
+// 候補論文（ローカルに取り込んだもの）を、登録した課題意識・関連技術と照らす。
+// 「自分の提案手法」を登録して比べる必要はない。
 // 実測の根拠は prototypes/judge-bench/FINDINGS.md。
 //
 // **この処理はレンダラで回さない。** utilityProcess から呼ぶ（NFR-06）。
@@ -98,7 +100,7 @@ export async function scoreProject(
     const vec = await embedder.embed(`${p.title}\n${p.abstract ?? ''}`);
     const simSummary = cosine(summaryVec, vec);
 
-    // 自分のどの主張に最も近いか。最近傍という**事実**であって判定ではない
+    // どの関連技術に最も近いか。最近傍という事実。提案手法の登録は要らない
     let nearest: { chunk_id: number; sim: number } | null = null;
     for (const c of chunkVecs) {
       const sim = cosine(c.vec, vec);

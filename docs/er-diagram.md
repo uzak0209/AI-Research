@@ -68,8 +68,8 @@ erDiagram
 
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
 - **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
-- **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示
-- **`run_papers`**: その実行で見つかった論文。タイトル・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。精密な提案手法まわりの順位はローカル（ADR-0001）
+- **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID（日次は `{project_id}:{日付}`、自発は `{project_id}:manual:{unix}`）。一意は `run_id` のみで同日複数可（FR-17）。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示
+- **`run_papers`**: その実行で見つかった論文。タイトル・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。候補論文との精密な順位はローカル（ADR-0001）
 
 ## ローカル（SQLite + sqlite-vec）
 
@@ -103,7 +103,7 @@ erDiagram
         text problem_excerpt "課題文抜粋"
         real coarse_score "クラウドの粗選別"
         real relevance "blend の採点値。順位はこれで付ける"
-        real sim_summary "概要との cos"
+        real sim_summary "課題意識との cos"
         text nearest_claim_id "最も近い自分の主張"
         real nearest_claim_sim "その cos"
         text embed_model "採点に使った埋め込みモデル"
@@ -196,7 +196,7 @@ erDiagram
 ### 各表の意味
 
 - **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）。`root_path` は作業フォルダ（`references` / `mypaper` / `claims`）。未設定のままでもプロジェクト行は作れる。索引の正本は SQLite
-- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 概要 cos × 0.7 ＋ 最近傍の主張 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_claim_id` は最も近い自分の主張で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
+- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 課題意識 cos × 0.7 ＋ 最近傍の関連技術 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_chunk_id` は最も近い関連技術で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
 - **`references`**: アプリ内参考文献ライブラリの本体（FR-05）。日次候補から入れた場合は `paper_id` で辿れる。手で足した文献は `paper_id` が空。GUI と CLI が同じこの表を読み書きする（FR-11）。`bibtex_key` は `\cite{}` に使う識別子で、**プロジェクト内で一意**。著者姓＋年で自動生成し、衝突時は英字サフィックスを付ける（FR-12）。この表が引用ファイルの書き出し内容の唯一の元になる
 - **`collections` / `collection_items`**: コレクション相当の整理。1 文献を複数コレクションに入れられるよう中間表にする
 - **`attachments`**: 文献に添付した PDF の実体への参照（FR-14）。`hash` は原本が外部で差し替えられたときに注釈の位置がずれることを検知するために持つ
@@ -212,7 +212,7 @@ erDiagram
 
 1. 未起動でもクラウドが `projects.summary` を見て収集し、`runs` / `run_papers` に溜める
 2. 起動時、`last_run_id` より後をローカル `papers` に取り込む
-3. プロジェクト概要と自分の主張のベクトルと照らして `relevance` を付け、順位を出す（外部送信なし。`C-09`）
+3. 課題意識と関連技術のベクトルと照らして `relevance` を付け、順位を出す（外部送信なし。`C-09`）
 4. 結果からライブラリ追加（`references`）やテーマ候補の生成を行う
 5. CLI は 2〜4 のローカル側と同じストアを直接読み書きする（FR-11）
 

@@ -2,9 +2,13 @@
 // 索引の正本は SQLite。ここは原稿・文献・主張の置き場だけで、中身を勝手に書き換えない（C-08）。
 
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 export const PROJECT_WORKSPACE_DIRS = ['references', 'mypaper', 'claims'] as const;
+
+/** 新規プロジェクトの規定の置き場（~/IdeaProjects と同階層） */
+export const DEFAULT_PROJECTS_ROOT = join(homedir(), 'Recycle');
 
 export class WorkspaceError extends Error {
   constructor(message: string) {
@@ -22,6 +26,28 @@ export function sanitizeProjectDirName(raw: string): string {
   if (name === '.' || name === '..') throw new WorkspaceError('プロジェクト名が不正');
   if (FORBIDDEN_NAME.test(name)) throw new WorkspaceError('プロジェクト名に使えない文字がある');
   return name;
+}
+
+/** ~/Recycle が無ければ作る。規定のプロジェクト置き場。 */
+export function ensureProjectsRoot(): string {
+  try {
+    if (!existsSync(DEFAULT_PROJECTS_ROOT)) {
+      mkdirSync(DEFAULT_PROJECTS_ROOT, { recursive: true });
+    } else if (!statSync(DEFAULT_PROJECTS_ROOT).isDirectory()) {
+      throw new WorkspaceError(`${DEFAULT_PROJECTS_ROOT} がディレクトリではない`);
+    }
+  } catch (e) {
+    if (e instanceof WorkspaceError) throw e;
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new WorkspaceError(
+      `${DEFAULT_PROJECTS_ROOT} を用意できなかった（${detail}）。先に作るか権限を確認してください`,
+    );
+  }
+  return DEFAULT_PROJECTS_ROOT;
+}
+
+export function pathUnderProjectsRoot(title: string): string {
+  return join(ensureProjectsRoot(), sanitizeProjectDirName(title));
 }
 
 function isEmptyDir(root: string): boolean {

@@ -86,7 +86,7 @@ export function getProject(db: Db, projectId: string): Project | undefined {
 
 export function listProjects(db: Db): Project[] {
   return db
-    .prepare(`SELECT ${PROJECT_COLS} FROM projects ORDER BY created_at`)
+    .prepare(`SELECT ${PROJECT_COLS} FROM projects ORDER BY created_at DESC`)
     .all() as unknown as Project[];
 }
 
@@ -99,7 +99,7 @@ export function setProjectRoot(db: Db, projectId: string, rootPath: string): voi
 }
 
 /**
- * 概要を書き換えると採点の前提が変わる。
+ * 課題意識を書き換えると採点の前提が変わる。
  * **黙って古い順位を見せ続けない**ため、採点済みの印を落として採点し直させる（C-07）。
  */
 export function setLastRunId(db: Db, projectId: string, runId: string | null): void {
@@ -118,9 +118,9 @@ export function updateSummary(db: Db, projectId: string, summary: string): void 
   }
 }
 
-// --- 自分の主張（原稿チャンク） ------------------------------------------------
+// --- 関連技術（プロフィール chunks） ------------------------------------------------
 
-/** 原稿を 1 本登録し、主張を chunks として入れる。既存の同一 document は置き換える */
+/** 関連技術を 1 本の document として入れ替える。既存の同一 document は置き換える */
 export function setManuscript(
   db: Db,
   projectId: string,
@@ -151,7 +151,7 @@ export function setManuscript(
       ids.push(Number(r.lastInsertRowid));
     }
 
-    // 主張が変われば採点の前提も変わる
+    // 関連技術が変われば採点の前提も変わる
     db.prepare('UPDATE papers SET scored_at = NULL WHERE project_id = ?').run(projectId);
     db.exec('COMMIT');
     return ids;

@@ -13,9 +13,22 @@ const api = {
     ipcRenderer.invoke('projects:updateTitle', projectId, title),
   createWorkspace: () => ipcRenderer.invoke('projects:createWorkspace'),
   openWorkspace: () => ipcRenderer.invoke('projects:openWorkspace'),
+  createUnderRecycle: (title: string) =>
+    ipcRenderer.invoke('projects:createUnderRecycle', title) as Promise<
+      | { ok: true; root: string; title: string; action: 'create' | 'open'; project_id?: string }
+      | { ok: false; canceled?: true; error?: string }
+    >,
   revealWorkspace: (projectId: string) => ipcRenderer.invoke('projects:revealWorkspace', projectId),
   syncProject: (projectId: string) =>
     ipcRenderer.invoke('projects:sync', projectId) as Promise<{ inserted: number; lastRunId: string | null }>,
+  startCollect: (projectId: string) =>
+    ipcRenderer.invoke('projects:startCollect', projectId) as Promise<{
+      run_id: string;
+      run_date: string;
+      enqueued: number;
+      inserted: number;
+      timedOut: boolean;
+    }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
     const h = (_: unknown, e: { root: string; title: string; action: 'create' | 'open' }) => cb(e);
     ipcRenderer.on('workspace:changed', h);
@@ -25,6 +38,11 @@ const api = {
     const h = (_: unknown, message: string) => cb(message);
     ipcRenderer.on('workspace:error', h);
     return () => ipcRenderer.off('workspace:error', h);
+  },
+  onOpenSettings: (cb: () => void) => {
+    const h = () => cb();
+    ipcRenderer.on('settings:open', h);
+    return () => ipcRenderer.off('settings:open', h);
   },
 
   auth: {
