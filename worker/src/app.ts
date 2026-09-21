@@ -16,7 +16,7 @@ import {
 import { TREND_ENDPOINT, fetchPublicPapers, summarizeTrend, toTrendPapers } from './trend';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, completeBibliography } from './bibliography';
 import { orcaKey } from './orca';
-import { ORCA_POLICY } from './orca-policy';
+import { reviewPolicy } from './orca-policy';
 import { dailyCallCount, dailyCallLimit, ensureUserId, recordLlmUsage } from './usage';
 
 export type AppEnv = { Bindings: Env };
@@ -147,7 +147,7 @@ app.openapi(
     const auth = await requireAccess(c.env, c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const apiKey = orcaKey(c.env, ORCA_POLICY.C1.slot);
+    const apiKey = orcaKey(c.env, reviewPolicy(c.env).slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
     }
@@ -177,7 +177,7 @@ app.openapi(
       );
     }
 
-    const llm = await summarizeTrend(apiKey, topic, papers);
+    const llm = await summarizeTrend(c.env, apiKey, topic, papers);
     if (!llm.ok) {
       fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
     }

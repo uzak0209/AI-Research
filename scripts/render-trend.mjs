@@ -63,6 +63,8 @@ const verdict = (label, t, fmt) => {
 const dTok = verdict("トークン/論文", m.trend.tokens_per_paper, n2);
 const dCost = verdict("コスト/論文 (USD)", m.trend.cost_per_paper, n4);
 const dPapers = verdict("取得論文数", m.trend.papers, n2);
+// 生産性だけは上がるほど良い。▼▲ の意味が他行と逆になるので明示する
+const dProd = verdict("生産性 (論文/推論秒) ※高い方が良い", m.trend.papers_per_sec, n2);
 
 say();
 // 比率が下がっても、本数が減っただけなら改善ではない。
@@ -86,6 +88,10 @@ if (ratioGain > 0 && papersDrop >= ratioGain * EXPLAINED_BY_FEWER_PAPERS) {
   say(`> コスト/論文は ${Math.abs(dCost).toFixed(1)}% 下がっている。${note}`);
 } else {
   say("> 下降は確認できていない。");
+}
+if (dProd !== null) {
+  const dir = dProd >= 0 ? "上がっている" : "下がっている";
+  say(`> 生産性（論文/推論秒）は ${Math.abs(dProd).toFixed(1)}% ${dir}。`);
 }
 say();
 say(
@@ -133,6 +139,7 @@ say();
 chart("トークン / 論文", "tokens", "tokens_per_paper", 1);
 chart("コスト / 論文 (USD)", "usd", "cost_per_paper", 4);
 chart("取得論文数", "papers", "papers", 0);
+chart("生産性（論文 / 推論秒）", "papers/s", "papers_per_sec", 2);
 
 // ------------------------------------------------ 明細
 // ------------------------------------------------ 宛先ごとの比較
@@ -178,8 +185,8 @@ say();
 
 say("### 明細");
 say();
-say("| 日付 | 呼出 | トークン | コスト(USD) | 論文 | トークン/論文 | コスト/論文 | 受け皿 | run |");
-say("|---|---:|---:|---:|---:|---:|---:|---:|---|");
+say("| 日付 | 呼出 | トークン | コスト(USD) | 論文 | 推論(秒) | トークン/論文 | コスト/論文 | 生産性(論文/秒) | run |");
+say("|---|---:|---:|---:|---:|---:|---:|---:|---:|---|");
 for (const e of m.series) {
   const r = e.runs;
   const runs = [
@@ -192,7 +199,8 @@ for (const e of m.series) {
     .join(" ");
   say(
     `| ${e.date} | ${int(e.calls)} | ${int(e.tokens)} | ${n4(e.cost_usd)} | ${int(e.papers)} ` +
-      `| ${n2(e.tokens_per_paper)} | ${n4(e.cost_per_paper)} | ${int(e.fallback_calls)} | ${runs || "—"} |`,
+      `| ${e.latency_ms_sum > 0 ? n2(e.latency_ms_sum / 1000) : "—"} ` +
+      `| ${n2(e.tokens_per_paper)} | ${n4(e.cost_per_paper)} | ${n2(e.papers_per_sec)} | ${runs || "—"} |`,
   );
 }
 say();

@@ -6,6 +6,17 @@ import type { CollectMessage, Env } from './env';
 import { fetchFromSource } from './openalex';
 import { collectMessageSchema } from './schema';
 import { coarseScore } from './score';
+import { COLLECT_ENDPOINT, buildSearchQuery } from './queries';
+import { recordLlmUsage } from './usage';
+
+/** 配送中の古いメッセージに user_id が無いときだけ引く */
+async function projectUserId(d1: D1Database, projectId: string): Promise<string | null> {
+  const rows = await execute<{ user_id: string }>(
+    d1,
+    db.selectFrom('projects').select('user_id').where('project_id', '=', projectId).compile(),
+  );
+  return rows[0]?.user_id ?? null;
+}
 
 /** 収集ソース。アダプタで足す（ADR-0001 の拡張点） */
 export const SOURCES = ['openalex'] as const;
@@ -25,9 +36,9 @@ export async function handleScheduled(env: Env): Promise<void> {
   const fired = await env.IDEMPOTENCY.get(`cron:${runDate}`);
   if (fired) return;
 
-  const projects = await execute<{ project_id: string; summary: string }>(
+  const projects = await execute<{ project_id: string; summary: string; user_id: string }>(
     env.DB,
-    db.selectFrom('projects').select(['project_id', 'summary']).compile(),
+    db.selectFrom('projects').select(['project_id', 'summary', 'user_id']).compile(),
   );
 
   const messages: { body: CollectMessage }[] = [];
@@ -41,6 +52,7 @@ export async function handleScheduled(env: Env): Promise<void> {
           summary: p.summary,
           source,
           run_date: runDate,
+          user_id: p.user_id,
         },
       });
     }
@@ -58,11 +70,33 @@ export async function handleQueueMessage(msg: CollectMessage, env: Env): Promise
   if (!parsed.success) throw new Error('invalid collect message');
   msg = parsed.data;
 
+  // 1 段目: summary から検索語を作る（ADR-0005 §1）。
+  // 失敗しても summary をそのまま使って収集は続ける（NFR-01, C-07）
+  const search = await buildSearchQuery(env, msg.summary);
+
+  // 呼べたぶんは必ず記録する。検索語が採れなくても課金は発生している
+  if (search.usage) {
+    const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
+    if (userId) {
+      await recordLlmUsage(env.DB, {
+        userId,
+        endpoint: COLLECT_ENDPOINT,
+        classification: 'C1',
+        requestedModel: search.usage.requestedModel,
+        resolvedModel: search.usage.model,
+        tokens: search.usage.tokens,
+        costUsd: search.usage.costUsd,
+        latencyMs: search.usage.latencyMs,
+        fallbackUsed: search.usage.fallbackUsed,
+      });
+    }
+  }
+
   let papers: Awaited<ReturnType<typeof fetchFromSource>> = [];
   let failure: string | null = null;
 
   try {
-    papers = await fetchFromSource(msg.source, msg.summary, { apiKey: env.OPENALEX_API_KEY });
+    papers = await fetchFromSource(msg.source, search.query, { apiKey: env.OPENALEX_API_KEY });
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }
