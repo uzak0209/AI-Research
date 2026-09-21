@@ -4,7 +4,7 @@
 
 | # | 内容 | 成功条件 |
 |---|---|---|
-| [0001](0001-runtime-local-data-extensibility.md) | 二層・起動時プル→ローカル競合検査・CLI・RAG・データ配置 | 1, 2, 6, 7 |
+| [0001](0001-runtime-local-data-extensibility.md) | 二層・起動時プル→ローカル関連度採点・CLI・RAG・データ配置 | 1, 2, 6, 7 |
 | [0002](0002-external-llm-bff-classification.md) | LLM・BFF・C1/C2/C3 | 5 |
 | [0003](0003-references-and-manuscript-factcheck.md) | 参考文献ライブラリ・CLI・原稿 FC | 3, 4, 7 |
 | [0004](0004-cloudflare-edge-and-scheduling.md) | クラウド全体構成（無料枠・収集・BFF・防御） | 1, 5 |
