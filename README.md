@@ -50,7 +50,7 @@
                               └→ BFF → OrcaRouter → 上流（テーマ・FC のみ）
 
 cron → Queues 収集 → OrcaRouter(rs-collect) → 論文ソース → D1
-              D1 → Queues レビュー → OrcaRouter(rs-review) → D1（competing/usable・reason・evidence）
+              D1 → Queues レビュー → OrcaRouter(rs-review) → D1（problem_excerpt）
 ```
 
 ## 原則
