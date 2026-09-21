@@ -4,13 +4,14 @@
 **`.bib` / Typst への自動書き出し**・原稿ファクトチェック。
 外部 LLM の統制利用も目的に含む。特定の参考文献マネージャへの依存は前提にしない。
 
-> **設計フェーズ。** 正本は [要件 1 本](docs/requirements.md) と [ADR 4 本](docs/adr/)。
-> 実装は [prototypes/judge-bench](prototypes/judge-bench/) の関連度ランキングのみ（検証用）。
+> **設計フェーズ。** 正本は [要件 1 本](docs/requirements.md) と [ADR 5 本](docs/adr/)。
+> 実装は [desktop](desktop/)・[worker](worker/)・[packages/core](packages/core/) に部分的にある。
+> 未実装の項目は各 README の表を参照。[prototypes/judge-bench](prototypes/judge-bench/) は検証用の関連度ランキング。
 
 | | |
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 何を・なぜ |
-| [docs/adr/](docs/adr/) | どう作るか（0001〜0004） |
+| [docs/adr/](docs/adr/) | どう作るか（0001〜0005） |
 | [docs/er-diagram.md](docs/er-diagram.md) | データ配置（ER 図） |
 
 ## 何ができるか（初版の目標）

@@ -2,7 +2,7 @@
 
 未確認は書かない。無ければ issue なし。水増し禁止。実装が無いこと自体は issue にしない。
 
-正本: `docs/requirements.md`（1）と `docs/adr/` の **0001〜0004**（4）。
+正本: `docs/requirements.md`（1）と `docs/adr/` の **0001〜0005**（5）。
 
 ## 事実確認
 
@@ -43,5 +43,5 @@
 上流の可否・価格・挙動を断定するなら、ドキュメント推測やモックではなく **そのキーで実測**する。
 キーが空なら「実測できなかった」と書いて終える。無い結果を捏造しない（`C-07`）。
 
-hourly の design-review / adr-hygiene は repo 差分が主題なので、有料 API を毎時叩かない。
-実測が要るのは research-trend と、issue で実験を求められたとき。
+hourly の design-review / adr-hygiene は repo 差分が主題なので、有料 API と D1 実測を毎時叩かない。
+実測が要るのは research-trend（上流）・router-retro（D1 集計）と、issue で実験を求められたとき。

@@ -5,7 +5,7 @@
 | 置き場 | 内容 |
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | 要件（1 本。成功条件・FR・C） |
-| [docs/adr/](docs/adr/) | ADR（**4 本のみ**） |
+| [docs/adr/](docs/adr/) | ADR（0001〜0005） |
 | `worker/` | クラウド（Workers。ADR-0004） |
 | `packages/core/` | GUI と CLI の共有コア（トークン・設定。ADR-0001） |
 | `prototypes/` | 検証用。本番ではない |
@@ -13,8 +13,8 @@
 
 ## 要件と ADR
 
-- 何を = `docs/requirements.md` / どう = ADR-0001〜0004
-- 5 本目の ADR・要件ファイルの分割を安易に増やさない
+- 何を = `docs/requirements.md` / どう = ADR-0001〜0005
+- 6 本目の ADR・要件ファイルの分割を安易に増やさない
 - 要件に無い機能を実装・ADR から生やさない
 - 決定を覆すときは該当ファイルを改訂（無効コピーは残さない）
 

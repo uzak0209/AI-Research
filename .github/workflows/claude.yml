@@ -87,7 +87,7 @@ jobs:
             内容は `gh issue view ${{ github.event.issue.number || github.event.pull_request.number }} --comments`
             で読めます。この issue / コメントの内容に対応してください。
 
-            正本は `docs/requirements.md` と ADR 0001〜0004。実装は `worker/` と `desktop/`。
+            正本は `docs/requirements.md` と ADR 0001〜0005。実装は `worker/` と `desktop/`。
 
             守ること:
             - `docs/adr/README.md` と関連する ADR を必ず読んでから着手する

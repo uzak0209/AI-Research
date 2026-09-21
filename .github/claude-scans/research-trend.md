@@ -2,7 +2,7 @@
 
 `.github/claude-scans/shared.md` を先に Read。**`proposal` のみ。`auto-scan` 禁止。**
 
-有効 ADR: 0001 / 0002 / 0003 / 0004。WebSearch / WebFetch は補助。
+有効 ADR: 0001 / 0002 / 0003 / 0004 / 0005。WebSearch / WebFetch は補助。
 **断定は実測。** 環境の `ORCAROUTER_API_KEY` / `JEV_API_KEY` / `OPENALEX_API_KEY` で最小の生リクエストを打ち、HTTP status・応答のモデル名／価格フィールドを根拠にする。キー値は issue に出さない。キーが空なら実測不能と書いて終わる。
 
 ## 対象

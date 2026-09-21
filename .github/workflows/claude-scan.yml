@@ -1,33 +1,38 @@
 name: Claude Scan
 
 # design-review と adr-hygiene は auto-scan を付けて claude.yml が自動で PR を出す。
-# research-trend は proposal のみ（自動 PR しない）。
+# research-trend と router-retro は proposal のみ（自動 PR しない）。
 #
 # 頻度はスキャンの性質で分ける。
 # - repo を見る 2 種（design-review / adr-hygiene）は毎時。実装中は repo が 1 日に何度も変わる
-# - 外部を見る research-trend は日次。OrcaRouter の価格や npm の供給状況は
-#   毎時見ても結果が変わらず、API 予算と通知だけが増える
+# - 外部を見る research-trend と、D1 実績の router-retro は日次。
+#   価格・供給・母数は毎時見ても結果が変わらず、API 予算と通知だけが増える
+# router-retro は手動で 1 日に何回でも回せる。母数が足りるかはスキャン側が見て、
+# 足りなければ issue を出さずに降りる（ADR-0005）。
 on:
   schedule:
     - cron: '0 * * * *'  # 毎時: design-review + adr-hygiene
-    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00: 上記 + research-trend
+    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00: 上記 + research-trend + router-retro
   workflow_dispatch:
     inputs:
       scan_type:
-        description: '回すスキャン。all は 3 種類まとめて'
+        description: '回すスキャン。all は 4 種類まとめて'
         type: choice
-        options: [all, design-review, adr-hygiene, research-trend]
+        options: [all, design-review, adr-hygiene, research-trend, router-retro]
         default: all
+      lookback_days:
+        description: 'router-retro が見る日数。短くすると直近だけを見る'
+        type: string
+        default: '7'
       dry_run:
         description: 'issue を作らず、見つけた内容をログに出すだけ'
         type: boolean
         default: true
 
-# 毎時スキャンが重ならないようにする。
-# 21:00 UTC は毎時と日次の両方の cron が発火するので、
-# 走行中の分が終わるまで待たせる（cancel はしない。途中で切ると issue が中途半端になる）
+# 手動実行は毎回別グループにして、続けて何回回しても待たされないようにする。
+# 定時実行（毎時・日次）だけは重ならないよう同じグループに入れる。
 concurrency:
-  group: claude-scan
+  group: claude-scan-${{ github.event.inputs.scan_type || 'sched' }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'sched' }}
   cancel-in-progress: false
 
 jobs:
@@ -44,26 +49,25 @@ jobs:
           CRON: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
+          all='["design-review","adr-hygiene","research-trend","router-retro"]'
+          hourly='["design-review","adr-hygiene"]'
 
-          if [ -n "$REQUESTED" ]; then
-            # 手動起動
+          if [ -n "${REQUESTED:-}" ]; then
             if [ "$REQUESTED" = "all" ]; then
-              matrix='["design-review","adr-hygiene","research-trend"]'
+              matrix="$all"
             else
               matrix="[\"${REQUESTED}\"]"
             fi
-          elif [ "$CRON" = "0 21 * * *" ]; then
-            # 日次: 外部依存の確認を含めて全部
-            matrix='["design-review","adr-hygiene","research-trend"]'
+          elif [ "${CRON:-}" = "0 21 * * *" ]; then
+            matrix="$all"
           else
-            # 毎時: repo を見る 2 種のみ。
-            # 21:00 UTC は毎時 cron も同時に発火するが、そちらは research-trend を
-            # 含まないので、日次の分と重ならない
-            matrix='["design-review","adr-hygiene"]'
+            # 毎時: repo を見る 2 種のみ。日次 cron と同時発火しても
+            # research-trend / router-retro はこちらに含めない
+            matrix="$hourly"
           fi
 
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
-          echo "cron='${CRON}' requested='${REQUESTED}' -> ${matrix}"
+          echo "cron='${CRON:-}' requested='${REQUESTED:-}' -> ${matrix}"
 
   scan:
     needs: pick
@@ -88,10 +92,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           SCAN_TYPE: ${{ matrix.scan_type }}
-          # 実測用。値は issue に出さない（shared.md）。Cloudflare の deploy 用トークンは渡さない。
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+          # 実測用。値は issue に出さない（shared.md）。Workers の deploy 用トークンは渡さない。
           JEV_API_KEY: ${{ secrets.JEV_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
           OPENALEX_API_KEY: ${{ secrets.OPENALEX_API_KEY }}
+          # router-retro が D1 を読む。未設定なら空になり、スキャン側は issue を出さずに降りる
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_D1_READ_TOKEN }}
+          D1_ID_DEV: ${{ secrets.D1_ID_DEV }}
+          D1_ID_PROD: ${{ secrets.D1_ID_PROD }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
@@ -101,7 +111,12 @@ jobs:
               "env": {
                 "JEV_API_KEY": "${{ secrets.JEV_API_KEY }}",
                 "ORCAROUTER_API_KEY": "${{ secrets.ORCAROUTER_API_KEY }}",
-                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}"
+                "OPENALEX_API_KEY": "${{ secrets.OPENALEX_API_KEY }}",
+                "LOOKBACK_DAYS": "${{ github.event.inputs.lookback_days || '7' }}",
+                "CF_ACCOUNT_ID": "${{ secrets.CF_ACCOUNT_ID }}",
+                "CF_API_TOKEN": "${{ secrets.CF_D1_READ_TOKEN }}",
+                "D1_ID_DEV": "${{ secrets.D1_ID_DEV }}",
+                "D1_ID_PROD": "${{ secrets.D1_ID_PROD }}"
               }
             }
           prompt: |
