@@ -1,11 +1,16 @@
 name: Claude Scan
 
-# 1 日 1 回、専用スキャンを走らせる。
 # design-review と adr-hygiene は auto-scan を付けて claude.yml が自動で PR を出す。
 # research-trend は proposal のみ（自動 PR しない）。
+#
+# 頻度はスキャンの性質で分ける。
+# - repo を見る 2 種（design-review / adr-hygiene）は毎時。実装中は repo が 1 日に何度も変わる
+# - 外部を見る research-trend は日次。OrcaRouter の価格や npm の供給状況は
+#   毎時見ても結果が変わらず、API 予算と通知だけが増える
 on:
   schedule:
-    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00
+    - cron: '0 * * * *'  # 毎時: design-review + adr-hygiene
+    - cron: '0 21 * * *' # UTC 21:00 = JST 06:00: 上記 + research-trend
   workflow_dispatch:
     inputs:
       scan_type:
@@ -18,8 +23,11 @@ on:
         type: boolean
         default: true
 
+# 毎時スキャンが重ならないようにする。
+# 21:00 UTC は毎時と日次の両方の cron が発火するので、
+# 走行中の分が終わるまで待たせる（cancel はしない。途中で切ると issue が中途半端になる）
 concurrency:
-  group: claude-scan-${{ github.event.inputs.scan_type || 'all' }}
+  group: claude-scan
   cancel-in-progress: false
 
 jobs:
@@ -29,14 +37,33 @@ jobs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - id: set
+        env:
+          # schedule 起動なら空。手動起動ならその値
+          REQUESTED: ${{ github.event.inputs.scan_type }}
+          # どちらの cron が発火したか。手動起動なら空
+          CRON: ${{ github.event.schedule }}
         run: |
           set -euo pipefail
-          requested="${{ github.event.inputs.scan_type || 'all' }}"
-          if [ "$requested" = "all" ]; then
-            echo 'matrix=["design-review","adr-hygiene","research-trend"]' >> "$GITHUB_OUTPUT"
+
+          if [ -n "$REQUESTED" ]; then
+            # 手動起動
+            if [ "$REQUESTED" = "all" ]; then
+              matrix='["design-review","adr-hygiene","research-trend"]'
+            else
+              matrix="[\"${REQUESTED}\"]"
+            fi
+          elif [ "$CRON" = "0 21 * * *" ]; then
+            # 日次: 外部依存の確認を含めて全部
+            matrix='["design-review","adr-hygiene","research-trend"]'
           else
-            echo "matrix=[\"${requested}\"]" >> "$GITHUB_OUTPUT"
+            # 毎時: repo を見る 2 種のみ。
+            # 21:00 UTC は毎時 cron も同時に発火するが、そちらは research-trend を
+            # 含まないので、日次の分と重ならない
+            matrix='["design-review","adr-hygiene"]'
           fi
+
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "cron='${CRON}' requested='${REQUESTED}' -> ${matrix}"
 
   scan:
     needs: pick

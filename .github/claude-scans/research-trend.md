@@ -2,7 +2,7 @@
 
 `.github/claude-scans/shared.md` を先に Read。**`proposal` のみ。`auto-scan` 禁止。**
 
-有効 ADR: 0001 / 0002 / 0003。WebSearch / WebFetch で一次情報を確認。推測で issue を作らない。
+有効 ADR: 0001 / 0002 / 0003 / 0004。WebSearch / WebFetch で一次情報を確認。推測で issue を作らない。
 
 ## 対象
 
