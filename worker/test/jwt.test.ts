@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bearerFrom, signAccessToken, signRefreshToken, verifyToken } from '../src/auth/jwt';
+import { bearerFrom, signAccessToken, signRefreshToken, verifyToken } from '../src/auth';
 
 const SECRET = 'test-signing-key-at-least-32-chars';
 

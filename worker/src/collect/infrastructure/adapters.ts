@@ -1,0 +1,122 @@
+import { sql } from 'kysely';
+import type { CollectMessage, Env } from '../../env';
+import { utcDate } from '../../shared/date';
+import { batch, execute } from '../../db/execute';
+import { db } from '../../db/kysely';
+import { fetchFromSource } from '../../shared/openalex/adapter';
+import type {
+  CollectClock,
+  CollectIdempotency,
+  CollectQueue,
+  IngestDeps,
+  PaperFetcher,
+  ProjectList,
+  RunStore,
+  ScheduleDeps,
+} from '../application/ports';
+import type { ScoredPaper } from '../domain';
+
+/** D1 の 1 文あたりのバインド変数の上限 */
+const D1_MAX_BIND_PARAMS = 100;
+/** run_papers に 1 行あたり入れる列数 */
+const RUN_PAPER_COLUMNS = 8;
+
+export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
+  return {
+    get: (key) => kv.get(key),
+    put: (key, value, ttlSec) => kv.put(key, value, { expirationTtl: ttlSec }),
+  };
+}
+
+export function d1Projects(d1: D1Database): ProjectList {
+  return {
+    list: () =>
+      execute<{ project_id: string; summary: string }>(
+        d1,
+        db.selectFrom('projects').select(['project_id', 'summary']).compile(),
+      ),
+  };
+}
+
+export function queueCollect(queue: Queue<CollectMessage>): CollectQueue {
+  return {
+    sendBatch: async (messages) => {
+      await queue.sendBatch(messages);
+    },
+  };
+}
+
+export function utcClock(): CollectClock {
+  return { today: () => utcDate() };
+}
+
+export function openAlexFetcher(apiKey?: string): PaperFetcher {
+  return {
+    fetch: (source, summary) => fetchFromSource(source, summary, { apiKey }),
+  };
+}
+
+export function d1Runs(d1: D1Database): RunStore {
+  return {
+    async save(msg, papers: ScoredPaper[], failure) {
+      const status = failure ? 'failed' : papers.length === 0 ? 'empty' : 'ok';
+      const failedJson = failure ? JSON.stringify([{ source: msg.source, error: failure }]) : null;
+
+      const statements = [
+        sql`
+          INSERT INTO runs (run_id, project_id, run_date, status, failed_sources_json)
+          VALUES (${msg.run_id}, ${msg.project_id}, ${msg.run_date}, ${status}, ${failedJson})
+          ON CONFLICT (project_id, run_date) DO UPDATE SET
+            status = CASE
+              WHEN runs.status = excluded.status THEN runs.status
+              ELSE 'partial'
+            END,
+            failed_sources_json = COALESCE(excluded.failed_sources_json, runs.failed_sources_json)
+        `.compile(db),
+      ];
+
+      if (papers.length > 0) {
+        const CHUNK = Math.floor(D1_MAX_BIND_PARAMS / RUN_PAPER_COLUMNS);
+        for (let i = 0; i < papers.length; i += CHUNK) {
+          const chunk = papers.slice(i, i + CHUNK);
+          statements.push(
+            db
+              .insertInto('run_papers')
+              .values(
+                chunk.map((p) => ({
+                  run_id: msg.run_id,
+                  external_id: p.external_id,
+                  source: msg.source,
+                  title: p.title,
+                  abstract: p.abstract,
+                  url: p.url,
+                  published_at: p.published_at,
+                  coarse_score: p.coarse_score,
+                })),
+              )
+              .onConflict((oc) => oc.columns(['run_id', 'external_id']).doNothing())
+              .compile(),
+          );
+        }
+      }
+
+      await batch(d1, statements);
+    },
+  };
+}
+
+export function scheduleDeps(env: Env): ScheduleDeps {
+  return {
+    clock: utcClock(),
+    idempotency: kvIdempotency(env.IDEMPOTENCY),
+    projects: d1Projects(env.DB),
+    queue: queueCollect(env.COLLECT_QUEUE),
+  };
+}
+
+export function ingestDeps(env: Env): IngestDeps {
+  return {
+    papers: openAlexFetcher(env.OPENALEX_API_KEY),
+    runs: d1Runs(env.DB),
+  };
+}

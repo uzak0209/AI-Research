@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chatBody, orcaKey } from '../src/orca';
-import { ORCA_POLICY } from '../src/orca-policy';
+import { chatBody, orcaKey } from '../src/shared/orca/chat';
+import { ORCA_POLICY } from '../src/shared/orca/policy';
 import type { Env } from '../src/env';
 
 describe('orcaKey', () => {

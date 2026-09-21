@@ -16,11 +16,17 @@ const pkg = require('./package.json') as { dependencies?: Record<string, string>
 //   sqlite-vec     ネイティブの拡張ファイルを同梱できない
 //   @huggingface   onnxruntime のネイティブバインディングを同梱できない
 //
+// `@ai-research/core` は TypeScript ソースなので外部化すると Electron が .ts を読めない。
+// メインにバンドルする。
+//
 // **`rollupOptions.external` を自分で書くと externalizeDepsPlugin の設定を上書きする。**
 // そのため dependencies もここに並べる必要がある。
 // サブパス import（例: 'pdfjs-dist/legacy/build/pdf.mjs'）もまとめて外部化する。
 // パッケージ名だけを並べても、サブパスは一致せずバンドルされてしまう
-const deps = ['electron', ...Object.keys(pkg.dependencies ?? {})];
+const deps = [
+  'electron',
+  ...Object.keys(pkg.dependencies ?? {}).filter((d) => d !== '@ai-research/core'),
+];
 
 // パッケージ名そのものと、その配下（`pdfjs-dist/legacy/build/pdf.mjs` など）の両方を外す。
 // 正規表現の特殊文字はパッケージ名に出てこないので、そのまま組み立ててよい
@@ -32,7 +38,7 @@ const external: (string | RegExp)[] = [
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ['@ai-research/core'] })],
     build: {
       rollupOptions: {
         external,
@@ -45,7 +51,7 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({ exclude: ['@ai-research/core'] })],
     build: {
       rollupOptions: { external, input: resolve(import.meta.dirname, 'src/preload/index.ts') },
     },

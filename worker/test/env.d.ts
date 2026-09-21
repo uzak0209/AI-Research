@@ -8,5 +8,7 @@ declare module 'cloudflare:test' {
     ORCAROUTER_API_KEY: string;
     OPENALEX_API_KEY: string;
     JEV_API_KEY: string;
+    GOOGLE_OAUTH_CLIENT_ID?: string;
+    GOOGLE_OAUTH_CLIENT_SECRET?: string;
   }
 }

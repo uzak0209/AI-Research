@@ -214,6 +214,19 @@ export function saveNote(db: Db, referenceId: string, body: string): void {
 
 // --- 添付 ---------------------------------------------------------------------
 
+export function findReferenceByDoi(db: Db, projectId: string, doi: string): string | undefined {
+  const row = db
+    .prepare('SELECT reference_id FROM reference_items WHERE project_id = ? AND doi = ?')
+    .get(projectId, doi) as { reference_id: string } | undefined;
+  return row?.reference_id;
+}
+
+export function findAttachmentByPath(db: Db, path: string): { attachment_id: string; reference_id: string } | undefined {
+  return db
+    .prepare('SELECT attachment_id, reference_id FROM attachments WHERE path = ?')
+    .get(path) as { attachment_id: string; reference_id: string } | undefined;
+}
+
 export function addAttachment(db: Db, referenceId: string, path: string, kind = 'pdf'): string {
   const id = randomUUID();
   db.prepare('INSERT INTO attachments (attachment_id, reference_id, path, kind) VALUES (?, ?, ?, ?)').run(

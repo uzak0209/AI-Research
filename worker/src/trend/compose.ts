@@ -1,0 +1,18 @@
+import { surveyTrend } from './application/survey';
+import type { TrendDeps } from './application/ports';
+import { openAlexPaperSource, orcaTrendLlm } from './infrastructure/adapters';
+
+export const TREND_ENDPOINT = '/bff/trends';
+
+export function createTrendApp(opts: { orcaKey: string; openAlexKey?: string }): TrendDeps & {
+  survey(topic: string): ReturnType<typeof surveyTrend>;
+} {
+  const deps: TrendDeps = {
+    papers: openAlexPaperSource(opts.openAlexKey),
+    llm: orcaTrendLlm(opts.orcaKey),
+  };
+  return {
+    ...deps,
+    survey: (topic) => surveyTrend(deps, topic),
+  };
+}

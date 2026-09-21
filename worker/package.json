@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "types": "wrangler types",
     "deploy:dev": "wrangler deploy --env dev",
+    "deploy:test": "wrangler deploy --env test",
     "deploy:prod": "wrangler deploy --env prod",
     "test": "vitest run",
     "test:watch": "vitest",

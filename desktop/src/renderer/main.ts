@@ -1,4 +1,4 @@
-// UI。DADS の規定に沿って、一覧・詳細・絞り込みを 3 ペインに分ける。
+// UI。左にナビ＋絞り込み、中央に一覧、右に詳細。
 //
 // 表示の原則（C-07）:
 //   - 有効／除外を断定しない。関連度は順位として出す
@@ -36,6 +36,7 @@ interface ReferenceRow {
 
 interface RankedPaper {
   paper_id: string;
+  external_id: string | null;
   title: string;
   abstract: string | null;
   url: string | null;
@@ -132,6 +133,7 @@ for (const id of ['library', 'feed', 'project'] as const) {
       const active = other === id;
       $(`tab-${other}`).setAttribute('aria-selected', String(active));
       $(`view-${other}`).setAttribute('data-active', String(active));
+      $(`nav-${other}`).hidden = !active;
     }
     if (id === 'library') void refreshLibrary();
     if (id === 'feed') void refreshFeed();
@@ -193,13 +195,17 @@ async function refreshLibrary() {
   list.replaceChildren();
 
   if (rows.length === 0) {
+    const none = counts && counts.total === 0;
     list.append(
       el(
-        'p',
-        { class: 'empty' },
-        counts && counts.total === 0
-          ? '文献がまだありません。「＋ 文献を追加」から保存できます。'
-          : '条件に合う文献がありません。',
+        'div',
+        { class: 'empty-state' },
+        el('p', { class: 'empty-title' }, none ? '文献はまだありません' : '条件に合う文献がありません'),
+        el(
+          'p',
+          { class: 'empty' },
+          none ? 'PDF か「追加」から文献を入れます。' : '絞り込みや検索を変えてみてください。',
+        ),
       ),
     );
     // ここで詳細ペインを触らない。PDF ビューアを開いていると消えてしまう
@@ -258,7 +264,14 @@ function syncRowSelection(): void {
 function showEmptyDetail(): void {
   closeViewer();
   const pane = $('lib-detail');
-  pane.replaceChildren(el('p', { class: 'empty' }, '左の一覧から文献を選んでください。'));
+  pane.replaceChildren(
+    el(
+      'div',
+      { class: 'empty-state' },
+      el('p', { class: 'empty-title' }, '文献を選ぶ'),
+      el('p', { class: 'empty' }, '左の一覧から文献を選ぶと、書誌と PDF がここに開きます。'),
+    ),
+  );
 }
 
 /**
@@ -306,7 +319,7 @@ async function renderRefDetail(referenceId: string | null) {
   pane.replaceChildren();
 
   if (!referenceId) {
-    pane.append(el('p', { class: 'empty' }, '左の一覧から文献を選んでください。'));
+    showEmptyDetail();
     return;
   }
 
@@ -491,30 +504,19 @@ async function renderRefDetail(referenceId: string | null) {
   );
   pane.append(atSec);
 
-  // DOI があれば書誌を補える。外部へ出ることを明示する
-  if (r.doi) {
-    const lookup = el('button', { class: 'btn', 'data-variant': 'secondary' }, 'DOI から書誌を補う');
+  // 公開書誌の穴埋め。Worker の BFF 経由。原稿は送らない
+  if (r.title || r.doi) {
+    const lookup = el('button', { class: 'btn', 'data-variant': 'secondary' }, '書誌を補う');
     lookup.addEventListener('click', async () => {
       if (
         !window.confirm(
-          `DOI「${r.doi}」を OpenAlex に送って書誌を取得します。
-何を読んでいるかが相手に伝わります。続けますか。`,
+          `公開書誌をクラウド経由で補います。OA の PDF があれば references/ に置きます。
+手元の原稿やメモは送りません。続けますか。`,
         )
       )
         return;
-      const got = (await guard('書誌の取得', () => window.api.pdf.lookupDoi(r.doi!))) as
-        | { title: string | null; authors: string | null; year: number | null; venue: string | null; abstract: string | null }
-        | undefined;
+      const got = await guard('書誌の取得', () => window.api.lib.follow(projectId, r.reference_id));
       if (!got) return;
-      await guard('書誌の反映', () =>
-        window.api.lib.update(r.reference_id, {
-          title: got.title ?? r.title,
-          authors: got.authors ?? r.authors,
-          year: got.year ?? r.year,
-          venue: got.venue ?? r.venue,
-          abstract: got.abstract ?? r.abstract,
-        }),
-      );
       setStatus('書誌を補った');
       await refreshLibrary();
       await renderRefDetail(r.reference_id);
@@ -523,10 +525,10 @@ async function renderRefDetail(referenceId: string | null) {
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, 'DOI'),
-        el('p', { class: 'detail-meta' }, r.doi),
+        el('h3', {}, '書誌の補完'),
+        el('p', { class: 'detail-meta' }, r.doi ?? r.title),
         el('div', { class: 'actions' }, lookup),
-        el('p', { class: 'note-info' }, '押したときだけ外部 API に問い合わせます。既定では何も送りません。'),
+        el('p', { class: 'note-info' }, '押したときだけクラウドに問い合わせます。既定では何も送りません。'),
       ),
     );
   }
@@ -550,7 +552,7 @@ function closeViewer(): void {
   viewer?.close();
   viewer = null;
   // 読み終わったら一覧に幅を戻す
-  $('view-library').setAttribute('data-reading', 'false');
+  $('shell').removeAttribute('data-reading');
 }
 
 /**
@@ -560,7 +562,7 @@ function closeViewer(): void {
 async function openInViewer(attachmentId: string, title: string): Promise<void> {
   closeViewer();
   // 読んでいる間は本文に幅を回す
-  $('view-library').setAttribute('data-reading', 'true');
+  $('shell').setAttribute('data-reading', 'true');
 
   const pane = $('lib-detail');
   pane.replaceChildren();
@@ -756,7 +758,7 @@ async function refreshFeed() {
       el(
         'p',
         { class: 'empty' },
-        res.unscored > 0 ? '「採点する」を押すと順位が出ます。' : '候補がまだありません。',
+        res.unscored > 0 ? '採点すると順位が出ます。' : '候補はまだありません。',
       ),
     );
     return;
@@ -832,7 +834,13 @@ function renderPaperDetail(p: RankedPaper) {
   add.disabled = !!p.in_library;
   add.addEventListener('click', async () => {
     const id = await guard('ライブラリへの保存', () =>
-      window.api.lib.add(projectId, { title: p.title, abstract: p.abstract, url: p.url, paper_id: p.paper_id }),
+      window.api.lib.add(projectId, {
+        title: p.title,
+        abstract: p.abstract,
+        url: p.url,
+        doi: p.external_id && /^10\.\d{4,}/.test(p.external_id) ? p.external_id : null,
+        paper_id: p.paper_id,
+      }),
     );
     if (!id) return;
     setStatus('ライブラリに保存した');
@@ -953,6 +961,34 @@ $('proj-reveal').addEventListener('click', async () => {
 window.api.onWorkspaceChanged((e) => applyWorkspace(e));
 window.api.onWorkspaceError((message) => setStatus(message, 'error'));
 
+function showAuth(signedIn: boolean): void {
+  $('auth-chip').textContent = signedIn ? 'クラウド: ログイン済み' : 'クラウド: 未ログイン';
+  $('auth-label').textContent = signedIn ? 'ログイン済み' : '未ログイン';
+  ($('auth-login') as HTMLButtonElement).hidden = signedIn;
+  ($('auth-logout') as HTMLButtonElement).hidden = !signedIn;
+}
+
+$('auth-login').addEventListener('click', async () => {
+  setStatus('ブラウザで Google にログインします…', 'busy');
+  const res = await guard('ログイン', () => window.api.auth.login());
+  if (res?.signedIn) {
+    showAuth(true);
+    setStatus('Google でログインした');
+  }
+});
+
+$('auth-logout').addEventListener('click', async () => {
+  const res = await guard('ログアウト', () => window.api.auth.logout());
+  showAuth(res?.signedIn ?? false);
+  setStatus('ログアウトした');
+});
+
+window.api.auth.onChanged((e) => showAuth(e.signedIn));
+window.api.auth.onError((message) => setStatus('ログインに失敗: ' + message, 'error'));
+window.api.lib.onChanged(() => {
+  void refreshLibrary();
+});
+
 // --- 起動 --------------------------------------------------------------------
 
 async function boot() {
@@ -980,6 +1016,9 @@ async function boot() {
 
   const claims = (await window.api.listClaims(projectId)) as { text: string }[];
   ($('claims') as HTMLTextAreaElement).value = claims.map((c) => c.text).join('\n');
+
+  const auth = await window.api.auth.status();
+  showAuth(auth.signedIn);
 
   await refreshLibrary();
 }

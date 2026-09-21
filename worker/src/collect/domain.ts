@@ -1,0 +1,39 @@
+import { z } from 'zod';
+
+/** 収集ソース。アダプタで足す（ADR-0001 の拡張点） */
+export const SOURCES = ['openalex'] as const;
+
+export const collectMessageSchema = z.object({
+  run_id: z.string().min(1),
+  project_id: z.string().min(1),
+  summary: z.string(),
+  source: z.string().min(1),
+  run_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+/**
+ * 粗い採点。**文字列一致の水準に留める**（ADR-0004）。
+ * 埋め込みによる精密な採点はローカル（ADR-0001, C-09）
+ */
+export function coarseScore(summary: string, text: string): number {
+  const terms = new Set(
+    summary
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length > 4),
+  );
+  if (terms.size === 0) return 0;
+  const hay = text.toLowerCase();
+  let hit = 0;
+  for (const t of terms) if (hay.includes(t)) hit++;
+  return hit / terms.size;
+}
+
+export type ScoredPaper = {
+  external_id: string;
+  title: string;
+  abstract: string | null;
+  url: string | null;
+  published_at: string | null;
+  coarse_score: number;
+};
