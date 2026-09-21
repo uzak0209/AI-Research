@@ -975,17 +975,36 @@ $('feed-collect').addEventListener('click', async () => {
   const btn = $('feed-collect') as HTMLButtonElement;
   btn.disabled = true;
   setStatus('調査を開始しています…', 'busy');
-  const res = await guard('調査の開始', () => window.api.startCollect(projectId));
-  btn.disabled = false;
-  if (!res) return;
-  if (res.timedOut && res.inserted === 0) {
-    setStatus('調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください');
-  } else if (res.inserted > 0) {
-    setStatus(`${res.inserted} 件を取り込んだ。読む順を付けています…`, 'busy');
-  } else {
-    setStatus('調査が終わったが、新しい候補は無かった');
+  try {
+    const res = await window.api.startCollect(projectId);
+    btn.disabled = false;
+    if (res.timedOut && res.inserted === 0 && res.pulled === 0) {
+      setStatus('調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください');
+    } else if (res.inserted > 0) {
+      setStatus(`${res.inserted} 件を取り込んだ。読む順を付けています…`, 'busy');
+    } else if (res.pulled > 0) {
+      setStatus(`クラウドでは ${res.pulled} 件あったが、既に手元にある候補だった`);
+    } else if (res.statuses.includes('failed')) {
+      setStatus('調査は失敗した。しばらくして「調査する」をやり直してください', 'error');
+    } else if (res.statuses.includes('empty')) {
+      setStatus('調査は終わったが、検索ヒットが 0 件だった');
+    } else {
+      setStatus('調査が終わったが、新しい候補は無かった');
+    }
+    await refreshFeed();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    setStatus('調査の開始に失敗: ' + message, 'error');
+    const cooldown = /wait\s+(\d+)s/i.exec(message);
+    const lockMs = cooldown ? Number(cooldown[1]) * 1000 : /短時間|rate.?limit/i.test(message) ? 60_000 : 0;
+    if (lockMs > 0) {
+      setTimeout(() => {
+        btn.disabled = false;
+      }, lockMs);
+    } else {
+      btn.disabled = false;
+    }
   }
-  await refreshFeed();
 });
 
 $('feed-sync').addEventListener('click', async () => {

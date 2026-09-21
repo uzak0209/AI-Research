@@ -146,7 +146,10 @@ export class CloudClient {
     const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}/collect`, {
       method: 'POST',
     });
-    if (res.status === 429) throw new Error('startCollect rate limited');
+    if (res.status === 429) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      throw new Error(body?.detail?.trim() || '短時間に何度も調査を開始できない（約 60 秒待ってください）');
+    }
     if (!res.ok) throw new Error(`startCollect failed: ${res.status}`);
     return (await res.json()) as CollectAccepted;
   }

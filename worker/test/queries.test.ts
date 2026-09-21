@@ -1,41 +1,102 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_TERMS, parseTerms } from '../src/queries';
+import {
+  MAX_TERMS,
+  needsEnglishSearchTerms,
+  openAlexQueryFromSummary,
+  parseTermPairs,
+  parseTerms,
+} from '../src/queries';
 
 const SUMMARY = 'DPDK architecture for 100Gbps packet processing on commodity NICs';
 
-describe('parseTerms（ADR-0005 §7: 入り口を無制限に広げさせない）', () => {
-  it('summary の語彙と重なる検索語を採る', () => {
-    const terms = parseTerms('["DPDK architecture", "packet processing"]', SUMMARY);
-    expect(terms).toEqual(['DPDK architecture', 'packet processing']);
+function pairs(json: string, summary = SUMMARY) {
+  return parseTermPairs(json, summary);
+}
+
+describe('parseTermPairs（抽出→英訳。source は summary 字面）', () => {
+  it('source が summary にある対の en を採る', () => {
+    const got = pairs(
+      JSON.stringify([
+        { source: 'DPDK architecture', en: 'DPDK architecture' },
+        { source: 'packet processing', en: 'packet processing' },
+      ]),
+    );
+    expect(got.map((p) => p.en)).toEqual(['DPDK architecture', 'packet processing']);
   });
 
-  it('summary に無い話題へ広げた検索語は捨てる', () => {
-    const terms = parseTerms('["DPDK architecture", "protein folding"]', SUMMARY);
-    expect(terms).toEqual(['DPDK architecture']);
+  it('summary に無い source は捨てる', () => {
+    const got = pairs(
+      JSON.stringify([
+        { source: 'DPDK architecture', en: 'DPDK architecture' },
+        { source: 'protein folding', en: 'protein folding' },
+      ]),
+    );
+    expect(got.map((p) => p.en)).toEqual(['DPDK architecture']);
+  });
+
+  it('ラテン source に無関係な en は捨てる', () => {
+    const got = pairs(JSON.stringify([{ source: 'DPDK', en: 'protein folding' }]));
+    expect(got).toEqual([]);
   });
 
   it('件数の上限で切る', () => {
-    const many = JSON.stringify(
-      Array.from({ length: MAX_TERMS + 4 }, (_, i) => `packet processing ${i}`),
+    const many = Array.from({ length: MAX_TERMS + 4 }, (_, i) => ({
+      source: 'packet processing',
+      en: `packet processing ${i}`,
+    }));
+    // source は同じでも en が違う。faithful は packet を含むので通るが上限で切る
+    expect(pairs(JSON.stringify(many))).toHaveLength(MAX_TERMS);
+  });
+
+  it('en の重複は 1 つにまとめる', () => {
+    const got = pairs(
+      JSON.stringify([
+        { source: 'DPDK', en: 'DPDK' },
+        { source: 'DPDK', en: 'dpdk' },
+      ]),
     );
-    expect(parseTerms(many, SUMMARY)).toHaveLength(MAX_TERMS);
+    expect(got.map((p) => p.en)).toEqual(['DPDK']);
   });
 
-  it('重複は 1 つにまとめる', () => {
-    const terms = parseTerms('["DPDK", "dpdk", "DPDK"]', SUMMARY);
-    expect(terms).toEqual(['DPDK']);
-  });
-
-  it('JSON でなければ全部捨てる（部分的に直さない）', () => {
-    expect(parseTerms('DPDK, packet processing', SUMMARY)).toEqual([]);
-    expect(parseTerms('```json\n["DPDK"]\n```', SUMMARY)).toEqual([]);
+  it('JSON でなければ全部捨てる', () => {
+    expect(pairs('DPDK, packet processing')).toEqual([]);
+    expect(pairs('```json\n[{"source":"DPDK","en":"DPDK"}]\n```')).toEqual([]);
   });
 
   it('配列でなければ捨てる', () => {
-    expect(parseTerms('{"terms":["DPDK"]}', SUMMARY)).toEqual([]);
+    expect(pairs('{"source":"DPDK","en":"DPDK"}')).toEqual([]);
   });
 
-  it('文字列以外の要素は無視する', () => {
-    expect(parseTerms('[1, null, "DPDK"]', SUMMARY)).toEqual(['DPDK']);
+  it('日本語から抽出した語の英訳を採る', () => {
+    const ja = 'dpdkによる高スループットの実現\nクラウドネイティブ';
+    expect(needsEnglishSearchTerms(ja)).toBe(true);
+    const got = parseTerms(
+      JSON.stringify([
+        { source: '高スループット', en: 'high throughput' },
+        { source: 'クラウドネイティブ', en: 'cloud native' },
+        { source: 'dpdk', en: 'DPDK' },
+      ]),
+      ja,
+    );
+    expect(got).toEqual(['high throughput', 'cloud native', 'DPDK']);
+  });
+
+  it('日本語 source が summary に無い英訳は捨てる', () => {
+    const ja = 'dpdkによる高スループットの実現';
+    expect(
+      parseTerms(JSON.stringify([{ source: 'タンパク質折りたたみ', en: 'protein folding' }]), ja),
+    ).toEqual([]);
+  });
+});
+
+describe('openAlexQueryFromSummary', () => {
+  it('フォールバックはラテン種語だけ', () => {
+    const q = openAlexQueryFromSummary('dpdkによる高スループットの実現\nクラウドネイティブ\n\nDPDK');
+    expect(q.toLowerCase()).toContain('dpdk');
+    expect(q).not.toMatch(/スループット|クラウド/);
+  });
+
+  it('ラテンが無ければ空', () => {
+    expect(openAlexQueryFromSummary('高スループット\n実現')).toBe('');
   });
 });
