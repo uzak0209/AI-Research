@@ -23,6 +23,7 @@ export function createCloud(db: Db): Cloud {
   const fromEnv = process.env.AI_RESEARCH_ACCESS_TOKEN?.trim();
   if (fromEnv) session.setAccessToken(fromEnv);
 
+  // 既定は prod。ローカル wrangler は AI_RESEARCH_API（just desktop-cloud）
   const endpoint = (
     process.env.AI_RESEARCH_API?.trim() ||
     settings.get(CLOUD_ENDPOINT_KEY)?.value?.trim() ||

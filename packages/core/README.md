@@ -6,7 +6,7 @@ GUI と CLI が共有するローカル側（ADR-0001）。認証と Worker へ�
 |---|---|
 | 更新トークン | `settings.auth.refresh_token_enc`（`safeStorage` で暗号化、`encrypted=true`） |
 | アクセストークン | メモリのみ（`AuthSession`） |
-| Worker URL | `settings.cloud.endpoint`。無ければ `http://127.0.0.1:8787` |
+| Worker URL | `settings.cloud.endpoint`。無ければ prod `https://ai-research.streeeak.link`。ローカルは `AI_RESEARCH_API` |
 
 レンダラはこれを import しない。メインプロセスが IPC でクラウドへ中継する。
 

@@ -112,8 +112,9 @@
       },
       "observability": { "enabled": true },
       // 公開面はゾーン配下の独自ドメイン。ゾーンの WAF / レート制限を効かせるため。
-      // custom_domain: true はデプロイ時に DNS レコードも作る。
-      "routes": [{ "pattern": "api.streeeak.link", "custom_domain": true }],
+      // api.streeeak.link は別プロジェクト（Cloudflare Tunnel）が使う。被せない。
+      // custom_domain: true はデプロイ時に DNS も作る。既存 A/CNAME があると 100117 で落ちる。
+      "routes": [{ "pattern": "ai-research.streeeak.link", "custom_domain": true }],
       "d1_databases": [
         {
           "binding": "DB",

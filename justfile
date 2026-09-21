@@ -24,7 +24,7 @@ wrangler-whoami:
 worker:
     npm run dev
 
-# Electron。ELECTRON_RUN_AS_NODE を外す
+# Electron。ELECTRON_RUN_AS_NODE を外す。API の既定は prod
 [working-directory: 'desktop']
 desktop:
     npm run dev

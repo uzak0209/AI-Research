@@ -51,7 +51,7 @@ local の `secret put` や D1 操作が別アカウントに向かい、`ai-rese
 出力された ID を `wrangler.jsonc` の該当箇所に貼る。
 **ID は秘密ではないのでコミットしてよい。** 秘密は Workers Secrets と `worker/.env` だけに置く。
 
-`prod` は加えて `env.prod.routes[0].pattern` を実際の独自ドメインにする。
+`prod` の公開面は `ai-research.streeeak.link`（`custom_domain`）。`api.streeeak.link` は別プロジェクトのトンネルなので使わない。
 `workers.dev` のままだとゾーンの WAF とレート制限が効かない（ADR-0004）。
 
 ### GitHub 側
@@ -70,7 +70,7 @@ Settings → Secrets and variables → Actions。**Secret と Variable はタブ
 | Secret | `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth の client_secret。Electron には置かない |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `TEST_HEALTH_URL` | 例: `https://ai-research-api-test.<sub>.workers.dev/health` |
-| Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
+| Variable | `PROD_HEALTH_URL` | 例: `https://ai-research.streeeak.link/health` |
 
 `*_HEALTH_URL` は秘密ではないので Variable。未設定なら疎通確認は警告を出して飛ばす
 （deploy 自体は成功扱い）。
