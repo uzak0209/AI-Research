@@ -260,8 +260,12 @@ app.openapi(
         userId,
         endpoint: BIBLIOGRAPHY_ENDPOINT,
         classification: 'C1',
-        model: llm.model,
+        // Jev はピン留めなので要求＝固定モデル。食い違えば受け皿として数える
+        requestedModel: llm.requestedModel,
+        resolvedModel: llm.model,
         tokens: llm.tokens,
+        // Jev は cost も所要時間も返さない。0 として足さない（C-07）
+        fallbackUsed: llm.requestedModel !== null && llm.model !== llm.requestedModel,
       });
     }
 

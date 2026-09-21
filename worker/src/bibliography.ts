@@ -250,7 +250,10 @@ export async function fetchBibliographyCandidates(
 export type BibliographyOk = {
   ok: true;
   record: BibliographyRecord;
+  /** 実際に応答したモデル。呼ばなかったときは null */
   model: string | null;
+  /** 要求した宛先。Jev はピン留めなので固定値。呼ばなかったときは null */
+  requestedModel: string | null;
   tokens: number;
 };
 export type BibliographyFail = { ok: false; status: number; detail: string };
@@ -269,7 +272,8 @@ export async function completeBibliography(
   }
 
   if (candidates.length === 0) {
-    return { ok: true, record: EMPTY_RECORD, model: null, tokens: 0 };
+    // Jev を呼んでいない。モデル名を埋めない（C-07）
+    return { ok: true, record: EMPTY_RECORD, model: null, requestedModel: null, tokens: 0 };
   }
 
   const llm = await systemOne(
@@ -300,6 +304,7 @@ export async function completeBibliography(
     ok: true,
     record: chosen ? candidateToRecord(chosen) : EMPTY_RECORD,
     model: llm.model,
+    requestedModel: JEV_POLICY.C1.model,
     tokens: llm.tokens,
   };
 }
