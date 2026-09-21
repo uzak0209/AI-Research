@@ -12,6 +12,7 @@ HTTP と cron を 1 つの Worker に同居させる。
 | `POST /auth/refresh` | refresh JWT → 新しい access |
 | `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501**（IdP のあとで足す） |
 | `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（gpt-4o-mini → gemini-2.5-flash → haiku、`fail_open: false`）で要約 |
+| `POST /bff/bibliography`（C1） | Bearer 必須。OpenAlex で公開書誌を埋め、Jev で同一論文かを切る。生成しない |
 | `GET`/`POST` `/bff/{name}`（C2/C3） | Bearer 必須。同意・プレビュー未実装のため **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |
@@ -57,6 +58,7 @@ Settings → Secrets and variables → Actions。**Secret と Variable はタブ
 | Secret | `JWT_SIGNING_KEY` | Worker の HS256 署名鍵。CI が `wrangler secret put` する |
 | Secret | `ORCAROUTER_API_KEY` | OrcaRouter の `sk-orca-…`（C1 interactive）。CI が `wrangler secret put` する |
 | Secret | `OPENALEX_API_KEY` | OpenAlex の無料 API キー。Workers 共有 IP では無鍵が落ちる |
+| Secret | `JEV_API_KEY` | TypeSafe Jev（C1 書誌の判定）。CI が `wrangler secret put` する |
 | Variable | `DEV_HEALTH_URL` | 例: `https://ai-research-api-dev.<sub>.workers.dev/health` |
 | Variable | `PROD_HEALTH_URL` | 例: `https://api.example.com/health` |
 
@@ -89,20 +91,23 @@ Settings → Environments → `dev` / `prod` を作り、それぞれに `CLOUDF
 
 ### Workers Secrets
 
-`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` / `OPENALEX_API_KEY` は **GitHub Secrets に置き、deploy が Worker へ載せる。**
+`JWT_SIGNING_KEY` / `ORCAROUTER_API_KEY` / `OPENALEX_API_KEY` / `JEV_API_KEY` は **GitHub Secrets に置き、deploy が Worker へ載せる。**
 手元 `wrangler login` と CI のアカウントが違うと、ローカルの `secret put` は別 Worker を作る。
 
 ```bash
 gh secret set JWT_SIGNING_KEY
 gh secret set ORCAROUTER_API_KEY
 gh secret set OPENALEX_API_KEY
+gh secret set JEV_API_KEY
 ```
 
 OpenAlex のキーは [openalex.org/settings/api](https://openalex.org/settings/api) で無料発行。2026-02 以降、Workers のような共有 IP からの無鍵呼び出しは落ちる。
 
 未設定なら認証系と C1 は 501。OAuth の IdP はまだ未決。
-`ORCAROUTER_API_KEY` は C1（interactive）用。`ORCAROUTER_API_KEY_INTERACTIVE` があればそちらを優先。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
-C1 の model / fallback / temperature は `src/orca-policy.ts`。ダッシュボードの named router に依存しない。
+`ORCAROUTER_API_KEY` は C1 トレンド（interactive）用。`ORCAROUTER_API_KEY_INTERACTIVE` があればそちらを優先。`cron` / `sensitive` は C2/C3 を足すときに分ける（ADR-0002）。
+C1 の Orca model / fallback / temperature は `src/orca-policy.ts`。書誌判定の Jev モデルと閾値は `src/jev-policy.ts`。ダッシュボードに依存しない。
+`JEV_API_KEY` は C1 書誌補完用。著者・DOI は OpenAlex からコピーし、Jev は同一論文かの判定だけする。
+経路は OpenAPI の path が決める。`hono-jev-router`（意味で振る実験ルーター）は使わない。毎リクエストが Jev 呼び出しになり、Bearer と本文が経路判定で外に出る。
 
 クライアントは refresh を OS 保護領域（`safeStorage`）、access をメモリに置く（ADR-0001）。
 Worker は Cookie を出さない。

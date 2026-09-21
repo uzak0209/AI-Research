@@ -10,8 +10,11 @@ import {
   TokenResponseSchema,
   TrendBodySchema,
   TrendResponseSchema,
+  BibliographyBodySchema,
+  BibliographyResponseSchema,
 } from './schema';
 import { TREND_ENDPOINT, fetchPublicPapers, summarizeTrend, toTrendPapers } from './trend';
+import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, completeBibliography } from './bibliography';
 import { orcaKey } from './orca';
 import { ORCA_POLICY } from './orca-policy';
 import { dailyCallCount, dailyCallLimit, ensureUserId, recordLlmUsage } from './usage';
@@ -196,6 +199,69 @@ app.openapi(
       },
       200,
     );
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: 'post',
+    path: '/bff/bibliography',
+    request: {
+      body: {
+        content: { 'application/json': { schema: BibliographyBodySchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: 'C1 公開書誌の補完。OpenAlex で埋め、Jev で同一論文かを切る。不採用は null（C-07）',
+        content: { 'application/json': { schema: BibliographyResponseSchema } },
+      },
+      ...unauthorized,
+      429: { description: '利用者単位の上限（NFR-04）', ...jsonError },
+      ...notImplemented,
+      502: { description: 'OpenAlex または TypeSafe Jev が欠けた', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await requireAccess(c.env, c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const apiKey = c.env.JEV_API_KEY;
+    if (!apiKey) {
+      fail(501, { error: 'not_implemented', detail: 'JEV_API_KEY が未設定' });
+    }
+
+    const userId = await ensureUserId(c.env.DB, auth.payload.sub!);
+    const limit = dailyCallLimit(c.env);
+    const used = await dailyCallCount(c.env.DB, userId);
+    if (used >= limit) {
+      fail(429, { error: 'rate_limited', detail: 'daily LLM call limit' });
+    }
+
+    const hint = bibliographyHintSchema.safeParse(c.req.valid('json'));
+    if (!hint.success) {
+      throw new HTTPException(400, {
+        res: Response.json({ error: 'invalid_body', detail: 'title or doi required' }, { status: 400 }),
+      });
+    }
+
+    const llm = await completeBibliography(apiKey, hint.data, c.env.OPENALEX_API_KEY);
+    if (!llm.ok) {
+      fail(502, { error: 'upstream_failed', detail: llm.detail });
+    }
+
+    if (llm.model) {
+      await recordLlmUsage(c.env.DB, {
+        userId,
+        endpoint: BIBLIOGRAPHY_ENDPOINT,
+        classification: 'C1',
+        model: llm.model,
+        tokens: llm.tokens,
+      });
+    }
+
+    return c.json({ classification: 'C1' as const, model: llm.model, record: llm.record }, 200);
   },
 );
 
