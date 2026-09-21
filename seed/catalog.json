@@ -1,0 +1,316 @@
+{
+  "_note": "機能紹介用のデモデータ。公開書誌のみ。未公開の研究は入れない（C-01）。judge-bench の実測順位を流用し、有効／除外は断定しない（C-07）。id は seed- で始まる行だけを触る。",
+  "project": {
+    "id": "seed-demo",
+    "title": "低データ分子物性予測の GNN",
+    "embed_model": "Xenova/bge-small-en-v1.5",
+    "summary": "We develop graph neural networks for molecular property prediction, focusing on the low-data regime. Our main interest is transfer learning and pretraining strategies that let a model trained on large public molecule corpora adapt to small proprietary assay datasets (hundreds of labeled molecules), together with calibrated uncertainty estimates so that chemists know when to distrust a prediction."
+  },
+  "claims": [
+    {
+      "id": "c01",
+      "chunk_id": 1001,
+      "text": "We pretrain a message-passing graph neural network on five million unlabeled molecules using masked-atom prediction combined with a contextual subgraph objective, and show this initialization transfers to downstream assays."
+    },
+    {
+      "id": "c02",
+      "chunk_id": 1002,
+      "text": "We fine-tune the pretrained encoder on proprietary assay sets containing between 200 and 800 labels using low-rank adapters, updating under two percent of the parameters rather than the full backbone."
+    },
+    {
+      "id": "c04",
+      "chunk_id": 1003,
+      "text": "We obtain calibrated uncertainty estimates by wrapping a deep ensemble in split conformal prediction, and show this restores nominal interval coverage on held-out scaffolds."
+    },
+    {
+      "id": "c07",
+      "chunk_id": 1004,
+      "text": "We use uncertainty-guided batch active learning with the calibrated model as surrogate, and report roughly forty percent fewer assays to reach a target hit rate compared with random acquisition."
+    },
+    {
+      "id": "c08",
+      "chunk_id": 1005,
+      "text": "We transfer from abundant low-fidelity computational labels to scarce high-fidelity experimental assay labels in a multi-fidelity setup, treating the low-fidelity signal as an auxiliary pretraining task."
+    },
+    {
+      "id": "c10",
+      "chunk_id": 1006,
+      "text": "We argue that random splits overstate transfer to novel chemical series, and we report all results under scaffold split with explicit chemical-similarity statistics."
+    }
+  ],
+  "papers": [
+    {
+      "id": "seed-paper-r02",
+      "external_id": "10.1038/s41467-024-45566-8",
+      "title": "Transfer learning with graph neural networks for improved molecular property prediction in the multi-fidelity setting",
+      "authors": "David Buterez; Jon Paul Janet; Steven J. Kiddle; Dino Oglić; Pietro Liò",
+      "year": 2024,
+      "published_at": "2024-02-26",
+      "venue": "Nature Communications",
+      "url": "https://doi.org/10.1038/s41467-024-45566-8",
+      "abstract": "We investigate the potential of graph neural networks for transfer learning and improving molecular property prediction on sparse and expensive to acquire high-fidelity data by leveraging low-fidelity measurements as an inexpensive proxy for a targeted property of interest. This problem arises in discovery processes that rely on screening funnels for trading off the overall costs against throughput and accuracy.",
+      "relevance": 0.8608,
+      "sim_summary": 0.8824,
+      "nearest_claim": "c08",
+      "nearest_chunk_sim": 0.8104,
+      "in_library": true,
+      "coarse_score": 0.2353
+    },
+    {
+      "id": "seed-paper-r07",
+      "external_id": "10.1093/bioinformatics/btae574",
+      "title": "Chain-aware graph neural networks for molecular property prediction",
+      "authors": "Honghao Wang; Acong Zhang; Yuan Zhong; Junlei Tang; Kai Zhang",
+      "year": 2024,
+      "published_at": "2024-10-01",
+      "venue": "Bioinformatics",
+      "url": "https://doi.org/10.1093/bioinformatics/btae574",
+      "abstract": "Predicting the properties of molecules is a fundamental problem in drug design and discovery, while how to learn effective feature representations lies at the core of modern deep-learning-based prediction methods. Recent progress shows expressive power of graph neural networks (GNNs) in capturing structural information for molecular graphs.",
+      "relevance": 0.8376,
+      "sim_summary": 0.8515,
+      "nearest_claim": "c01",
+      "nearest_chunk_sim": 0.8051,
+      "in_library": false,
+      "coarse_score": 0.2353
+    },
+    {
+      "id": "seed-paper-r03",
+      "external_id": "10.1038/s42256-025-01087-7",
+      "title": "Kolmogorov–Arnold graph neural networks for molecular property prediction",
+      "authors": "Longlong Li; Yipeng Zhang; Guanghui Wang; Kelin Xia",
+      "year": 2025,
+      "published_at": "2025-08-11",
+      "venue": "Nature Machine Intelligence",
+      "url": "https://doi.org/10.1038/s42256-025-01087-7",
+      "abstract": "Graph neural networks (GNNs) have shown remarkable success in molecular property prediction as key models in geometric deep learning. Meanwhile, Kolmogorov–Arnold networks (KANs) have emerged as powerful alternatives to multi-layer perceptrons, offering improved expressivity, parameter efficiency and interpretability.",
+      "relevance": 0.8323,
+      "sim_summary": 0.8428,
+      "nearest_claim": "c01",
+      "nearest_chunk_sim": 0.8078,
+      "in_library": false,
+      "coarse_score": 0.1765
+    },
+    {
+      "id": "seed-paper-r04",
+      "external_id": "10.1007/s10994-023-06369-y",
+      "title": "Explainable AI in drug discovery: self-interpretable graph neural network for molecular property prediction using concept whitening",
+      "authors": "Michela Proietti; Alessio Ragno; Biagio La Rosa; Rino Ragno; Roberto Capobianco",
+      "year": 2023,
+      "published_at": "2023-10-31",
+      "venue": "Machine Learning",
+      "url": "https://doi.org/10.1007/s10994-023-06369-y",
+      "abstract": "Molecular property prediction is a fundamental task in the field of drug discovery. Several works use graph neural networks to leverage molecular graph representations. Although they have been successfully applied in a variety of applications, their decision process is not transparent. In this work, we adapt concept whitening to graph neural networks.",
+      "relevance": 0.8312,
+      "sim_summary": 0.8473,
+      "nearest_claim": "c01",
+      "nearest_chunk_sim": 0.7938,
+      "in_library": false,
+      "coarse_score": 0.1471
+    },
+    {
+      "id": "seed-paper-r09",
+      "external_id": "10.1021/acs.jcim.3c01250",
+      "title": "Chemprop: A Machine Learning Package for Chemical Property Prediction",
+      "authors": "Esther Heid; Kevin P. Greenman; Yunsie Chung; Shih-Cheng Li; David Graff",
+      "year": 2023,
+      "published_at": "2023-12-26",
+      "venue": "Journal of Chemical Information and Modeling",
+      "url": "https://doi.org/10.1021/acs.jcim.3c01250",
+      "abstract": "Deep learning has become a powerful and frequently employed tool for the prediction of molecular properties, thus creating a need for open-source and versatile software solutions that can be operated by nonexperts. Among the current approaches, directed message-passing neural networks (D-MPNNs) have proven to perform well on a variety of property prediction tasks. Chemprop incorporates various uncertainty quantification and calibration methods as well as pretraining and transfer learning workflows.",
+      "relevance": 0.8016,
+      "sim_summary": 0.8184,
+      "nearest_claim": "c04",
+      "nearest_chunk_sim": 0.7625,
+      "in_library": true,
+      "coarse_score": 0.1765
+    },
+    {
+      "id": "seed-paper-r13",
+      "external_id": "10.1021/acs.jcim.2c01564",
+      "title": "Improved GNNs for Log D 7.4 Prediction by Transferring Knowledge from Low-Fidelity Data",
+      "authors": "Yanjing Duan; Li Fu; Xiaochen Zhang; Teng-Zhi Long; Yuan-Hang He",
+      "year": 2023,
+      "published_at": "2023-03-31",
+      "venue": "Journal of Chemical Information and Modeling",
+      "url": "https://doi.org/10.1021/acs.jcim.2c01564",
+      "abstract": "Graph neural networks (GNNs) can uncover subtle structure–property relationships by automatically extracting features from molecular graphs, but their performances are often limited by the small size of available datasets. We present a transfer learning strategy called pretraining on computational data and then fine-tuning on experimental data (PCFE).",
+      "relevance": 0.7788,
+      "sim_summary": 0.7868,
+      "nearest_claim": "c08",
+      "nearest_chunk_sim": 0.76,
+      "in_library": false,
+      "coarse_score": 0.1765
+    },
+    {
+      "id": "seed-paper-r33",
+      "external_id": "10.1021/acs.jctc.4c00190",
+      "title": "Scalable Parallel Algorithm for Graph Neural Network Interatomic Potentials in Molecular Dynamics Simulations",
+      "authors": "Yutack Park; Jaesun Kim; Seungwoo Hwang; Seungwu Han",
+      "year": 2024,
+      "published_at": "2024-05-30",
+      "venue": "Journal of Chemical Theory and Computation",
+      "url": "https://doi.org/10.1021/acs.jctc.4c00190",
+      "abstract": "Message-passing graph neural network interatomic potentials (GNN-IPs), particularly those with equivariant representations such as NequIP, are attracting significant attention due to their data efficiency and high accuracy. However, parallelizing GNN-IPs poses challenges because multiple message-passing layers complicate data communication within the spatial decomposition method used by many molecular dynamics packages.",
+      "relevance": 0.7537,
+      "sim_summary": 0.7469,
+      "nearest_claim": "c01",
+      "nearest_chunk_sim": 0.7695,
+      "in_library": true,
+      "coarse_score": 0.0882
+    },
+    {
+      "id": "seed-paper-r43",
+      "external_id": "10.3390/s23073762",
+      "title": "A Survey on Deep Reinforcement Learning Algorithms for Robotic Manipulation",
+      "authors": "Dong Han; Beni Mulyana; Vladimir Stanković; Samuel Cheng",
+      "year": 2023,
+      "published_at": "2023-04-05",
+      "venue": "Sensors",
+      "url": "https://doi.org/10.3390/s23073762",
+      "abstract": "Robotic manipulation challenges, such as grasping and object manipulation, have been tackled successfully with the help of deep reinforcement learning systems. We give an overview of the recent advances in deep reinforcement learning algorithms for robotic manipulation tasks in this review.",
+      "relevance": 0.5902,
+      "sim_summary": 0.5786,
+      "nearest_claim": "c07",
+      "nearest_chunk_sim": 0.6173,
+      "in_library": false,
+      "coarse_score": 0.0294
+    },
+    {
+      "id": "seed-paper-r10",
+      "external_id": "10.1021/acs.jcim.3c01650",
+      "title": "Transferring a Molecular Foundation Model for Polymer Property Predictions",
+      "authors": "Pei Zhang; Logan T. Kearney; Debsindhu Bhowmik; Zachary Fox; Amit K. Naskar",
+      "year": 2023,
+      "published_at": "2023-12-06",
+      "venue": "Journal of Chemical Information and Modeling",
+      "url": "https://doi.org/10.1021/acs.jcim.3c01650",
+      "abstract": "Transformer-based large language models have remarkable potential to accelerate design optimization for applications such as drug development and material discovery. Self-supervised pretraining of transformer models requires large-scale data sets, which are often sparsely populated in topical areas such as polymer science. We show that using transformers pretrained on small molecules and fine-tuned on polymer properties achieves comparable accuracy to those trained on augmented polymer data sets.",
+      "scored": false,
+      "in_library": false,
+      "coarse_score": 0.1471
+    },
+    {
+      "id": "seed-paper-r12",
+      "external_id": "10.1021/acs.jmedchem.4c00692",
+      "title": "Enhancing Molecular Property Prediction through Task-Oriented Transfer Learning: Integrating Universal Structural Insights and Domain-Specific Knowledge",
+      "authors": "Yanjing Duan; Xixi Yang; Xiangxiang Zeng; Wen-Xuan Wang; Youchao Deng",
+      "year": 2024,
+      "published_at": "2024-05-15",
+      "venue": "Journal of Medicinal Chemistry",
+      "url": "https://doi.org/10.1021/acs.jmedchem.4c00692",
+      "abstract": "Precisely predicting molecular properties is crucial in drug discovery, but the scarcity of labeled data poses a challenge for applying deep learning methods. While large-scale self-supervised pretraining has proven an effective solution, it often neglects domain-specific knowledge. We introduce Task-Oriented Multilevel Learning based on BERT (TOML-BERT), a dual-level pretraining framework.",
+      "scored": false,
+      "in_library": false,
+      "coarse_score": 0.1471
+    }
+  ],
+  "tags": [
+    { "id": "seed-tag-transfer", "name": "転移学習" },
+    { "id": "seed-tag-uq", "name": "不確実性" },
+    { "id": "seed-tag-method", "name": "手法" },
+    { "id": "seed-tag-rival", "name": "競合" },
+    { "id": "seed-tag-xai", "name": "解釈" }
+  ],
+  "library": [
+    {
+      "id": "seed-ref-r02",
+      "paper_id": "seed-paper-r02",
+      "item_type": "article",
+      "bibtex_key": "buterez2024",
+      "starred": true,
+      "read_status": "read",
+      "tags": ["転移学習", "手法"],
+      "added_at": "2026-09-18 09:00:00",
+      "note": "デモ用メモ。低忠実度→高忠実度の転移が、このプロジェクトの設定に最も近い。関連度は順位であって、有効という判定ではない。"
+    },
+    {
+      "id": "seed-ref-r09",
+      "paper_id": "seed-paper-r09",
+      "item_type": "article",
+      "bibtex_key": "heid2023",
+      "starred": true,
+      "read_status": "reading",
+      "tags": ["手法", "不確実性"],
+      "added_at": "2026-09-18 10:00:00",
+      "note": "デモ用メモ。D-MPNN の実装と不確実性の較正が載っている。自分の conformal の主張と比べて読む。"
+    },
+    {
+      "id": "seed-ref-r07",
+      "paper_id": "seed-paper-r07",
+      "item_type": "article",
+      "bibtex_key": "wang2024",
+      "starred": false,
+      "read_status": "unread",
+      "tags": ["手法"],
+      "added_at": "2026-09-19 11:00:00"
+    },
+    {
+      "id": "seed-ref-r04",
+      "paper_id": "seed-paper-r04",
+      "item_type": "article",
+      "bibtex_key": "proietti2023",
+      "starred": false,
+      "read_status": "unread",
+      "tags": ["解釈"],
+      "added_at": "2026-09-19 12:00:00"
+    },
+    {
+      "id": "seed-ref-r33",
+      "paper_id": "seed-paper-r33",
+      "item_type": "article",
+      "bibtex_key": "park2024",
+      "starred": false,
+      "read_status": "unread",
+      "tags": ["競合"],
+      "added_at": "2026-09-19 13:00:00",
+      "note": "デモ用メモ。GNN と分子で関連度は高いが、中身は MD のポテンシャル並列化。候補から捨てない（C-07）。上位に混ざるのがこの製品の前提。"
+    },
+    {
+      "id": "seed-ref-book",
+      "paper_id": null,
+      "item_type": "book",
+      "bibtex_key": "hamilton2020",
+      "title": "Graph Representation Learning",
+      "authors": "William L. Hamilton",
+      "year": 2020,
+      "venue": "Morgan & Claypool",
+      "doi": "10.2200/S01045ED1V01Y202009AIM046",
+      "url": "https://doi.org/10.2200/S01045ED1V01Y202009AIM046",
+      "abstract": "This book is a gentle introduction to graph representation learning, including methods based on random walks, matrix factorization, and graph neural networks.",
+      "starred": false,
+      "read_status": "read",
+      "tags": ["手法"],
+      "added_at": "2026-09-10 08:00:00"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "seed-demo:2026-09-18",
+      "run_date": "2026-09-18",
+      "status": "ok",
+      "failed_sources_json": null,
+      "papers": ["seed-paper-r02", "seed-paper-r07", "seed-paper-r03", "seed-paper-r04", "seed-paper-r09", "seed-paper-r13", "seed-paper-r33", "seed-paper-r43"]
+    },
+    {
+      "run_id": "seed-demo:2026-09-17",
+      "run_date": "2026-09-17",
+      "status": "empty",
+      "failed_sources_json": null,
+      "papers": []
+    },
+    {
+      "run_id": "seed-demo:2026-09-16",
+      "run_date": "2026-09-16",
+      "status": "failed",
+      "failed_sources_json": "[{\"source\":\"openalex\",\"error\":\"OpenAlex 429: rate limited\"}]",
+      "papers": []
+    },
+    {
+      "run_id": "seed-demo:2026-09-15",
+      "run_date": "2026-09-15",
+      "status": "partial",
+      "failed_sources_json": "[{\"source\":\"openalex\",\"error\":\"timeout after 10s\"}]",
+      "papers": ["seed-paper-r02", "seed-paper-r09", "seed-paper-r10"]
+    }
+  ]
+}

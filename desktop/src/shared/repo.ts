@@ -30,6 +30,7 @@ export interface PaperInput {
 
 export interface RankedPaper {
   paper_id: string;
+  external_id: string | null;
   title: string;
   abstract: string | null;
   url: string | null;
@@ -258,7 +259,7 @@ export function saveScore(
 export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[] {
   return db
     .prepare(
-      `SELECT p.paper_id, p.title, p.abstract, p.url, p.relevance, p.sim_summary,
+      `SELECT p.paper_id, p.external_id, p.title, p.abstract, p.url, p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
               p.scored_at, p.in_library
        FROM papers p

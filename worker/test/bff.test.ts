@@ -1,11 +1,11 @@
 import { env } from 'cloudflare:test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { signAccessToken } from '../src/auth/jwt';
+import { signAccessToken } from '../src/auth';
 import { handleFetch } from '../src/index';
-import { ORCA_CHAT_URL } from '../src/orca';
-import { JEV_URL } from '../src/jev';
+import { ORCA_CHAT_URL } from '../src/shared/orca/chat';
+import { JEV_URL } from '../src/shared/jev/client';
 import { trendPrompt } from '../src/trend';
-import { utcDate } from '../src/date';
+import { utcDate } from '../src/shared/date';
 
 const PROJECT_USER = 'u1';
 
@@ -301,67 +301,61 @@ describe('POST /bff/trends（C1）', () => {
   });
 });
 
-describe('POST /bff/bibliography（C1・Jev）', () => {
-  const work = {
-    id: 'https://openalex.org/W1',
-    doi: 'https://doi.org/10.1234/foo',
-    display_name: 'A study of DPDK',
-    publication_year: 2024,
-    type: 'article',
-    authorships: [{ author: { display_name: 'Ada Lovelace' } }],
-    primary_location: { source: { display_name: 'SIGCOMM' } },
-  };
-
-  function jevAdopt(choice = 'w0') {
-    return {
-      model: 'jev-1.13.0',
-      answers: {
-        match: { type: 'choice', choice, confidence: 0.95, probabilities: { [choice]: 0.95, none: 0.05 } },
-        same_work: { type: 'noul', noul: 0.9 },
-      },
-      usage: { input_tokens: 42, output_tokens: 0 },
-    };
-  }
+describe('POST /bff/bibliography（C1・Orca）', () => {
+  const recordJson = JSON.stringify({
+    title: 'A study of DPDK',
+    authors: 'Ada Lovelace',
+    year: 2024,
+    doi: '10.1234/foo',
+    url: 'https://doi.org/10.1234/foo',
+    venue: 'SIGCOMM',
+    abstract: null,
+    item_type: 'article',
+  });
 
   it('鍵が無いなら 501', async () => {
     const res = await authed(
       '/bff/bibliography',
       { method: 'POST', body: JSON.stringify({ doi: '10.1234/foo' }) },
-      { ...env, JEV_API_KEY: undefined },
+      { ...env, ORCAROUTER_API_KEY: undefined, ORCAROUTER_API_KEY_INTERACTIVE: undefined },
     );
     expect(res.status).toBe(501);
   });
 
-  it('候補 0 件なら record は null。Jev も Orca も呼ばない', async () => {
-    const calls = mockUpstream({ papers: [] });
+  it('Orca が書誌を返し、OA の pdf_url を添える', async () => {
+    const calls = mockUpstream({
+      papers: [
+        {
+          doi: 'https://doi.org/10.1234/foo',
+          best_oa_location: { pdf_url: 'https://arxiv.org/pdf/foo.pdf' },
+        },
+      ],
+      orca: orcaBody(recordJson),
+    });
     const res = await authed('/bff/bibliography', {
       method: 'POST',
-      body: JSON.stringify({ title: 'no such paper' }),
+      body: JSON.stringify({ doi: '10.1234/foo', title: 'A study of DPDK' }),
     });
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject({
-      classification: 'C1',
-      model: null,
-      record: { title: null, authors: null, doi: null },
-    });
+    const body = (await res.json()) as {
+      classification: string;
+      model: string;
+      record: { title: string; doi: string };
+      pdf_url: string | null;
+    };
+    expect(body.classification).toBe('C1');
+    expect(body.model).toBe('openai/gpt-4o-mini');
+    expect(body.record).toMatchObject({ title: 'A study of DPDK', doi: '10.1234/foo' });
+    expect(body.pdf_url).toBe('https://arxiv.org/pdf/foo.pdf');
+    expect(calls.some((c) => c.url.includes('orcarouter'))).toBe(true);
     expect(calls.some((c) => c.url.includes('typesafe'))).toBe(false);
-    expect(calls.some((c) => c.url.includes('orcarouter'))).toBe(false);
+    const orca = calls.find((c) => c.url.includes('orcarouter'));
+    const sent = JSON.parse(String(orca?.init?.body)) as { response_format?: { type: string } };
+    expect(sent.response_format).toEqual({ type: 'json_object' });
   });
 
-  it('OpenAlex が落ちたら 502。捏造しない', async () => {
-    mockUpstream({ openalexStatus: 503 });
-    const res = await authed('/bff/bibliography', {
-      method: 'POST',
-      body: JSON.stringify({ doi: '10.1234/foo' }),
-    });
-    expect(res.status).toBe(502);
-    const body = (await res.json()) as { error: string; detail?: string };
-    expect(body.detail).toBe('openalex status=503');
-    expect(JSON.stringify(body)).not.toContain('test-jev-key');
-  });
-
-  it('Jev が落ちたら 502。usage は増やさない', async () => {
-    mockUpstream({ papers: [work], jevStatus: 503 });
+  it('Orca が落ちたら 502。usage は増やさない', async () => {
+    mockUpstream({ orcaStatus: 503 });
     const res = await authed('/bff/bibliography', {
       method: 'POST',
       body: JSON.stringify({ doi: '10.1234/foo' }),
@@ -371,54 +365,42 @@ describe('POST /bff/bibliography（C1・Jev）', () => {
     expect(n?.n).toBe(0);
   });
 
-  it('OpenAlex の行をコピーし、Orca には投げない', async () => {
-    const calls = mockUpstream({ papers: [work], jev: jevAdopt() });
+  it('title も doi も空なら項目 null。捏造しない', async () => {
+    mockUpstream({
+      orca: orcaBody(
+        JSON.stringify({
+          title: null,
+          authors: null,
+          year: null,
+          doi: null,
+          url: null,
+          venue: null,
+          abstract: null,
+          item_type: 'article',
+        }),
+      ),
+    });
     const res = await authed('/bff/bibliography', {
       method: 'POST',
-      body: JSON.stringify({ doi: '10.1234/foo', title: 'A study of DPDK' }),
+      body: JSON.stringify({ title: 'unknown work' }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      classification: string;
-      model: string;
-      record: { title: string; authors: string; doi: string };
-    };
-    expect(body.classification).toBe('C1');
-    expect(body.model).toBe('jev-1.13.0');
-    expect(body.record).toMatchObject({
-      title: 'A study of DPDK',
-      authors: 'Ada Lovelace',
-      doi: '10.1234/foo',
-    });
-    expect(calls.some((c) => c.url.includes('orcarouter'))).toBe(false);
-    const jev = calls.find((c) => c.url.includes('typesafe.ai'));
-    expect(new Headers(jev?.init?.headers).get('authorization')).toBe('Bearer test-jev-key');
-    const sent = JSON.parse(String(jev?.init?.body)) as { model: string; questions: { match: { type: string } } };
-    expect(sent.model).toBe('jev-1.13.0');
-    expect(sent.questions.match.type).toBe('choice');
-    const usage = await env.DB.prepare(
-      'SELECT classification, endpoint, model, tokens FROM llm_usage WHERE user_id = ?',
-    )
-      .bind(PROJECT_USER)
-      .first<{ classification: string; endpoint: string; model: string; tokens: number }>();
-    expect(usage).toMatchObject({
-      classification: 'C1',
-      endpoint: '/bff/bibliography',
-      model: 'jev-1.13.0',
-      tokens: 42,
-    });
-  });
-
-  it('Jev が none なら項目は null。著者を生成しない', async () => {
-    mockUpstream({ papers: [work], jev: jevAdopt('none') });
-    const res = await authed('/bff/bibliography', {
-      method: 'POST',
-      body: JSON.stringify({ title: 'A study of DPDK' }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { record: { authors: string | null; doi: string | null } };
+    const body = (await res.json()) as { record: { authors: string | null; doi: string | null }; pdf_url: string | null };
     expect(body.record.authors).toBeNull();
     expect(body.record.doi).toBeNull();
+    expect(body.pdf_url).toBeNull();
+  });
+
+  it('OpenAlex が落ちても書誌は返す。pdf_url は null', async () => {
+    mockUpstream({ openalexStatus: 503, orca: orcaBody(recordJson) });
+    const res = await authed('/bff/bibliography', {
+      method: 'POST',
+      body: JSON.stringify({ doi: '10.1234/foo' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { record: { title: string }; pdf_url: string | null };
+    expect(body.record.title).toBe('A study of DPDK');
+    expect(body.pdf_url).toBeNull();
   });
 });
 

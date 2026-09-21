@@ -1,6 +1,6 @@
 # ADR-0004: クラウド側インフラ全体構成（無料枠前提）
 
-- **ステータス**: 提案 / **日付**: 2026-09-20（同日改訂: 148行目の陳腐化した「ローカル LLM で競合／重複検査」記述を訂正）
+- **ステータス**: 提案 / **日付**: 2026-09-20（同日改訂: 148行目の陳腐化した「ローカル LLM で競合／重複検査」記述を訂正／改訂 2026-09-21: 上流は GitHub OAuth／同日: 書誌補完 BFF を責務から外さない／同日: 上流を Google OAuth に変更／同日: Claude scan 用に `test` 環境を `dev`/`prod` から分離）
 - **要件**: FR-01, FR-02, FR-08, FR-10, C-02, C-04, C-06, NFR-01, NFR-04
 - **前提**: [ADR-0001](0001-runtime-local-data-extensibility.md)（二層・データ配置）、[ADR-0002](0002-external-llm-bff-classification.md)（BFF・分類）
 
@@ -16,7 +16,8 @@
 | FR-10, C-04, C-06 | LLM を BFF 経由に閉じ、鍵をクライアントに出さない |
 | NFR-04 | 利用者単位の上限を数えて止める |
 
-ライブラリ・FC・テーマ生成・CLI（FR-04/05/07/11/12）はローカル完結。クラウドは関与しない。
+ライブラリの保存・PDF・書き出し・CLI（FR-05/11/12/14）と FC（FR-04）はローカル完結。
+公開書誌の穴埋めだけ BFF が関与する（ADR-0002 C1）。テーマ生成も BFF（C2）。
 
 ## 決定
 
@@ -119,11 +120,12 @@ flowchart LR
 
 ### 認証（C-02, C-06）
 
-- デスクトップ／CLI は OAuth + PKCE で認証し、BFF が自前の短命 JWT を発行する（ADR-0002）
-- **クライアント秘密を配布物に入れない**。PKCE を使うのはこのため
+- 上流は **Google OAuth（Authorization Code + PKCE）**。Auth0 / Clerk / Cloudflare Access は置かない。GitHub も初版では足さない（コンソールと client が二重になる）
+- コード交換は BFF がする。Google の `client_secret` は Workers Secrets。Electron には `client_id` だけ置く（`C-06`, `C-02`）
+- Google の OpenID `sub` を確認したあと、**自前の短命 JWT** を発行する（ADR-0002）。Google の access を API の Bearer にしない
+- `users.oauth_subject` は `google:{sub}`。名前・メールは持たない。scope は `openid` のみ。`email` / `profile` は要求しない（ADR-0001）
 - トークンの置き場はクライアント側（ADR-0001）。Worker は `Authorization: Bearer` を検証するだけ。
   Cookie でセッションを持たない（Electron / CLI で Cookie jar を共有できない）
-- クラウドはユーザー名・メールを持たず、OAuth subject のみ
 - JWT 検証は Worker 内で行う（API Shield を使わないため）。実装は `jose`
 - 署名鍵は Workers Secrets。鍵の入れ替え手順は未決
 
@@ -139,7 +141,7 @@ flowchart LR
 - **UTC のみ**。夏時間の影響を受けない時刻を選ぶ
 - **cron・Queues とも at-least-once**。`runs` の一意キーを `(project_id, run_date)` にし、重複実行は無視する
 - 失敗と 0 件は `runs.status`、ソース単位の失敗は `failed_sources_json`（FR-08）
-- **cron はアカウントで 5 本まで（Free）**。使うのは収集投入の 1 本だけで、プロジェクトごとに cron を増やす設計にしない
+- **cron はアカウントで 5 本まで（Free）**。日次収集に使うのは `dev` / `prod` の各 1 本。`test` には付けない。プロジェクトごとに cron を増やす設計にしない
 
 ### 同期 API（FR-02 のクラウド側）
 
@@ -192,7 +194,13 @@ flowchart LR
 
 ### 環境とデプロイ
 
-- `dev` / `prod` を wrangler の環境で分け、**D1 も分ける**（Free で 10 DB まで）
+- wrangler の環境は **`test` / `dev` / `prod`**。**D1 も分ける**（Free で 10 DB まで）
+  - `dev` — staging 相当。`push → dev` で載る。人が触る検証
+  - `test` — Claude scan と手動検証の隔離環境。**cron は付けない**（日次収集しない。Free の cron 5 本を日次用に残す）。公開面は `workers.dev` のまま（スキャン専用でゾーン防御の対象にしない）
+  - `prod` — 本番。`push → main`。公開面はゾーン配下の独自ドメイン
+- `test` の D1 には公開論文の fixture だけを seed する。未公開研究は置かない（`C-01`）。scan の本番判断材料にはしない
+- `dev` / `prod` のインフラ作成は人が `scripts/bootstrap.sh` を一度だけ走らせる。CI の毎回の push からは作らない
+- `test` だけは壊して作り直せるので、手動の `deploy-test` が bootstrap を冪等に走らせてよい
 - WAF・レート制限・cron を含めコードで管理（wrangler / Terraform）。手動設定を正にしない
 - 配布物に入る値（BFF の URL 等）と秘密を混ぜない。秘密は Workers Secrets のみ
 
@@ -239,7 +247,7 @@ flowchart LR
 
 ## 却下
 
-- `workers.dev` を公開面にする（ゾーンの防御が前提にできない）
+- `workers.dev` を**本番の**公開面にする（ゾーンの防御が前提にできない）。`test` はスキャン専用なので `workers.dev` のままにする
 - API Shield / Health Checks を前提にする（有料前提となり C-02 と釣り合わない）
 - cron 1 実行で全プロジェクトを収集する（CPU 10ms に収まらない）
 - プロジェクトごとに cron を増やす（Free は 5 本）
@@ -247,11 +255,12 @@ flowchart LR
 - エッジのレート制限だけで利用上限を実現する（Free は IP 基準のみ。NFR-04 を満たせない）
 - 収集用と API 用で Worker を分ける（設定と型が二重になる）
 - 手動でのゾーン設定運用（再現できない）
+- 仲介 IdP（Auth0 / Clerk / Cloudflare Access）や GitHub を初版で並べる（Google 直で足りる。秘密と設定が増える）
 - **自己点検 cron で cron 不発を検知する**（不発の頻度が低く、cron 1 本と通知経路を抱える割に合わない）
 
 ## 未決
 
-- 認証の上流 IdP と、署名鍵の入れ替え手順
+- JWT 署名鍵の入れ替え手順
 - 粗い採点をどこまで Worker でやるか（10ms に収まる範囲の見極め）
 - `runs` / `run_papers` の保持期間（D1 容量 500 MB/DB に対する見積り）
 - Durable Objects の無料枠条件（使えるなら利用上限の実装が単純になる）

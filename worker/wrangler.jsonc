@@ -5,14 +5,16 @@
 // 注意 2: wrangler の設定ファイルに `${VAR}` の展開は無い。ID は直接書く。
 //         D1 / KV / Queue の ID は**秘密ではない**ので、そのままコミットしてよい。
 //         秘密は Workers Secrets のみ（`C-06`）。
-// 注意 3: リソースの作成は `scripts/bootstrap.sh` で一度だけ行う。
-//         CI ではインフラを作らない（毎回の push で作ると事故が戻せない）。
+// 注意 3: リソースの作成は `scripts/bootstrap.sh`。dev / prod は人が一度だけ。
+//         test は隔離環境なので deploy-test が冪等に作ってよい。
 //
 // 前提（ADR-0004）:
 //   - HTTP と cron を 1 つの Worker に同居させる（分けると設定と型が二重になる）
-//   - cron はアカウントで 5 本まで（Free）。使うのは収集投入の 1 本だけ
-//   - dev / prod で D1 を分ける（Free で 10 DB まで）
-//   - 公開面はゾーン配下の独自ドメイン。workers.dev は防御の前提にしない
+//   - cron はアカウントで 5 本まで（Free）。日次収集に使うのは dev / prod の各 1 本
+//   - test / dev / prod で D1 を分ける（Free で 10 DB まで）
+//   - test は Claude scan 用の隔離環境。cron は付けない（日次収集しない）
+//   - 公開面（prod）はゾーン配下の独自ドメイン。workers.dev は防御の前提にしない
+//   - test の公開面は workers.dev のまま（スキャン専用。ゾーン防御の対象外でよい）
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ai-research-api",
@@ -20,7 +22,7 @@
   "compatibility_date": "2026-08-22",
   "observability": { "enabled": true },
 
-  // 既定環境は置かない。必ず --env dev / --env prod を指定する。
+  // 既定環境は置かない。必ず --env test / --env dev / --env prod を指定する。
   // ここに書いた値は env に引き継がれないので、下の env が実体。
 
   "env": {
@@ -60,6 +62,42 @@
       },
       // UTC のみ。夏時間の影響を受けない時刻を選ぶ（ADR-0004）
       "triggers": { "crons": ["0 20 * * *"] }
+    },
+
+    // Claude scan / 手動検証用。dev（staging 相当）の D1 を汚さない。
+    // cron は付けない。ID は秘密ではないので dev / prod と同じくコミットする。
+    "test": {
+      "name": "ai-research-api-test",
+      "vars": {
+        "ENVIRONMENT": "test",
+        "CONSENT_VERSION": "1",
+        "LLM_DAILY_CALL_LIMIT": "20",
+        "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
+        "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
+      },
+      "observability": { "enabled": true },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ai-research-test",
+          "database_id": "8c29caf9-1f7b-4b70-aa7a-d043bd3d44bf",
+          "migrations_dir": "./migrations"
+        }
+      ],
+      "kv_namespaces": [{ "binding": "IDEMPOTENCY", "id": "57854abc3b1e42f9bd23f673a8193787" }],
+      "queues": {
+        "producers": [{ "binding": "COLLECT_QUEUE", "queue": "ai-research-collect-test" }],
+        "consumers": [
+          {
+            "queue": "ai-research-collect-test",
+            "max_batch_size": 1,
+            "max_batch_timeout": 30,
+            "max_retries": 3,
+            "dead_letter_queue": "ai-research-collect-test-dlq"
+          }
+        ]
+      }
+      // cron なし。Free はアカウント 5 本。scan 用に日次収集は要らない
     },
 
     "prod": {

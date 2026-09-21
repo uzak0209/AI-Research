@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { chatBody, orcaKey } from '../src/orca';
-import { collectPolicy, reviewPolicy, DEFAULT_COLLECT_ROUTER, DEFAULT_REVIEW_ROUTER } from '../src/orca-policy';
+import { chatBody, orcaKey } from '../src/shared/orca/chat';
+import {
+  ORCA_POLICY,
+  collectPolicy,
+  reviewPolicy,
+  DEFAULT_COLLECT_ROUTER,
+  DEFAULT_REVIEW_ROUTER,
+} from '../src/shared/orca/policy';
 import type { Env } from '../src/env';
 
 describe('orcaKey', () => {
@@ -42,6 +48,15 @@ describe('段ごとのルーター（ADR-0005 §2）', () => {
     expect(body.model).toBe(DEFAULT_REVIEW_ROUTER);
     expect(body.temperature).toBe(0);
     expect(body.extra_body).toBeUndefined();
+  });
+
+  it('C1 書誌は Named Router を使わず extra_body を付ける', () => {
+    const body = chatBody(ORCA_POLICY.C1, [{ role: 'user', content: 'x' }]);
+    expect(body.model).toBe('openai/gpt-4o-mini');
+    expect(body.extra_body).toEqual({
+      route: 'fallback',
+      models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
   });
 
   it('明示 fallback を持つ policy なら extra_body を付ける', () => {

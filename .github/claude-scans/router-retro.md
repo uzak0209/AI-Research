@@ -6,7 +6,7 @@
 モデル選択・検索クエリ・段数は ADR の決定なので、設定を自分で変えない。提案だけ出す。
 （`proposal` は初期設定。提案の質を PR で見たうえで `auto-scan` へ上げるかを別途決める）
 
-**回す頻度に制限はない。1 日に何回回してもよい。**
+**回す頻度に制限はない。1 日に何回でも回してもよい。**
 代わりに**母数のガードをここに置く**——データが足りないまま提案を出さない。
 
 - 見る範囲は環境変数 `LOOKBACK_DAYS`（既定 7）日分
@@ -15,43 +15,32 @@
 - **前回の実行から D1 に新しい run が増えていなければ、何も出さない。**
   同じデータを見て同じ提案を作り直さない（shared.md の重複禁止）
 
-## 指標はスクリプトから取る
+## 指標は `d1-retro/` から取る
 
-**D1 の生データを読んで印象で語らない。**`scripts/retro-metrics` を実行し、
-出力された集計値 JSON だけを根拠にする。
+**D1 の生データを読んで印象で語らない。**CI が `worker/scripts/dump-retro.sh` を走らせ、
+成果物を `d1-retro/` に置いている。**その JSON だけを根拠にする。**
 
-- スクリプトが無い／失敗する／`CLOUDFLARE_ACCOUNT_ID`・`CLOUDFLARE_API_TOKEN` が空
-  → **issue を出さない。**何を試してなぜ取れなかったかを出力して終わる（`未確認は書かない`）
-- **`SELECT` だけを投げる。書き込むクエリを実行しない。**
-  渡されるトークンは deploy と共用で書き込み権限を持つ（`CLOUDFLARE_API_TOKEN`）。
-  読み取りだけに使うのはこちらの責任になる
-- 閾値の比較はスクリプトの結果に従う。**同じ入力なら同じ判定になること**
+- `d1-retro/index.json` を先に Read する
+- `ok: false` / `skipped: true` / 対象 DB が無い → **issue を出さない。**
+  何を見てなぜ取れなかったかを出力して終わる（`未確認は書かない`）
+- JSON は集計値だけ。`summary`・要旨・クエリ文言は入っていない
+- Cloudflare のトークンはプロセスに無い。`wrangler` や D1 HTTP API を自分で叩かない
+- 閾値の比較は JSON の数値に従う。**同じ入力なら同じ判定になること**
 
-### D1 の database_id
+`D1_TARGET`（環境変数）:
 
-**Secret にしない。**`worker/wrangler.jsonc` に書いてあり、同ファイルが
-「D1 / KV / Queue の ID は秘密ではない」と明記している。環境名から引く:
-
-```
-DB_ID=$(sed 's@^[[:space:]]*//.*@@' worker/wrangler.jsonc \
-  | jq -r --arg e dev '.env[$e].d1_databases[0].database_id')
-```
-
-`PLACEHOLDER_` が返ったら未構築とみなし、issue を出さずに降りる。
-
-参考（スクリプトが内部で使う API。権限は `D1 Read` で足りる）:
-
-```
-curl https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/$DB_ID/query \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"sql":"..."}'
-```
+| 値 | 読む D1 | いつ |
+|---|---|---|
+| `test` | `ai-research-test` だけ | 手動実行の既定。スキャン専用の fixture |
+| `live` | `ai-research-dev` と `ai-research-prod` | 定時実行 |
+| `all` | 3 つとも | 手動で並べて見るとき |
 
 ## 出してよい情報
 
 - **prod からは集計値だけ。**`summary` の本文・生成された検索語の文字列・論文の要旨を issue に書かない
 - クエリ文言そのものの良し悪しを論じるときは **dev の D1 だけ**を使う
+- **`fixture: true`（test D1）を本番ルーター変更の根拠にしない。**
+  スキャン手順やスクリプトの検証にだけ使う。公開論文の fixture であり未公開研究ではない
 - shared.md の「未公開研究の記載」禁止を継承する
 
 ## 調べる対象
@@ -68,6 +57,8 @@ curl https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/dat
    `rs-collect` が無料前提のまま成立しているか
 7. **ループ自身のコスト**: `llm_calls` の `endpoint = retro`。本体に対する比率
 
+JSON にその指標が無い（表がまだ無い）ときは、無いと書いて終わる。捏造しない（`C-07`）。
+
 ## 出さないもの
 
 - `routers/*.yaml` の自動変更。**差分案は issue の本文に書くまで**
@@ -75,9 +66,10 @@ curl https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/dat
 - `C-09` 採点を外部 LLM に出す提案（shared.md の禁則）
 - 候補の除外・削除の提案（`C-07`。`competing` / `usable` は**読み方の区別**であって除外の軸ではない）
 - 実装が無いこと自体（shared.md）
+- test fixture だけを見て Named Router の Default を変えろという提案
 
 ## issue
 
 `proposal,router`。**上限 3（暫定値。運用で見直す）**。
-引用必須（`scripts/retro-metrics` の出力値と、根拠にした期間・件数を貼る）。
+引用必須（`d1-retro/` の数値と、根拠にした期間・件数・`D1_TARGET` を貼る）。
 0 件なら、何を見てなぜ出さなかったかを出力する。

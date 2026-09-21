@@ -7,8 +7,12 @@ export interface Env {
   CONSENT_VERSION: string;
   /** 利用者あたり 1 日の LLM 呼び出し上限（NFR-04）。文字列で来る */
   LLM_DAILY_CALL_LIMIT: string;
-  /** 未設定の間は JWT を発行・検証しない。IdP が決まるまで /runs は 501 */
+  /** 未設定の間は JWT を発行・検証しない */
   JWT_SIGNING_KEY?: string;
+  /** Google OAuth の client_id。公開してよい。未設定ならログインは 501 */
+  GOOGLE_OAUTH_CLIENT_ID?: string;
+  /** Google OAuth の client_secret。クライアントに置かない（C-06） */
+  GOOGLE_OAUTH_CLIENT_SECRET?: string;
   /**
    * C1（interactive）用。cron / sensitive は C2/C3 を足すときに分ける（ADR-0002）。
    * 未設定なら BFF は 501。クライアントに置かない（C-06）
