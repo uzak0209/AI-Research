@@ -21,6 +21,7 @@ export async function scheduleCollect(deps: ScheduleDeps): Promise<void> {
           summary: p.summary,
           source,
           run_date: runDate,
+          user_id: p.user_id,
         },
       });
     }

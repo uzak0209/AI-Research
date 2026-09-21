@@ -1,0 +1,78 @@
+name: Metrics trend
+
+# ADR-0005 §8 / §10: トークンとコストが下がっているかを、実行のたびに出す。
+#
+# 出し先はジョブサマリ（Actions の実行結果画面）とアーティファクト。
+# リポジトリへコミットしないので permissions は contents: read のままでよい。
+#
+# 回す回数に制限は置かない。データが無ければ「取得失敗」「データなし」と出して降りる。
+# 欠損を成功と偽らない（C-07）。
+
+on:
+  schedule:
+    - cron: '30 21 * * *' # UTC 21:30 = JST 06:30（収集 cron 20:00 UTC の後）
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: '見る環境'
+        type: choice
+        options: [dev, prod]
+        default: dev
+      days:
+        description: '何日分を見るか'
+        type: string
+        default: '14'
+
+permissions:
+  contents: read
+
+# 手動実行は毎回別グループにして、続けて何回でも回せるようにする
+concurrency:
+  group: metrics-trend-${{ github.event.inputs.target_env || 'dev' }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'sched' }}
+  cancel-in-progress: false
+
+jobs:
+  trend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 依存は入れない。scripts/ は Node 標準 API だけで動く
+      - name: Collect metrics
+        id: collect
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          TARGET_ENV: ${{ github.event.inputs.target_env || 'dev' }}
+          DAYS: ${{ github.event.inputs.days || '14' }}
+        run: |
+          set -euo pipefail
+          node scripts/retro-metrics.mjs --env "$TARGET_ENV" --days "$DAYS" > metrics.json
+          status=$(node -e 'const fs=require("node:fs");process.stdout.write(JSON.parse(fs.readFileSync("metrics.json","utf8")).status)')
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "status=$status"
+
+      - name: Render summary
+        run: |
+          set -euo pipefail
+          node scripts/render-trend.mjs metrics.json | tee trend.md >> "$GITHUB_STEP_SUMMARY"
+
+      # 取れなかったことを警告で見えるようにする。ジョブは落とさない
+      # （データが無いのは異常ではない。異常なら retro-metrics が非 0 で落ちる）
+      - name: Warn when unavailable
+        if: steps.collect.outputs.status != 'ok'
+        run: |
+          echo "::warning::指標を取得できなかった（status=${{ steps.collect.outputs.status }}）。詳細はジョブサマリを見ること。"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{ github.event.inputs.target_env || 'dev' }}-${{ github.run_id }}
+          path: |
+            metrics.json
+            trend.md
+          retention-days: 30

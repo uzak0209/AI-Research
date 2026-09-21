@@ -32,7 +32,7 @@ function orcaBody(content: string, model = 'openai/gpt-4o-mini') {
   return {
     model,
     choices: [{ message: { role: 'assistant', content } }],
-    usage: { prompt_tokens: 11, completion_tokens: 19, total_tokens: 30 },
+    usage: { prompt_tokens: 11, completion_tokens: 19, total_tokens: 30, cost_usd: 0.0004 },
   };
 }
 
@@ -192,29 +192,45 @@ describe('POST /bff/trends（C1）', () => {
       extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
-    expect(sent.model).toBe('openai/gpt-4o-mini');
+    // /bff/trends は 2 段目（レビュー）。受け皿は Named Router 側の設定なので extra_body は付けない
+    expect(sent.model).toBe('orcarouter/rs-review');
     expect(sent.temperature).toBe(0);
-    expect(sent.extra_body).toEqual({
-      route: 'fallback',
-      models: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
-    });
+    expect(sent.extra_body).toBeUndefined();
     const user = sent.messages.find((m) => m.content.includes('Topic: DPDK'));
     expect(user?.content).toContain('DPDK architecture for 100Gbps');
     expect(user?.content).not.toContain('unpublished');
     expect(user?.content).not.toContain('manuscript');
 
     const usage = await env.DB.prepare(
-      'SELECT classification, endpoint, calls, tokens, model FROM llm_usage WHERE user_id = ?',
+      `SELECT classification, endpoint, calls, tokens, model, resolved_model,
+              cost_usd, latency_ms_sum, fallback_calls
+         FROM llm_usage WHERE user_id = ?`,
     )
       .bind(PROJECT_USER)
-      .first<{ classification: string; endpoint: string; calls: number; tokens: number; model: string }>();
+      .first<{
+        classification: string;
+        endpoint: string;
+        calls: number;
+        tokens: number;
+        model: string;
+        resolved_model: string;
+        cost_usd: number;
+        latency_ms_sum: number;
+        fallback_calls: number;
+      }>();
     expect(usage).toMatchObject({
       classification: 'C1',
       endpoint: '/bff/trends',
       calls: 1,
       tokens: 30,
-      model: 'openai/gpt-4o-mini',
+      // 要求した宛先（Named Router）と応答したモデルを別々に残す（ADR-0005 §10）
+      model: 'orcarouter/rs-review',
+      resolved_model: 'openai/gpt-4o-mini',
+      cost_usd: 0.0004,
+      fallback_calls: 0,
     });
+    // 実時間なので値は固定できない。合計として積まれていることだけ見る
+    expect(usage?.latency_ms_sum).toBeGreaterThanOrEqual(0);
     expect(JSON.stringify(usage)).not.toContain('100Gbps 向け');
   });
 
@@ -246,6 +262,18 @@ describe('POST /bff/trends（C1）', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { model: string };
     expect(body.model).toBe('google/gemini-2.5-flash');
+
+    // 要求は rs-review、応答は gemini。宛先ごとに比べられるよう別列で残す
+    const usage = await env.DB.prepare(
+      'SELECT model, resolved_model, fallback_calls FROM llm_usage WHERE user_id = ?',
+    )
+      .bind(PROJECT_USER)
+      .first<{ model: string; resolved_model: string; fallback_calls: number }>();
+    expect(usage).toMatchObject({
+      model: 'orcarouter/rs-review',
+      resolved_model: 'google/gemini-2.5-flash',
+      fallback_calls: 1,
+    });
   });
 
   it('上限に達していたら Orca の前に 429（NFR-04）', async () => {

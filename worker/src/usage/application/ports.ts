@@ -7,7 +7,14 @@ export type UsageStore = {
     userId: string;
     endpoint: string;
     classification: Classification;
-    model: string | null;
+    /** 要求した宛先。Named Router 名またはモデル ID */
+    requestedModel: string | null;
+    /** 実際に応答したモデル */
+    resolvedModel: string | null;
     tokens: number;
+    /** 取れなかったときは null。0 として足さない（C-07） */
+    costUsd?: number | null;
+    latencyMs?: number;
+    fallbackUsed?: boolean;
   }): Promise<void>;
 };

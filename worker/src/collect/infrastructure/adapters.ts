@@ -4,6 +4,8 @@ import { utcDate } from '../../shared/date';
 import { batch, execute } from '../../db/execute';
 import { db } from '../../db/kysely';
 import { fetchFromSource } from '../../shared/openalex/adapter';
+import { createUsage } from '../../usage';
+import { COLLECT_ENDPOINT, buildSearchQuery } from '../application/search-terms';
 import type {
   CollectClock,
   CollectIdempotency,
@@ -31,9 +33,9 @@ export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
 export function d1Projects(d1: D1Database): ProjectList {
   return {
     list: () =>
-      execute<{ project_id: string; summary: string }>(
+      execute<{ project_id: string; summary: string; user_id: string }>(
         d1,
-        db.selectFrom('projects').select(['project_id', 'summary']).compile(),
+        db.selectFrom('projects').select(['project_id', 'summary', 'user_id']).compile(),
       ),
   };
 }
@@ -118,5 +120,34 @@ export function ingestDeps(env: Env): IngestDeps {
   return {
     papers: openAlexFetcher(env.OPENALEX_API_KEY),
     runs: d1Runs(env.DB),
+    search: {
+      build: (summary) => buildSearchQuery(env, summary),
+    },
+    usage: {
+      async recordSearch(msg, usage) {
+        const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
+        if (!userId) return;
+        await createUsage(env).record({
+          userId,
+          endpoint: COLLECT_ENDPOINT,
+          classification: 'C1',
+          requestedModel: usage.requestedModel,
+          resolvedModel: usage.model,
+          tokens: usage.tokens,
+          costUsd: usage.costUsd,
+          latencyMs: usage.latencyMs,
+          fallbackUsed: usage.fallbackUsed,
+        });
+      },
+    },
   };
+}
+
+/** 配送中の古いメッセージに user_id が無いときだけ引く */
+async function projectUserId(d1: D1Database, projectId: string): Promise<string | null> {
+  const rows = await execute<{ user_id: string }>(
+    d1,
+    db.selectFrom('projects').select('user_id').where('project_id', '=', projectId).compile(),
+  );
+  return rows[0]?.user_id ?? null;
 }

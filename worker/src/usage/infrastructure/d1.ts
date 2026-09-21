@@ -49,6 +49,12 @@ export function d1UsageStore(d1: D1Database): UsageStore {
 
     async record(row) {
       const day = utcDate();
+      const requested = row.requestedModel ?? '';
+      const resolved = row.resolvedModel ?? '';
+      const cost = row.costUsd ?? 0;
+      const latency = row.latencyMs ?? 0;
+      const fallback = row.fallbackUsed ? 1 : 0;
+
       await execute(
         d1,
         db
@@ -58,15 +64,21 @@ export function d1UsageStore(d1: D1Database): UsageStore {
             usage_date: day,
             endpoint: row.endpoint,
             classification: row.classification,
-            model: row.model,
+            model: requested,
+            resolved_model: resolved,
             calls: 1,
             tokens: row.tokens,
+            cost_usd: cost,
+            latency_ms_sum: latency,
+            fallback_calls: fallback,
           })
           .onConflict((oc) =>
-            oc.columns(['user_id', 'usage_date', 'endpoint']).doUpdateSet({
+            oc.columns(['user_id', 'usage_date', 'endpoint', 'model', 'resolved_model']).doUpdateSet({
               calls: sql`calls + 1`,
               tokens: sql`tokens + ${row.tokens}`,
-              model: row.model,
+              cost_usd: sql`cost_usd + ${cost}`,
+              latency_ms_sum: sql`latency_ms_sum + ${latency}`,
+              fallback_calls: sql`fallback_calls + ${fallback}`,
               classification: row.classification,
             }),
           )

@@ -51,7 +51,14 @@ const message = (over: Partial<CollectMessage> = {}): CollectMessage => ({
 function mockOpenAlex(works: unknown[], status = 200) {
   return vi
     .spyOn(globalThis, 'fetch')
-    .mockImplementation(async () => new Response(JSON.stringify({ results: works }), { status }));
+    .mockImplementation(async (input) => {
+      const url = String(input);
+      // 収集 1 段目が Orca に検索語を取りに行く。テストでは外部を叩かない
+      if (url.includes('orcarouter')) {
+        return new Response('no', { status: 502 });
+      }
+      return new Response(JSON.stringify({ results: works }), { status });
+    });
 }
 
 beforeEach(async () => {
@@ -328,6 +335,7 @@ describe('収集の記録（FR-08 / C-07）', () => {
   });
 
   it('未知のソースは failed として残る（黙って握りつぶさない）', async () => {
+    mockOpenAlex([]);
     await expect(handleQueueMessage(message({ source: 'unknown-src' }), env)).rejects.toThrow();
 
     const run = await env.DB.prepare('SELECT status, failed_sources_json FROM runs WHERE run_id = ?')

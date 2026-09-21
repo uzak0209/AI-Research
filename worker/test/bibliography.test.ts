@@ -91,7 +91,18 @@ describe('completeBibliography', () => {
   it('注入した LLM と OA 照会だけ使う', async () => {
     const got = await completeBibliography(
       deps({
-        llm: { complete: async () => ({ ok: true, text: json, model: 'cheap', tokens: 12 }) },
+        llm: {
+          complete: async () => ({
+            ok: true,
+            text: json,
+            model: 'cheap',
+            requestedModel: 'openai/gpt-4o-mini',
+            tokens: 12,
+            costUsd: null,
+            latencyMs: 1,
+            fallbackUsed: false,
+          }),
+        },
         oaPdf: {
           pdfUrl: async (doi) => {
             expect(doi).toBe('10.1234/foo');
@@ -113,7 +124,18 @@ describe('completeBibliography', () => {
 
     const got = await completeBibliography(
       deps({
-        llm: { complete: async () => ({ ok: true, text: json, model: 'cheap', tokens: 1 }) },
+        llm: {
+          complete: async () => ({
+            ok: true,
+            text: json,
+            model: 'cheap',
+            requestedModel: 'openai/gpt-4o-mini',
+            tokens: 1,
+            costUsd: null,
+            latencyMs: 1,
+            fallbackUsed: false,
+          }),
+        },
         oaPdf: {
           pdfUrl: async () => {
             throw new Error('openalex');

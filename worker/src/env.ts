@@ -22,6 +22,12 @@ export interface Env {
   ORCAROUTER_API_KEY_INTERACTIVE?: string;
   ORCAROUTER_API_KEY_CRON?: string;
   ORCAROUTER_API_KEY_SENSITIVE?: string;
+  /**
+   * 段ごとの Named Router 名（ADR-0005 §2）。wrangler.jsonc の vars が正本。
+   * コンソールにルーターが無い間は素のモデル ID を入れて逃がせる
+   */
+  ORCA_ROUTER_COLLECT?: string;
+  ORCA_ROUTER_REVIEW?: string;
   /** OpenAlex。2026-02 以降は共有 IP からの無鍵呼び出しが落ちる。クライアントに置かない（C-06） */
   OPENALEX_API_KEY?: string;
   /** TypeSafe Jev（C1 書誌の判定）。クライアントに置かない（C-06, ADR-0002） */
@@ -35,4 +41,6 @@ export interface CollectMessage {
   summary: string;
   source: string;
   run_date: string;
+  /** 収集段の LLM 利用の帰属先。配送中の古いメッセージには無い */
+  user_id?: string;
 }

@@ -1,7 +1,7 @@
 import type { FetchedPaper } from '../../shared/papers/domain';
 import { fetchFromSource } from '../../shared/openalex/adapter';
 import { chatCompletion } from '../../shared/orca/chat';
-import { ORCA_POLICY } from '../../shared/orca/policy';
+import type { OrcaClassPolicy } from '../../shared/orca/policy';
 import { trendPrompt } from '../domain';
 import type { PaperSource, TrendLlm } from '../application/ports';
 
@@ -11,7 +11,7 @@ export function openAlexPaperSource(apiKey?: string): PaperSource {
   };
 }
 
-export function orcaTrendLlm(apiKey: string): TrendLlm {
+export function orcaTrendLlm(apiKey: string, policy: OrcaClassPolicy): TrendLlm {
   return {
     async summarize(topic: string, papers: FetchedPaper[]) {
       const result = await chatCompletion(
@@ -23,10 +23,19 @@ export function orcaTrendLlm(apiKey: string): TrendLlm {
           },
           { role: 'user', content: trendPrompt(topic, papers) },
         ],
-        ORCA_POLICY.C1,
+        policy,
       );
       if (!result.ok) return { ok: false };
-      return { ok: true, summary: result.text, model: result.model, tokens: result.tokens };
+      return {
+        ok: true,
+        summary: result.text,
+        model: result.model,
+        requestedModel: result.requestedModel,
+        tokens: result.tokens,
+        costUsd: result.costUsd,
+        latencyMs: result.latencyMs,
+        fallbackUsed: result.fallbackUsed,
+      };
     },
   };
 }

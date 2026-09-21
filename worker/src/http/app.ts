@@ -18,7 +18,7 @@ import {
 import { TREND_ENDPOINT, createTrendApp } from '../trend';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
-import { ORCA_POLICY } from '../shared/orca/policy';
+import { ORCA_POLICY, reviewPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
 
 export type AppEnv = { Bindings: Env };
@@ -228,7 +228,8 @@ app.openapi(
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const apiKey = orcaKey(c.env, ORCA_POLICY.C1.slot);
+    const policy = reviewPolicy(c.env);
+    const apiKey = orcaKey(c.env, policy.slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
     }
@@ -241,7 +242,11 @@ app.openapi(
     }
 
     const { topic } = c.req.valid('json');
-    const got = await createTrendApp({ orcaKey: apiKey, openAlexKey: c.env.OPENALEX_API_KEY }).survey(topic);
+    const got = await createTrendApp({
+      orcaKey: apiKey,
+      openAlexKey: c.env.OPENALEX_API_KEY,
+      policy,
+    }).survey(topic);
     if (!got.ok) {
       if (got.detail === 'orcarouter') fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
       fail(502, { error: 'source_failed', detail: got.detail });
@@ -252,8 +257,12 @@ app.openapi(
         userId,
         endpoint: TREND_ENDPOINT,
         classification: 'C1',
-        model: got.model,
+        requestedModel: got.requestedModel,
+        resolvedModel: got.model,
         tokens: got.tokens,
+        costUsd: got.costUsd,
+        latencyMs: got.latencyMs,
+        fallbackUsed: got.fallbackUsed,
       });
     }
 
@@ -325,8 +334,12 @@ app.openapi(
         userId,
         endpoint: BIBLIOGRAPHY_ENDPOINT,
         classification: 'C1',
-        model: llm.model,
+        requestedModel: llm.requestedModel,
+        resolvedModel: llm.model,
         tokens: llm.tokens,
+        costUsd: llm.costUsd,
+        latencyMs: llm.latencyMs,
+        fallbackUsed: llm.fallbackUsed,
       });
     }
 

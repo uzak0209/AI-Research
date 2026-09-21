@@ -7,7 +7,11 @@ export type BibliographyOk = {
   record: BibliographyRecord;
   pdf_url: string | null;
   model: string | null;
+  requestedModel: string | null;
   tokens: number;
+  costUsd: number | null;
+  latencyMs: number;
+  fallbackUsed: boolean;
 };
 export type BibliographyFail = { ok: false; status: number; detail: string };
 
@@ -28,5 +32,15 @@ export async function completeBibliography(
       pdf_url = null;
     }
   }
-  return { ok: true, record, pdf_url, model: got.model, tokens: got.tokens };
+  return {
+    ok: true,
+    record,
+    pdf_url,
+    model: got.model,
+    requestedModel: got.requestedModel,
+    tokens: got.tokens,
+    costUsd: got.costUsd,
+    latencyMs: got.latencyMs,
+    fallbackUsed: got.fallbackUsed,
+  };
 }

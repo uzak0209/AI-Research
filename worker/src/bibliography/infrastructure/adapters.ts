@@ -34,7 +34,16 @@ export function orcaBibliographyLlm(apiKey: string): BibliographyLlm {
         true,
       );
       if (!got.ok) return { ok: false };
-      return { ok: true, text: got.text, model: got.model, tokens: got.tokens };
+      return {
+        ok: true,
+        text: got.text,
+        model: got.model,
+        requestedModel: got.requestedModel,
+        tokens: got.tokens,
+        costUsd: got.costUsd,
+        latencyMs: got.latencyMs,
+        fallbackUsed: got.fallbackUsed,
+      };
     },
   };
 }
