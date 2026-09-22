@@ -188,3 +188,11 @@ CREATE TABLE IF NOT EXISTS settings (
   value     TEXT,
   encrypted INTEGER NOT NULL DEFAULT 0
 );
+
+-- 引用ファイル書き出し先ごとの前回書き出し記録（FR-12, C-08）。
+-- マーカーが消えたとき「初回」と区別し、マーカー内の手編集を検知するために持つ
+CREATE TABLE IF NOT EXISTS cite_exports (
+  path       TEXT PRIMARY KEY,
+  inner_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

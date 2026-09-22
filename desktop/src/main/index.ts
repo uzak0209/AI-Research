@@ -649,17 +649,19 @@ function registerIpc(): void {
   ipcMain.handle('lib:add', async (_e, projectId: string, item: ReferenceInput) => {
     const reference_id = addReference(db, projectId, item);
     let pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped' = 'skipped';
+    let citeConflict = false;
     if (biblio) {
       try {
         const got = await biblio.follow(projectId, reference_id);
         pdf = got.pdf;
+        citeConflict = got.cite === 'conflict';
       } catch {
         // 書誌／PDF 失敗でも文献行は残す（C-07）
         pdf = 'failed';
       }
       notifyLibrary();
     }
-    return { reference_id, pdf };
+    return { reference_id, pdf, citeConflict };
   });
 
   ipcMain.handle('lib:follow', async (_e, projectId: string, referenceId: string) => {

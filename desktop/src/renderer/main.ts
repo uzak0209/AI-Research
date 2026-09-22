@@ -585,7 +585,7 @@ async function renderRefDetail(referenceId: string | null) {
         return;
       const got = await guard('書誌の取得', () => window.api.lib.follow(projectId, r.reference_id));
       if (!got) return;
-      setStatus('書誌を補った');
+      setStatus('書誌を補った' + citeExportWarning(got.cite === 'conflict'));
       await refreshLibrary();
       await renderRefDetail(r.reference_id);
     });
@@ -715,7 +715,7 @@ $('lib-new').addEventListener('click', () => {
     );
     if (!res) return;
     selectedRef = res.reference_id;
-    setStatus(libraryAddStatus(res.pdf));
+    setStatus(libraryAddStatus(res.pdf, res.citeConflict));
     await refreshLibrary();
     await renderRefDetail(selectedRef);
   });
@@ -1055,24 +1055,32 @@ function renderPaperDetail(p: RankedPaper) {
       add.disabled = !!p.in_library;
       return;
     }
-    setStatus(libraryAddStatus(res.pdf));
+    setStatus(libraryAddStatus(res.pdf, res.citeConflict));
     await refreshFeed();
   });
   pane.append(el('div', { class: 'detail-section actions', 'data-align': 'end' }, add));
 }
 
-function libraryAddStatus(pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped'): string {
-  switch (pdf) {
-    case 'ok':
-      return 'ライブラリに保存し、PDF を取得した';
-    case 'exists':
-      return 'ライブラリに保存した（PDF は既にあった）';
-    case 'not_pdf':
-    case 'failed':
-      return 'ライブラリに保存した。PDF は取得できなかった';
-    case 'skipped':
-      return 'ライブラリに保存した。公開の直 PDF は無かった';
-  }
+function libraryAddStatus(pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped', citeConflict = false): string {
+  const base = (() => {
+    switch (pdf) {
+      case 'ok':
+        return 'ライブラリに保存し、PDF を取得した';
+      case 'exists':
+        return 'ライブラリに保存した（PDF は既にあった）';
+      case 'not_pdf':
+      case 'failed':
+        return 'ライブラリに保存した。PDF は取得できなかった';
+      case 'skipped':
+        return 'ライブラリに保存した。公開の直 PDF は無かった';
+    }
+  })();
+  return base + citeExportWarning(citeConflict);
+}
+
+/** マーカー内の手編集を検知して上書きしなかったときだけ警告を足す（ADR-0003 C-08） */
+function citeExportWarning(citeConflict: boolean): string {
+  return citeConflict ? '。引用ファイルは手編集を検知したため更新していない' : '';
 }
 
 /** 自発調査の結果表示。欠けたフィールドで落とさない（メインとレンダラの世代差） */

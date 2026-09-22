@@ -92,9 +92,13 @@ const api = {
       ipcRenderer.invoke('lib:add', projectId, item) as Promise<{
         reference_id: string;
         pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        citeConflict: boolean;
       }>,
     follow: (projectId: string, referenceId: string) =>
-      ipcRenderer.invoke('lib:follow', projectId, referenceId),
+      ipcRenderer.invoke('lib:follow', projectId, referenceId) as Promise<{
+        pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        cite: 'ok' | 'skipped' | 'conflict';
+      }>,
     update: (referenceId: string, patch: unknown) =>
       ipcRenderer.invoke('lib:update', referenceId, patch),
     remove: (referenceId: string) => ipcRenderer.invoke('lib:delete', referenceId),

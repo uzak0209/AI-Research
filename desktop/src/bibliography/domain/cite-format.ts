@@ -89,16 +89,66 @@ export function renderHayagriva(items: CiteItem[]): string {
   return chunks.join('\n');
 }
 
-/** マーカー内だけ差し替える。片方だけ残っていたら触らない（C-08） */
-export function spliceManaged(source: string, inner: string, begin: string, end: string): string | null {
+/**
+ * 内容比較用の簡易ハッシュ（暗号目的ではない。マーカー内の手編集の有無だけを見る）。
+ * 前回書き出した inner の文字列と今回の inner・マーカー間の実文字列を比べるためだけに使う。
+ */
+export function hashInner(inner: string): string {
+  let h1 = 0xdeadbeef ^ inner.length;
+  let h2 = 0x41c6ce57 ^ inner.length;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h1 >>> 0).toString(16).padStart(8, '0') + (h2 >>> 0).toString(16).padStart(8, '0');
+}
+
+export type SpliceDecision =
+  | { status: 'create' | 'update'; next: string; hash: string }
+  /** マーカーごと消されていた。追跡は諦める。復元しない（ADR-0003 却下事項） */
+  | { status: 'skip_removed' }
+  /** 片方だけ残っている。壊れているので触らない */
+  | { status: 'skip_broken' }
+  /** マーカー内が前回書き出し分と食い違う＝手編集。上書きせず警告して終わる */
+  | { status: 'skip_conflict' };
+
+/**
+ * マーカー内だけ差し替える計画を立てる（純粋関数。I/O はしない）。
+ *
+ * `lastHash` は前回このマーカーに書き出した inner のハッシュ。
+ * - マーカーが両方無い場合: `lastHash` が有れば「消された」= 何もしない。無ければ初回書き出し
+ * - マーカーが両方ある場合: マーカー内の現在の文字列のハッシュが `lastHash` と食い違えば手編集とみなす
+ */
+export function planSplice(
+  source: string,
+  inner: string,
+  begin: string,
+  end: string,
+  lastHash: string | null,
+): SpliceDecision {
   const start = source.indexOf(begin);
   const stop = source.indexOf(end);
+
   if (start === -1 && stop === -1) {
+    if (lastHash !== null) return { status: 'skip_removed' };
     const pad = source.length === 0 || source.endsWith('\n') ? '' : '\n';
-    return `${source}${pad}${begin}\n${inner}\n${end}\n`;
+    return { status: 'create', next: `${source}${pad}${begin}\n${inner}\n${end}\n`, hash: hashInner(inner) };
   }
-  if (start === -1 || stop === -1 || stop < start) return null;
-  return `${source.slice(0, start)}${begin}\n${inner}\n${source.slice(stop)}`;
+  if (start === -1 || stop === -1 || stop < start) return { status: 'skip_broken' };
+
+  let current = source.slice(start + begin.length, stop);
+  if (current.startsWith('\n')) current = current.slice(1);
+  if (current.endsWith('\n')) current = current.slice(0, -1);
+  if (lastHash !== null && hashInner(current) !== lastHash) return { status: 'skip_conflict' };
+
+  return {
+    status: 'update',
+    next: `${source.slice(0, start)}${begin}\n${inner}\n${source.slice(stop)}`,
+    hash: hashInner(inner),
+  };
 }
 
 export function citeInner(items: CiteItem[], format: CiteFormat): string {
