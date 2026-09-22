@@ -625,7 +625,7 @@ function registerIpc(): void {
 
     const project = getProject(db, projectId);
     if (!project) throw new Error(`project not found: ${projectId}`);
-    if (!project.summary.trim()) throw new Error('課題意識が空です');
+    if (!project.summary.trim()) throw new Error('研究の概要を設定してください');
 
     const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
     await cloud.client.putProject(projectId, {

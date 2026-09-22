@@ -1073,8 +1073,8 @@ function feedEmptyState(
     return el(
       'div',
       { class: 'empty-state' },
-      el('p', { class: 'empty-title' }, '研究の概要が未保存です'),
-      el('p', { class: 'empty' }, '設定で研究の概要を書いて保存すると、収集の材料になります。'),
+      el('p', { class: 'empty-title' }, '研究内容が未設定です'),
+      el('p', { class: 'empty' }, '設定で研究内容の概要を書いて保存すると、調査を開始できます。'),
       goSettings(),
     );
   }
@@ -1106,7 +1106,7 @@ async function refreshFeed() {
   const missingPdf = res.unscoredMissingPdf ?? 0;
   lastScoreMode = scoreMode;
   const hint = $('feed-score-hint');
-  if (hint) hint.textContent = '1 回の調査が 1 報告です。';
+
 
   const list = $('feed-list');
   list.replaceChildren();
@@ -1502,8 +1502,8 @@ async function refreshMypaper() {
       el(
         'div',
         { class: 'empty-state' },
-        el('p', { class: 'empty-title' }, 'まだ置いていません'),
-        el('p', { class: 'empty' }, '「配置」か、mypaper フォルダに PDF / 原稿を入れてください。読む順の材料になります。'),
+        el('p', { class: 'empty-title' }, '文献がありません'),
+        el('p', { class: 'empty' }, '「配置」から PDF / 原稿を保存してください。'),
       ),
     );
     selectedMypaper = null;
@@ -1545,7 +1545,7 @@ function showMypaperEmpty(): void {
       'div',
       { class: 'empty-state' },
       el('p', { class: 'empty-title' }, 'ファイルを置く'),
-      el('p', { class: 'empty' }, '配置するか、mypaper フォルダに PDF / 原稿を入れるとここに出ます。読む順の材料になります。ライブラリには入りません。'),
+      el('p', { class: 'empty' }, ' PDF / 原稿を選択して閲覧・編集できます。'),
     ),
   );
 }
