@@ -210,19 +210,21 @@ describe('CloudClient', () => {
     await expect(client.pullRuns('proj-1')).rejects.toThrow(/403/);
   });
 
-  it('putProject は PUT /projects/{id} に title と summary を送る', async () => {
+  it('putProject は PUT /projects/{id} に title と summary と search_terms を送る', async () => {
     const { auth } = session();
     auth.setAccessToken('access-1');
     const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
       expect(String(input)).toContain('/projects/proj-1');
       expect(init?.method).toBe('PUT');
-      expect(init?.body).toBe(JSON.stringify({ title: 'T', summary: 'S' }));
-      return new Response(JSON.stringify({ project_id: 'proj-1', title: 'T', summary: 'S' }), {
-        status: 200,
-      });
+      expect(init?.body).toBe(JSON.stringify({ title: 'T', summary: 'S', search_terms: ['DPDK'] }));
+      return new Response(
+        JSON.stringify({ project_id: 'proj-1', title: 'T', summary: 'S', search_terms: ['DPDK'] }),
+        { status: 200 },
+      );
     });
     const client = new CloudClient('https://api.test', auth, fetchImpl as unknown as typeof fetch);
-    const body = await client.putProject('proj-1', { title: 'T', summary: 'S' });
+    const body = await client.putProject('proj-1', { title: 'T', summary: 'S', search_terms: ['DPDK'] });
     expect(body.summary).toBe('S');
+    expect(body.search_terms).toEqual(['DPDK']);
   });
 });

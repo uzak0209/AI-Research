@@ -12,6 +12,7 @@ export const collectMessageSchema = z.object({
   // 収集段の LLM 利用を誰の分として数えるか（NFR-04）。
   // 配送中の古いメッセージには無いので optional。無ければ project から引く
   user_id: z.string().min(1).optional(),
+  search_terms: z.array(z.string().trim().min(1).max(24)).max(40).optional(),
 });
 
 /**

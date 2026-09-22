@@ -375,7 +375,7 @@ app.openapi(
     },
     responses: {
       200: {
-        description: '課題意識（summary）の同期。判定の書き戻しはしない',
+        description: '課題意識と確定検索語の同期。判定の書き戻しはしない',
         content: { 'application/json': { schema: ProjectResponseSchema } },
       },
       400: { description: 'title / summary 欠落', ...jsonError },
@@ -388,24 +388,35 @@ app.openapi(
     if (!auth.ok) abort(auth);
 
     const { project_id } = c.req.valid('param');
-    const { title, summary } = c.req.valid('json');
+    const { title, summary, search_terms } = c.req.valid('json');
     const usage = createUsage(c.env);
     const userId = await usage.ensureUser(auth.payload.sub!);
 
-    const existing = await execute<{ user_id: string }>(
+    const existing = await execute<{ user_id: string; search_terms_json: string | null }>(
       c.env.DB,
-      db.selectFrom('projects').select('user_id').where('project_id', '=', project_id).compile(),
+      db
+        .selectFrom('projects')
+        .select(['user_id', 'search_terms_json'])
+        .where('project_id', '=', project_id)
+        .compile(),
     );
     if (existing[0] && existing[0].user_id !== userId) {
       fail(403, { error: 'forbidden', detail: 'project not owned by user' });
     }
+
+    const termsJson =
+      search_terms !== undefined ? JSON.stringify(search_terms) : (existing[0]?.search_terms_json ?? null);
 
     if (existing[0]) {
       await execute(
         c.env.DB,
         db
           .updateTable('projects')
-          .set({ title, summary })
+          .set({
+            title,
+            summary,
+            ...(search_terms !== undefined ? { search_terms_json: termsJson } : {}),
+          })
           .where('project_id', '=', project_id)
           .where('user_id', '=', userId)
           .compile(),
@@ -420,13 +431,22 @@ app.openapi(
             user_id: userId,
             title,
             summary,
+            search_terms_json: termsJson,
             created_at: new Date().toISOString(),
           })
           .compile(),
       );
     }
 
-    return c.json({ project_id, title, summary }, 200);
+    return c.json(
+      {
+        project_id,
+        title,
+        summary,
+        search_terms: parseSearchTermsJson(termsJson),
+      },
+      200,
+    );
   },
 );
 
@@ -466,11 +486,16 @@ app.openapi(
       fail(429, { error: 'rate_limited', detail: `wait ${MANUAL_COLLECT_COOLDOWN_SEC}s before next collect` });
     }
 
-    const rows = await execute<{ user_id: string; summary: string; title: string }>(
+    const rows = await execute<{
+      user_id: string;
+      summary: string;
+      title: string;
+      search_terms_json: string | null;
+    }>(
       c.env.DB,
       db
         .selectFrom('projects')
-        .select(['user_id', 'summary', 'title'])
+        .select(['user_id', 'summary', 'title', 'search_terms_json'])
         .where('project_id', '=', project_id)
         .compile(),
     );
@@ -489,6 +514,7 @@ app.openapi(
         project_id,
         summary: project.summary,
         user_id: userId,
+        search_terms: parseSearchTermsJson(project.search_terms_json),
       },
     );
 

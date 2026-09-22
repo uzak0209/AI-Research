@@ -139,18 +139,23 @@ export class CloudClient {
     return (await res.json()) as SyncRunsResponse;
   }
 
-  /** 課題意識（title / summary）をクラウドへ。判定の書き戻しではない（C-01） */
+  /** 課題意識と確定検索語をクラウドへ。判定の書き戻しではない（C-01） */
   async putProject(
     projectId: string,
-    input: { title: string; summary: string },
-  ): Promise<{ project_id: string; title: string; summary: string }> {
+    input: { title: string; summary: string; search_terms?: string[] },
+  ): Promise<{ project_id: string; title: string; summary: string; search_terms?: string[] }> {
     const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     });
     if (!res.ok) throw new Error(`putProject failed: ${res.status}`);
-    return (await res.json()) as { project_id: string; title: string; summary: string };
+    return (await res.json()) as {
+      project_id: string;
+      title: string;
+      summary: string;
+      search_terms?: string[];
+    };
   }
 
   /** 自発調査。Queue 投入のみ（FR-17）。収集本体は worker consumer */

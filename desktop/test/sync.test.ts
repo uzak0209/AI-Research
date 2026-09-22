@@ -107,6 +107,7 @@ describe('syncProjectFromCloud', () => {
     expect(putProject).toHaveBeenCalledWith(PROJ, {
       title: 'Title',
       summary: 'Summary text\n\nDPDK\nRSS',
+      search_terms: ['DPDK', 'RSS'],
     });
     expect(inserted).toBe(1);
     expect(lastRunId).toBe('run-2');

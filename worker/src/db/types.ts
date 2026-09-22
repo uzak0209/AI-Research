@@ -13,6 +13,8 @@ export interface Projects {
   user_id: string;
   title: string;
   summary: string;
+  /** 利用者が確定した検索語 JSON。無ければ収集時に LLM で分解する */
+  search_terms_json: string | null;
   created_at: string;
 }
 

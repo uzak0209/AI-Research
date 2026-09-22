@@ -1073,8 +1073,8 @@ function feedEmptyState(
     return el(
       'div',
       { class: 'empty-state' },
-      el('p', { class: 'empty-title' }, '研究の概要が未保存です'),
-      el('p', { class: 'empty' }, '設定で研究の概要を書いて保存すると、収集の材料になります。'),
+      el('p', { class: 'empty-title' }, '研究内容が未設定です'),
+      el('p', { class: 'empty' }, '設定で研究内容の概要を書いて保存すると、調査を開始できます。'),
       goSettings(),
     );
   }
@@ -1106,7 +1106,7 @@ async function refreshFeed() {
   const missingPdf = res.unscoredMissingPdf ?? 0;
   lastScoreMode = scoreMode;
   const hint = $('feed-score-hint');
-  if (hint) hint.textContent = '1 回の調査が 1 報告です。';
+
 
   const list = $('feed-list');
   list.replaceChildren();
@@ -1502,8 +1502,8 @@ async function refreshMypaper() {
       el(
         'div',
         { class: 'empty-state' },
-        el('p', { class: 'empty-title' }, 'まだ置いていません'),
-        el('p', { class: 'empty' }, '「配置」か、mypaper フォルダに PDF / 原稿を入れてください。PDF は書誌を作ります。'),
+        el('p', { class: 'empty-title' }, '文献がありません'),
+        el('p', { class: 'empty' }, '「配置」から PDF / 原稿を保存してください。'),
       ),
     );
     selectedMypaper = null;
@@ -1545,7 +1545,7 @@ function showMypaperEmpty(): void {
       'div',
       { class: 'empty-state' },
       el('p', { class: 'empty-title' }, 'ファイルを置く'),
-      el('p', { class: 'empty' }, '配置するか、mypaper フォルダに PDF / 原稿を入れるとここに出ます。PDF は書誌を作ります。'),
+      el('p', { class: 'empty' }, ' PDF / 原稿を選択して閲覧・編集できます。'),
     ),
   );
 }
@@ -1566,8 +1566,8 @@ function renderMypaperDetail(f: MypaperFile) {
       'p',
       { class: 'note-info' },
       f.kind === 'pdf'
-        ? '置いた PDF から書誌を作り、ライブラリにも載せます。原本は mypaper に残します。'
-        : '原稿はクラウドへは出しません。',
+        ? '自分の研究として読む順に使います。ライブラリには載せません。原本は mypaper に残します。'
+        : '原稿はクラウドへは出しません。ライブラリにも入れません。',
     ),
   );
   const open = el('button', { class: 'btn', 'data-variant': 'secondary' }, '外部で開く');
@@ -1589,7 +1589,7 @@ on('mypaper-import', 'click', async () => {
   const fail = res.failed.length;
   if (fail > 0) setStatus(`配置 ${n} 件、失敗 ${fail} 件`, 'error');
   else if (n === 0) setStatus('配置をキャンセルした');
-  else setStatus(`${n} 件を mypaper に置いた。PDF は書誌を作っています`);
+  else setStatus(`${n} 件を mypaper に置いた`);
   await refreshMypaper();
 });
 

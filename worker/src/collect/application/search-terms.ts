@@ -227,6 +227,44 @@ export type SearchTerms = {
   combo: string[];
 };
 
+/**
+ * 設定で確定した語を OpenAlex のクエリ列にする。
+ * 先頭を軸にし、残りは軸×各語の AND。空白入りの術語はそのまま 1 クエリにする。
+ */
+export function queriesFromConfirmedTerms(terms: string[]): string[] {
+  const combo = mergeKeywordTags([], terms);
+  if (combo.length === 0) return [];
+
+  const primary = combo[0]!;
+  const queries: string[] = [primary];
+  const axes = combo.filter(isQueryAxisTerm);
+  if (axes.length > 1) {
+    const together = andSearchQuery(axes.slice(0, MAX_CORE_TERMS));
+    if (together && !queries.includes(together)) queries.unshift(together);
+  }
+  for (const t of combo.slice(1)) {
+    const q = `${primary} ${t}`.replace(/\s+/g, ' ').trim();
+    if (q && !queries.includes(q)) queries.push(q);
+    if (queries.length >= MAX_COMBO_QUERIES) break;
+  }
+  return queries.slice(0, MAX_COMBO_QUERIES);
+}
+
+/** 確定語があればそれを使う。空・不正だけなら null（呼び出し側が LLM に落とす） */
+export function searchTermsFromConfirmed(raw?: readonly string[] | null): SearchTerms | null {
+  const combo = mergeKeywordTags([], [...(raw ?? [])]);
+  if (combo.length === 0) return null;
+  const queries = queriesFromConfirmedTerms(combo);
+  if (queries.length === 0) return null;
+  return {
+    query: queries[0] ?? '',
+    queries,
+    generated: false,
+    usage: null,
+    combo,
+  };
+}
+
 const EMPTY_TERMS: SearchTerms = {
   query: '',
   queries: [],
@@ -246,7 +284,14 @@ const EMPTY_TERMS: SearchTerms = {
  * `The` のような機能語が検索の軸になり、関係の無い論文を集めてしまう。
  * 空で返し、収集を失敗として残す（C-07）。
  */
-export async function buildSearchQuery(env: Env, summary: string): Promise<SearchTerms> {
+export async function buildSearchQuery(
+  env: Env,
+  summary: string,
+  confirmed?: readonly string[] | null,
+): Promise<SearchTerms> {
+  const saved = searchTermsFromConfirmed(confirmed);
+  if (saved) return saved;
+
   const policy = collectPolicy(env);
   const apiKey = orcaKey(env, policy.slot);
   if (!apiKey) return EMPTY_TERMS;

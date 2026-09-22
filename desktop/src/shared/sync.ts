@@ -17,6 +17,16 @@ export function cloudSummaryFromLocal(
   return head ? `${head}\n\n${block}` : block;
 }
 
+/** 設定で確定した検索語。未保存なら関連技術タグを使う（同じ画面のタグ） */
+export function localSearchTerms(db: Db, projectId: string): string[] {
+  const project = getProject(db, projectId);
+  const saved = parseSearchTerms(project?.last_search_terms);
+  if (saved.length) return saved;
+  return listChunks(db, projectId)
+    .map((c) => c.text.trim())
+    .filter(Boolean);
+}
+
 export async function syncProjectFromCloud(
   db: Db,
   client: CloudClient,
@@ -32,7 +42,11 @@ export async function syncProjectFromCloud(
   if (!project) throw new Error(`project not found: ${projectId}`);
 
   const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
-  await client.putProject(projectId, { title: project.title, summary });
+  await client.putProject(projectId, {
+    title: project.title,
+    summary,
+    search_terms: localSearchTerms(db, projectId),
+  });
 
   const { runs } = await client.pullRuns(projectId, project.last_run_id);
 

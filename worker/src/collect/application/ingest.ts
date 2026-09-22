@@ -41,7 +41,7 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   if (!parsed.success) throw new Error('invalid collect message');
   const msg = parsed.data;
 
-  const search = await deps.search.build(msg.summary);
+  const search = await deps.search.build(msg.summary, msg.search_terms);
   if (search.usage) await deps.usage.recordSearch(msg, search.usage);
 
   let papers: ScoredPaper[] = [];
