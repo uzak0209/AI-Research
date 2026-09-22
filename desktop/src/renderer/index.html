@@ -136,10 +136,10 @@
         <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="true">
           <section class="list-pane" aria-label="調査の報告">
             <div class="pane-head">
-              <button class="btn" data-variant="primary" id="feed-collect">調査する</button>
-              <button class="btn" data-variant="secondary" id="feed-sync">取り込む</button>
-              <button class="btn" data-variant="secondary" id="feed-score">読む順をつける</button>
-              <button class="btn" data-variant="tertiary" id="feed-cancel" disabled>中止</button>
+              <button class="btn" data-variant="primary" id="feed-collect">収集開始</button>
+              <button class="btn" data-variant="secondary" id="feed-sync">収集結果を受け取る</button>
+              <!-- <button class="btn" data-variant="secondary" id="feed-score">scoring</button> -->
+              <button class="btn" data-variant="tertiary" id="feed-cancel" disabled>キャンセル</button>
             </div>
             <div class="scroll" id="feed-list"></div>
           </section>
@@ -230,8 +230,8 @@
           </div>
 
           <div class="field">
-            <label for="summary">課題意識</label>
-            <p class="hint">追っている問題・問い。収集の材料です（未公開の手法は書かない）。</p>
+            <label for="summary">研究の概要</label>
+            <p class="hint">公開できる範囲で研究の概要を入力してください。有効論文を収集する際に使用します。</p>
             <textarea
               id="summary"
               rows="4"
@@ -241,20 +241,19 @@
 
           <div class="field">
             <label>キーワード</label>
-            <p class="hint">課題意識から推測します。合わないものは × で外す。足りなければ足す。</p>
+            <p class="hint">トレンド調査や競合論文を探すためのキーワードを設定してください。</p>
             <div class="keyword-tags" id="keyword-tags"></div>
             <div class="keyword-add-row">
               <label class="visually-hidden" for="keyword-add">キーワードを足す</label>
-              <input id="keyword-add" type="text" autocomplete="off" placeholder="足す（Enter）" />
+              <input id="keyword-add" type="text" autocomplete="off" placeholder="追加（Enter）" />
               <button type="button" class="btn" data-variant="secondary" id="keyword-infer">
-                課題意識から推測
+               概要から推測
               </button>
             </div>
           </div>
 
           <div class="field">
             <p class="side-label">プロジェクトの場所</p>
-            <p class="hint" id="settings-root-hint">規定は ~/Recycle（IdeaProjects と同階層）。無いときはここに作ります。</p>
             <div id="proj-empty">
               <div class="actions" data-align="start">
                 <button type="button" class="btn" data-variant="secondary" id="proj-mkdir">
