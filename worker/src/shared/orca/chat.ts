@@ -32,15 +32,26 @@ export type OrcaChatOk = {
   model: string;
   /** 要求した宛先。Named Router 名またはモデル ID */
   requestedModel: string;
+  /** 入出力の合計。後方互換のため残す（= tokensIn + tokensOut） */
   tokens: number;
+  tokensIn: number;
+  tokensOut: number;
   /** 取れなかったときは null。0 と「不明」を混ぜない（C-07） */
   costUsd: number | null;
   latencyMs: number;
   /** 要求と応答が食い違った＝受け皿へ落ちた */
   fallbackUsed: boolean;
 };
-export type OrcaChatFail = { ok: false; status: number };
+/** ADR-0005 §10 の失敗理由の 4 分類。分類できない 4xx は invalid_format 側に寄せる */
+export type OrcaChatFailReason = '5xx' | '429' | 'timeout' | 'invalid_format';
+export type OrcaChatFail = { ok: false; status: number; reason: OrcaChatFailReason; latencyMs: number };
 export type OrcaChatResult = OrcaChatOk | OrcaChatFail;
+
+function failReason(status: number): OrcaChatFailReason {
+  if (status === 429) return '429';
+  if (status >= 500) return '5xx';
+  return 'invalid_format';
+}
 
 export function orcaKey(env: Env, slot: OrcaKeySlot): string | undefined {
   if (slot === 'interactive') return env.ORCAROUTER_API_KEY_INTERACTIVE ?? env.ORCAROUTER_API_KEY;
@@ -101,24 +112,33 @@ export async function chatCompletion(
       signal: timeoutMs != null ? AbortSignal.timeout(timeoutMs) : undefined,
     });
   } catch {
-    return { ok: false, status: 504 };
+    return { ok: false, status: 504, reason: 'timeout', latencyMs: Date.now() - startedAt };
   }
 
   if (!res.ok) {
-    return { ok: false, status: res.status };
+    return { ok: false, status: res.status, reason: failReason(res.status), latencyMs: Date.now() - startedAt };
   }
 
-  const parsed = chatResponseSchema.safeParse(await res.json());
-  if (!parsed.success) return { ok: false, status: 502 };
+  let body: unknown;
+  try {
+    body = await res.json();
+  } catch {
+    return { ok: false, status: 502, reason: 'invalid_format', latencyMs: Date.now() - startedAt };
+  }
+  const parsed = chatResponseSchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, status: 502, reason: 'invalid_format', latencyMs: Date.now() - startedAt };
+  }
 
   const latencyMs = Date.now() - startedAt;
 
   const text = parsed.data.choices?.[0]?.message?.content?.trim() ?? '';
-  if (!text) return { ok: false, status: 502 };
+  if (!text) return { ok: false, status: 502, reason: 'invalid_format', latencyMs };
 
   const usage = parsed.data.usage;
-  const tokens =
-    usage?.total_tokens ?? (usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0);
+  const tokensIn = usage?.prompt_tokens ?? 0;
+  const tokensOut = usage?.completion_tokens ?? 0;
+  const tokens = usage?.total_tokens ?? tokensIn + tokensOut;
 
   const served = servedModel(res, parsed.data.model, policy.model);
 
@@ -128,6 +148,8 @@ export async function chatCompletion(
     model: served,
     requestedModel: policy.model,
     tokens,
+    tokensIn,
+    tokensOut,
     costUsd: usage?.cost_usd ?? null,
     latencyMs,
     // 要求名と応答モデルの比較で判定しないこと。

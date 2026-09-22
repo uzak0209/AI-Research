@@ -10,6 +10,8 @@ export type SurveyOk = {
   model: string | null;
   requestedModel: string | null;
   tokens: number;
+  tokensIn: number;
+  tokensOut: number;
   costUsd: number | null;
   latencyMs: number;
   fallbackUsed: boolean;
@@ -25,6 +27,8 @@ function emptyOk(): SurveyOk {
     model: null,
     requestedModel: null,
     tokens: 0,
+    tokensIn: 0,
+    tokensOut: 0,
     costUsd: null,
     latencyMs: 0,
     fallbackUsed: false,
@@ -62,6 +66,8 @@ export async function surveyTrendFromPapers(
     model: llm.model,
     requestedModel: llm.requestedModel,
     tokens: llm.tokens,
+    tokensIn: llm.tokensIn,
+    tokensOut: llm.tokensOut,
     costUsd: llm.costUsd,
     latencyMs: llm.latencyMs,
     fallbackUsed: llm.fallbackUsed,

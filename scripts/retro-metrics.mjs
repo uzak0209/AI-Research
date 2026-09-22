@@ -86,17 +86,20 @@ export function sinceDate(days) {
 }
 
 // ---------------------------------------------------------------- 集計
+// ADR-0005 §9・§10: 収集パイプライン（1 段目・2 段目・トレンド）の呼び出しは
+// llm_calls（1 呼び出し 1 行）から取る。llm_usage は対話 endpoint も含む
+// 利用者単位の日次上限判定用の集計行（NFR-04）で、run に紐付かないため内省には使わない。
 const SQL_USAGE = `
-  SELECT usage_date AS d,
-         SUM(calls)          AS calls,
-         SUM(tokens)         AS tokens,
-         SUM(cost_usd)       AS cost_usd,
-         SUM(latency_ms_sum) AS latency_ms_sum,
-         SUM(fallback_calls) AS fallback_calls
-  FROM llm_usage
-  WHERE usage_date >= ?
-  GROUP BY usage_date
-  ORDER BY usage_date
+  SELECT substr(created_at, 1, 10) AS d,
+         COUNT(*)                                                  AS calls,
+         SUM(tokens_in + tokens_out)                                AS tokens,
+         SUM(cost_usd)                                              AS cost_usd,
+         SUM(duration_ms)                                           AS latency_ms_sum,
+         SUM(CASE WHEN fallback_target IS NOT NULL THEN 1 ELSE 0 END) AS fallback_calls
+  FROM llm_calls
+  WHERE substr(created_at, 1, 10) >= ?
+  GROUP BY d
+  ORDER BY d
 `;
 
 const SQL_PAPERS = `
@@ -119,21 +122,44 @@ const SQL_RUNS = `
   ORDER BY run_date
 `;
 
-// 宛先ごとの比較。model は Named Router 名またはモデル ID。
+// 宛先ごとの比較。router は Named Router 名（要求した宛先）。
 // 推論時間は合計で持っているので、平均は latency_ms_sum / calls で出す。
 const SQL_BY_ROUTE = `
-  SELECT model                AS route,
-         resolved_model       AS resolved,
+  SELECT router                                                     AS route,
+         resolved_model                                             AS resolved,
          endpoint,
-         SUM(calls)           AS calls,
-         SUM(tokens)          AS tokens,
-         SUM(cost_usd)        AS cost_usd,
-         SUM(latency_ms_sum)  AS latency_ms_sum,
-         SUM(fallback_calls)  AS fallback_calls
-  FROM llm_usage
-  WHERE usage_date >= ?
-  GROUP BY model, resolved_model, endpoint
-  ORDER BY SUM(calls) DESC
+         stage,
+         COUNT(*)                                                   AS calls,
+         SUM(tokens_in + tokens_out)                                AS tokens,
+         SUM(cost_usd)                                              AS cost_usd,
+         SUM(duration_ms)                                           AS latency_ms_sum,
+         SUM(CASE WHEN fallback_target IS NOT NULL THEN 1 ELSE 0 END) AS fallback_calls
+  FROM llm_calls
+  WHERE substr(created_at, 1, 10) >= ?
+  GROUP BY router, resolved_model, endpoint, stage
+  ORDER BY calls DESC
+`;
+
+// 失敗理由の内訳（5xx / 429 / timeout / invalid_format）。router-retro が読む
+const SQL_FAILURES = `
+  SELECT failure_reason AS reason, COUNT(*) AS n
+  FROM llm_calls
+  WHERE substr(created_at, 1, 10) >= ? AND failure_reason IS NOT NULL
+  GROUP BY failure_reason
+  ORDER BY n DESC
+`;
+
+// 捏造率（ADR-0005 §4-1: 「捏造率を第一基準にする」の実測材料。FR-16 / C-07）。
+// problem_excerpt_verified = 0 は abstract に逐語で見つからなかった行（捏造の疑い）
+const SQL_FABRICATION = `
+  SELECT r.run_date AS d,
+         SUM(CASE WHEN p.problem_excerpt IS NOT NULL THEN 1 ELSE 0 END) AS excerpts,
+         SUM(CASE WHEN p.problem_excerpt_verified = 0 THEN 1 ELSE 0 END) AS unverified
+  FROM runs r
+  LEFT JOIN run_papers p ON p.run_id = r.run_id
+  WHERE r.run_date >= ?
+  GROUP BY r.run_date
+  ORDER BY r.run_date
 `;
 
 // 比率は「割れないときは null」にする。0 で埋めると改善に見えてしまう（C-07）
@@ -142,7 +168,7 @@ export function ratio(numerator, denominator) {
   return numerator / denominator;
 }
 
-export function buildSeries(usage, papers, runs, since) {
+export function buildSeries(usage, papers, runs, fabrication, since) {
   const byDate = new Map();
   const touch = (d) => {
     if (!byDate.has(d)) {
@@ -156,6 +182,8 @@ export function buildSeries(usage, papers, runs, since) {
         papers: 0,
         scored_papers: 0,
         score_mean: null,
+        excerpts: 0,
+        unverified_excerpts: 0,
         runs: { ok: 0, empty: 0, failed: 0, partial: 0 },
       });
     }
@@ -185,6 +213,11 @@ export function buildSeries(usage, papers, runs, since) {
     const e = touch(r.d);
     if (r.status in e.runs) e.runs[r.status] = Number(r.n ?? 0);
   }
+  for (const r of fabrication) {
+    const e = touch(r.d);
+    e.excerpts = Number(r.excerpts ?? 0);
+    e.unverified_excerpts = Number(r.unverified ?? 0);
+  }
 
   return [...byDate.values()]
     .filter((e) => e.date >= since)
@@ -196,6 +229,8 @@ export function buildSeries(usage, papers, runs, since) {
       // 生産性: 推論 1 秒あたり何本の論文が取れたか。
       // 推論時間が未計測（0003 より前の行）の日は出さない。0 割りも「速い」と言わない
       papers_per_sec: e.latency_ms_sum > 0 ? ratio(e.papers, e.latency_ms_sum / 1000) : null,
+      // 捏造率（ADR-0005 §4-1）。抜粋そのものが無い日は割れない（C-07）
+      fabrication_rate: ratio(e.unverified_excerpts, e.excerpts),
     }));
 }
 
@@ -213,6 +248,7 @@ export function routeRows(rows) {
         route: r.route || "(不明)",
         resolved_model: r.resolved || "(不明)",
         endpoint: r.endpoint,
+        stage: r.stage ?? null,
         calls,
         tokens,
         cost_usd: cost,
@@ -267,26 +303,30 @@ async function main() {
   }
 
   const ctx = { accountId, token, databaseId: db.id };
-  let usage, papers, runs, byRoute;
+  let usage, papers, runs, byRoute, failures, fabrication;
   try {
-    [usage, papers, runs, byRoute] = await Promise.all([
+    [usage, papers, runs, byRoute, failures, fabrication] = await Promise.all([
       query(ctx, SQL_USAGE, [since]),
       query(ctx, SQL_PAPERS, [since]),
       query(ctx, SQL_RUNS, [since]),
       query(ctx, SQL_BY_ROUTE, [since]),
+      query(ctx, SQL_FAILURES, [since]),
+      query(ctx, SQL_FABRICATION, [since]),
     ]);
   } catch (err) {
     // テーブル未作成もここに来る。取得失敗として残す（0 件とは区別する）
     return { ...base, database: db.name, status: "unavailable", reason: String(err.message) };
   }
 
-  const series = buildSeries(usage, papers, runs, since);
+  const series = buildSeries(usage, papers, runs, fabrication, since);
   const sum = (key) => series.reduce((a, e) => a + e[key], 0);
 
   // 比率は論文 0 本の日に出せない。同じ窓で比べないと誤検出になる。
   // 点数は coarse_score がある行だけの平均。未採点だけの日は比較から外す（C-07）。
   const comparable = series.filter((e) => e.papers > 0);
   const scored = series.filter((e) => e.score_mean !== null && Number.isFinite(e.score_mean));
+  // 捏造率の比較は抜粋が 1 件以上出た日だけ（C-07: 0 割りを断定に使わない）
+  const withExcerpts = series.filter((e) => e.excerpts > 0);
 
   return {
     ...base,
@@ -304,6 +344,8 @@ async function main() {
       scored_papers: sum("scored_papers"),
       latency_ms_sum: sum("latency_ms_sum"),
       fallback_calls: sum("fallback_calls"),
+      excerpts: sum("excerpts"),
+      unverified_excerpts: sum("unverified_excerpts"),
     },
     trend: {
       tokens_per_paper: trend(comparable, "tokens_per_paper"),
@@ -312,8 +354,12 @@ async function main() {
       // 以下は補助。主指標はトークン/論文と点数
       cost_per_paper: trend(comparable, "cost_per_paper"),
       papers_per_sec: trend(comparable, "papers_per_sec"),
+      // ADR-0005 §4-1: 捏造率を第一基準にする
+      fabrication_rate: trend(withExcerpts, "fabrication_rate"),
     },
     by_route: routeRows(byRoute),
+    // 失敗理由の内訳。件数のみ（本文は残さない。ADR-0002）
+    by_failure_reason: failures.map((r) => ({ reason: r.reason, n: Number(r.n ?? 0) })),
     series,
   };
 }

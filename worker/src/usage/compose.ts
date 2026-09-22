@@ -13,4 +13,4 @@ export function createUsage(env: Env): UsageStore & { limit: number } {
 
 export { dailyCallLimit } from './domain';
 export type { Classification } from './domain';
-export type { UsageStore } from './application/ports';
+export type { CallStage, UsageStore } from './application/ports';
