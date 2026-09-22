@@ -1,0 +1,15 @@
+{
+  "name": "@ai-research/cli",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ai-research": "./bin/ai-research.mjs"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@ai-research/core": "file:../core"
+  }
+}

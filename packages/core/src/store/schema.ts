@@ -1,12 +1,17 @@
--- ローカルストア（docs/er-diagram.md のローカル側）。
+// GUI と CLI が共有するローカルストアのスキーマ（FR-11）。
+// packages/core と Electron バンドルの両方でそのまま import できるよう、
+// ビルドツール固有の .sql import ではなく TS の文字列として持つ。
+// 内容は desktop/src/shared/schema.sql から移設したもの（差分はここが正）。
+
+export const schemaSql = `-- ローカルストア（docs/er-diagram.md のローカル側）。
 -- GUI と CLI が同じこのファイルを読み書きする（FR-11。二重管理しない）。
 --
 -- ここには未公開データが入る。外に出さない（C-01）。
 -- DB ファイル自体は暗号化されない。秘密は settings に safeStorage で入れる（ADR-0001）。
 --
 -- ER 図からの逸脱（実測に基づく）:
---   - `references` は SQLite の予約語で CREATE TABLE できないため `reference_items` にした
---   - `nearest_claim_id` は chunks を指すので `nearest_chunk_id`（INTEGER）にした
+--   - \`references\` は SQLite の予約語で CREATE TABLE できないため \`reference_items\` にした
+--   - \`nearest_claim_id\` は chunks を指すので \`nearest_chunk_id\`（INTEGER）にした
 
 CREATE TABLE IF NOT EXISTS projects (
   project_id   TEXT PRIMARY KEY,           -- クラウドと同じ ID
@@ -84,7 +89,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_papers_external ON papers(project_id, sour
 CREATE INDEX IF NOT EXISTS idx_papers_run ON papers(project_id, run_id);
 
 -- アプリ内参考文献ライブラリの本体（FR-05）。
--- `references` は SQLite の予約語なので reference_items
+-- \`references\` は SQLite の予約語なので reference_items
 CREATE TABLE IF NOT EXISTS reference_items (
   reference_id TEXT PRIMARY KEY,
   project_id   TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
@@ -102,7 +107,7 @@ CREATE TABLE IF NOT EXISTS reference_items (
   -- 読んだか。未読／読んでいる／読んだ
   read_status  TEXT NOT NULL DEFAULT 'unread'
                  CHECK (read_status IN ('unread', 'reading', 'read')),
-  -- \cite{} に使う識別子。プロジェクト内で一意（FR-12）
+  -- \\cite{} に使う識別子。プロジェクト内で一意（FR-12）
   bibtex_key   TEXT NOT NULL,
   added_at     TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -213,3 +218,4 @@ CREATE TABLE IF NOT EXISTS cite_exports (
   inner_hash TEXT NOT NULL,
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+`;

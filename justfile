@@ -56,7 +56,25 @@ test-worker:
 test-desktop:
     npm test
 
-test: test-worker test-desktop
+[working-directory: 'packages/core']
+test-core:
+    npm test
+
+[working-directory: 'packages/cli']
+test-cli:
+    npm test
+
+test: test-worker test-desktop test-core test-cli
+
+# CLI（FR-11）。GUI と同じローカルストアを操作する。dist/ が無ければ core を build する
+[working-directory: 'packages/core']
+cli-build:
+    npm run build
+
+# 例: `just cli project list` / `just cli -- lib add --title "..."`
+[working-directory: 'packages/cli']
+cli *args:
+    node bin/ai-research.mjs {{args}}
 
 # 機能紹介用。公開書誌だけ（C-01）。seed-demo のみ入れ直す
 seed-desktop:

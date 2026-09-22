@@ -32,3 +32,25 @@ await cloud.loginGoogle({ code, code_verifier, redirect_uri });
 CLI は同じ SQLite を読む。`safeStorage` は Electron 内だけ動くので、
 クラウド API を叩く CLI は GUI と同じランタイム経由か、一度 GUI でログインしたあとの復号ができる環境が要る。
 ライブラリ操作（FR-11）はトークン無しでローカル DB だけで足りる。
+
+## ローカルストア（`src/store/`）
+
+`db.ts`（`openDb` / スキーマ）・`repo.ts`（プロジェクト・論文・採点）・`library.ts`
+（参考文献ライブラリ）。desktop（`src/main/index.ts`）と CLI（`packages/cli`）の両方が
+ここだけを通してローカル SQLite を触る（二重管理しない）。desktop 側の
+`src/shared/{db,repo,library}.ts` は既存 import を変えずに済ませるための再 export。
+
+ベクトル拡張（sqlite-vec）は `openDb({ vector: false })` で読み込みを省ける。
+参考文献ライブラリ（`reference_items` / `tags` / `notes`）は埋め込みを使わないため、
+CLI はこちらを使う。
+
+### CLI から使うとき
+
+`.` エクスポートは TypeScript ソースのままなので Electron の bundler（vite）前提。
+バンドラを持たない CLI からは `npm run build` で吐く `dist/` を
+`@ai-research/core/node` から import する。
+
+```sh
+npm install   # このディレクトリで
+npm run build # dist/ を生成（CLI が使う）
+```

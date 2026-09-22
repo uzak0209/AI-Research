@@ -1,4 +1,4 @@
-import type { AuthSession } from './session';
+import type { AuthSession } from './session.js';
 
 export class NotSignedInError extends Error {
   constructor() {

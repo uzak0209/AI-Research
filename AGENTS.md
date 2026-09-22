@@ -7,7 +7,8 @@
 | [docs/requirements.md](docs/requirements.md) | 要件（1 本。成功条件・FR・C） |
 | [docs/adr/](docs/adr/) | ADR（0001〜0005） |
 | `worker/` | クラウド（Workers。ADR-0004） |
-| `packages/core/` | GUI と CLI の共有コア（トークン・設定。ADR-0001） |
+| `packages/core/` | GUI と CLI の共有コア（トークン・設定・ローカルストア。ADR-0001） |
+| `packages/cli/` | CLI 本体（`@ai-research/core` 経由でローカルストアを操作。FR-11・ADR-0003） |
 | `prototypes/` | 検証用。本番ではない |
 | [justfile](justfile) | ローカル検証（`just`。秘密は `worker/.dev.vars`） |
 
