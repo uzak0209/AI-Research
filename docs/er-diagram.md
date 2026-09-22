@@ -64,6 +64,8 @@ erDiagram
         text abstract
         text url
         date published_at
+        text venue "掲載誌・会議名"
+        text item_type "引用の種別"
         text pdf_url "OA直PDF。arXiv優先。取得はデスクトップ"
         real coarse_score
         text problem_excerpt "課題・問題の抜粋"
@@ -93,7 +95,7 @@ erDiagram
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
 - **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
 - **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID（日次は `{project_id}:{日付}`、自発は `{project_id}:manual:{unix}`）。一意は `run_id` のみで同日複数可（FR-17）。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示。`search_terms_json` は研究背景から LLM が推測した略語で、隠さず同期して見せる（C-07）。`trend_summary` / `themes_json` はその回の公開論文から出した今のトレンドと次テーマ（FR-09）。利用者に渡す論文は粗い順位の上位 5 件
-- **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`pdf_url` は OpenAlex の location から選んだ https の直 PDF で、**複数あれば arXiv 等の全文リポジトリを優先**する（ADR-0003）。無ければ null＝未取得で、PDF バイトはクラウドに置かない。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。`problem_excerpt_verified` は `problem_excerpt` が `abstract` に字面で存在するかの照合結果で、捏造率の算出に使う（ADR-0005 §10）。候補論文との精密な順位はローカル（ADR-0001）
+- **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`venue` / `item_type` は引用を書くのに要るので**候補の時点で OpenAlex から取る**——後から 1 件ずつ書誌補完（C1）を呼ぶと、自動処理が利用者の 1 日の LLM 上限（NFR-04）を食い潰す（ADR-0003）。`pdf_url` は OpenAlex の location から選んだ https の直 PDF で、**複数あれば arXiv 等の全文リポジトリを優先**する。無ければ null＝未取得で、PDF バイトはクラウドに置かない。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。`problem_excerpt_verified` は `problem_excerpt` が `abstract` に字面で存在するかの照合結果で、捏造率の算出に使う（ADR-0005 §10）。候補論文との精密な順位はローカル（ADR-0001）
 - **`llm_calls`**: 1 段目・2 段目・`retro`（内省ループ自身）を含む外部 LLM 呼び出し 1 回の記録（ADR-0005 §8〜§10）。`resolved_model` は Named Router が解決した実モデル、`fallback_target` は自前フォールバックが発生した場合の落とし先。`cost_usd` は `X-OrcaRouter-Include-Cost` で受け取る実額で、OrcaRouter の Request Logs と突合する基礎データ。`failure_reason` はガードレール・形式不正を含む失敗分類
 
 ## ローカル（SQLite + sqlite-vec）

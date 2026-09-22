@@ -94,6 +94,8 @@ function migrate(db: Db): void {
     ['projects', 'root_path', 'TEXT'],
     ['papers', 'problem_excerpt', 'TEXT'],
     ['papers', 'pdf_url', 'TEXT'],
+    ['papers', 'venue', 'TEXT'],
+    ['papers', 'item_type', 'TEXT'],
     ['papers', 'fulltext_path', 'TEXT'],
     ['papers', 'fulltext', 'TEXT'],
     ['papers', 'authors', 'TEXT'],

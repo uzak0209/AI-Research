@@ -13,7 +13,7 @@ import {
   type CollectMessage,
 } from '../src/index';
 import { openAlexWorksUrl, collectFromPublicationDate, fetchFromSource } from '../src/shared/openalex/adapter';
-import { pickOaPdfUrl, publicWorkUrl } from '../src/shared/papers/domain';
+import { itemTypeFromOpenAlex, pickOaPdfUrl, publicWorkUrl } from '../src/shared/papers/domain';
 import { pickTopPapers } from '../src/collect/application/ingest';
 
 const RUN_DATE = '2026-09-20';
@@ -249,6 +249,28 @@ describe('OpenAlex URL', () => {
     expect(select).toContain('best_oa_location');
     expect(select).toContain('locations');
   });
+
+  it('書誌（著者・年・掲載誌・種別）も select に入れる', () => {
+    const select = openAlexWorksUrl('DPDK').searchParams.get('select') ?? '';
+    expect(select).toContain('authorships');
+    expect(select).toContain('publication_date');
+    expect(select).toContain('primary_location');
+    expect(select).toContain('type');
+  });
+});
+
+describe('itemTypeFromOpenAlex', () => {
+  it('引用の種別へ寄せる', () => {
+    expect(itemTypeFromOpenAlex('article')).toBe('article');
+    expect(itemTypeFromOpenAlex('preprint')).toBe('preprint');
+    expect(itemTypeFromOpenAlex('proceedings-article')).toBe('inproceedings');
+    expect(itemTypeFromOpenAlex('book-chapter')).toBe('incollection');
+  });
+
+  it('知らない値は article と偽らない（C-07）', () => {
+    expect(itemTypeFromOpenAlex('paratext')).toBeNull();
+    expect(itemTypeFromOpenAlex(null)).toBeNull();
+  });
 });
 
 describe('pickOaPdfUrl（arXiv 優先）', () => {
@@ -454,7 +476,9 @@ describe('収集の記録（FR-08 / C-07）', () => {
           { raw_author_name: 'Alan Turing' },
         ],
         abstract_inverted_index: { graph: [0], neural: [1], networks: [2] },
+        type: 'article',
         best_oa_location: { pdf_url: 'https://publisher.example/full.pdf' },
+        primary_location: { source: { display_name: 'SIGCOMM' } },
         // arXiv は locations の後ろに入ることがある。それでも優先する
         locations: [{ pdf_url: 'https://arxiv.org/pdf/2409.00001.pdf' }],
       },
@@ -469,10 +493,22 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(run?.failed_sources_json).toBeNull();
 
     const papers = await env.DB.prepare(
-      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url, MIN(authors) AS authors, MIN(pdf_url) AS pdf_url FROM run_papers WHERE run_id = ?',
+      `SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url, MIN(authors) AS authors,
+              MIN(pdf_url) AS pdf_url, MIN(venue) AS venue, MIN(item_type) AS item_type,
+              MIN(published_at) AS published_at
+         FROM run_papers WHERE run_id = ?`,
     )
       .bind(`${PROJECT}:${RUN_DATE}`)
-      .first<{ n: number; external_id: string; url: string; authors: string; pdf_url: string }>();
+      .first<{
+        n: number;
+        external_id: string;
+        url: string;
+        authors: string;
+        pdf_url: string;
+        venue: string;
+        item_type: string;
+        published_at: string;
+      }>();
     expect(papers?.n).toBe(1);
     // desktop の papers.external_id / url と同じ形。DOI 生文字列を URL にしない
     expect(papers?.external_id).toBe('10.1234/a');
@@ -480,6 +516,10 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(papers?.authors).toBe('Ada Lovelace; Alan Turing');
     // 収集時に直 PDF まで取り、arXiv を選ぶ（ADR-0003）
     expect(papers?.pdf_url).toBe('https://arxiv.org/pdf/2409.00001.pdf');
+    // 候補の時点で引用が書ける（著者・年・掲載誌・種別）。書誌補完を呼ばない
+    expect(papers?.venue).toBe('SIGCOMM');
+    expect(papers?.item_type).toBe('article');
+    expect(papers?.published_at).toBe('2026-09-01');
 
     const terms = await env.DB.prepare('SELECT search_terms_json FROM runs WHERE run_id = ?')
       .bind(`${PROJECT}:${RUN_DATE}`)

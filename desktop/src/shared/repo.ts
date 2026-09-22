@@ -26,6 +26,9 @@ export interface PaperInput {
   abstract: string | null;
   url?: string | null;
   published_at?: string | null;
+  /** 掲載誌・会議名。候補の時点で揃う（書誌補完を呼ばないため） */
+  venue?: string | null;
+  item_type?: string | null;
   /** 収集時に取れた OA 直 PDF。後から引き直さない */
   pdf_url?: string | null;
   coarse_score?: number | null;
@@ -49,6 +52,8 @@ export interface RankedPaper {
   scored_at: string | null;
   in_library: number;
   problem_excerpt: string | null;
+  venue?: string | null;
+  item_type?: string | null;
   /** OA 直 PDF の有無。無ければ「未取得」と出す（C-07） */
   pdf_url?: string | null;
   /** 手元に落ちている PDF のパス。無ければ null */
@@ -255,8 +260,9 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
   try {
     const ins = db.prepare(
       `INSERT INTO papers
-         (paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at, pdf_url, coarse_score, problem_excerpt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at,
+          venue, item_type, pdf_url, coarse_score, problem_excerpt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (project_id, source, external_id) DO NOTHING`,
     );
     const fillAuthors = db.prepare(
@@ -283,6 +289,8 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         p.abstract ?? null,
         p.url ?? null,
         p.published_at ?? null,
+        p.venue ?? null,
+        p.item_type ?? null,
         p.pdf_url ?? null,
         p.coarse_score ?? null,
         p.problem_excerpt ?? null,
@@ -462,7 +470,7 @@ export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[
       `SELECT p.paper_id, p.external_id, p.title, p.authors, p.abstract, p.url, p.published_at,
               p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
-              p.scored_at, p.in_library, p.problem_excerpt, p.pdf_url, p.fulltext_path
+              p.scored_at, p.in_library, p.problem_excerpt, p.venue, p.item_type, p.pdf_url, p.fulltext_path
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
        WHERE p.project_id = ? AND p.scored_at IS NOT NULL AND p.in_library = 0
@@ -632,7 +640,7 @@ export function listPapersForRun(db: Db, projectId: string, runId: string): Rank
       `SELECT p.paper_id, p.external_id, p.title, p.authors, p.abstract, p.url, p.published_at,
               p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
-              p.scored_at, p.in_library, p.problem_excerpt, p.pdf_url, p.fulltext_path
+              p.scored_at, p.in_library, p.problem_excerpt, p.venue, p.item_type, p.pdf_url, p.fulltext_path
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
        WHERE p.project_id = ? AND p.run_id = ?

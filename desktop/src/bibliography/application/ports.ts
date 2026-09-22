@@ -33,6 +33,8 @@ export interface ReferenceRepo {
   projectRoot(projectId: string): string | null;
   /** 候補から保存したときの papers.paper_id。無ければ null */
   paperId(referenceId: string): string | null;
+  /** 候補が収集時に持っていた OA 直 PDF。書誌補完を呼ばずに取るために使う */
+  paperPdfUrl(referenceId: string): string | null;
   citeItems(projectId: string): CiteItem[];
 }
 

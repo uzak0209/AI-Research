@@ -5,8 +5,28 @@ export interface FetchedPaper {
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** 掲載誌・会議名。引用に要るので候補の時点で取る（ADR-0003） */
+  venue?: string | null;
+  /** 引用の種別。OpenAlex の type を BibTeX 寄りに寄せた値 */
+  item_type?: string | null;
   /** OA の直 PDF（https のみ）。無ければ null = 未取得（C-07） */
   pdf_url?: string | null;
+}
+
+/** OpenAlex の type を引用の種別へ。知らない値は article に寄せない（C-07） */
+const ITEM_TYPES: Record<string, string> = {
+  article: 'article',
+  preprint: 'preprint',
+  'book-chapter': 'incollection',
+  book: 'book',
+  dissertation: 'phdthesis',
+  report: 'techreport',
+  'proceedings-article': 'inproceedings',
+};
+
+export function itemTypeFromOpenAlex(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  return ITEM_TYPES[raw.trim().toLowerCase()] ?? null;
 }
 
 /** https の直 PDF だけ。HTML ランディングと http は捨てる（ADR-0003） */

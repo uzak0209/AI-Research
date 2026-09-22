@@ -1,5 +1,10 @@
 import { copyFileSync, existsSync } from 'node:fs';
-import { hintFromReference, mergeRecord, type ReferenceSnapshot } from '../domain/record.js';
+import {
+  hintFromReference,
+  mergeRecord,
+  needsCompletion,
+  type ReferenceSnapshot,
+} from '../domain/record.js';
 import { httpsPdfUrl } from '../domain/oa-url.js';
 import type { BibliographyDeps, CiteExportResult, PdfDownload } from './ports.js';
 import { candidatePdfPath } from '../../shared/workspace.js';
@@ -14,10 +19,15 @@ export async function followReference(
 
   const initialPage = await firstPage(deps, projectId, referenceId);
   let pdfUrl: string | null = null;
-  if (row.title.trim() || row.doi) {
+  // 既に引用が書ける行は補完しない。候補は収集時に書誌が揃っている（ADR-0003）
+  const wantCompletion = needsCompletion(row);
+  if (wantCompletion && (row.title.trim() || row.doi)) {
     const got = await completeFrom(deps, row, initialPage);
     if (got?.record) deps.refs.update(referenceId, mergeRecord(row, got.record));
     pdfUrl = httpsPdfUrl(got?.pdf_url);
+  } else {
+    // 補完を飛ばしても PDF は要る。収集時に取れた直リンクを使う
+    pdfUrl = httpsPdfUrl(deps.refs.paperPdfUrl(referenceId));
   }
 
   const attachments = deps.refs.attachments(referenceId);
@@ -41,10 +51,10 @@ export async function followReference(
   }
 
   // 最初は PDF が無くて著者を取れなかった。手元に来てから 1 ページ目を読ませる
-  if (!initialPage) {
+  if (wantCompletion && !initialPage) {
     const page = await firstPage(deps, projectId, referenceId);
     const current = deps.refs.get(referenceId);
-    if (page && current && (current.title.trim() || current.doi)) {
+    if (page && current && needsCompletion(current) && (current.title.trim() || current.doi)) {
       const got = await completeFrom(deps, current, page);
       if (got?.record) deps.refs.update(referenceId, mergeRecord(current, got.record));
     }
