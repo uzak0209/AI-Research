@@ -176,10 +176,13 @@ export const RunsResponseSchema = z
   })
   .openapi('RunsResponse');
 
+export const SearchTermsSchema = z.array(z.string().trim().min(1).max(24)).max(40);
+
 export const ProjectPutBodySchema = z
   .object({
     title: z.string().trim().min(1),
     summary: z.string().trim().min(1),
+    search_terms: SearchTermsSchema.optional(),
   })
   .openapi('ProjectPutBody');
 
@@ -188,6 +191,7 @@ export const ProjectResponseSchema = z
     project_id: z.string(),
     title: z.string(),
     summary: z.string(),
+    search_terms: z.array(z.string()),
   })
   .openapi('ProjectResponse');
 

@@ -36,7 +36,7 @@ import {
   updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
-import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
+import { syncProjectFromCloud, cloudSummaryFromLocal, localSearchTerms } from '../shared/sync.js';
 import { copyIntoMypaper, listMypaperEntries, mypaperHasContent } from '../shared/mypaper.js';
 import { ensureCandidateFulltexts, fillMissingPaperAuthors } from '../shared/candidate-pdf.js';
 import {
@@ -423,7 +423,11 @@ function pushProjectToCloud(projectId: string): void {
   if (!p) return;
   const summary = cloudSummaryFromLocal(p.summary, listChunks(db, projectId));
   void cloud.client
-    .putProject(projectId, { title: p.title, summary })
+    .putProject(projectId, {
+      title: p.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    })
     .catch((e) => {
       const message = e instanceof Error ? e.message : String(e);
       if (e instanceof NotSignedInError) win?.webContents.send('auth:error', message);
@@ -624,7 +628,11 @@ function registerIpc(): void {
     if (!project.summary.trim()) throw new Error('課題意識が空です');
 
     const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
-    await cloud.client.putProject(projectId, { title: project.title, summary });
+    await cloud.client.putProject(projectId, {
+      title: project.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    });
     const accepted = await cloud.client.startCollect(projectId);
 
     let inserted = 0;

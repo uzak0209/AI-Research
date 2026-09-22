@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS projects (
   -- プロジェクトに 1 つ固定。別モデルのベクトルは比較できない
   embed_model  TEXT NOT NULL,
   last_run_id  TEXT,                        -- 同期位置。settings には置かない
-  last_search_terms TEXT,                   -- 直近の収集で LLM が推測した略語 JSON。見せる（C-07）
+  last_search_terms TEXT,                   -- 設定で確定した検索語 JSON。収集がこれを使う（C-07）
   -- 作業フォルダ（references / mypaper / claims）。未設定可。索引の正本は SQLite
   root_path    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))

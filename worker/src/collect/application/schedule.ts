@@ -6,6 +6,7 @@ export type EnqueueProject = {
   project_id: string;
   summary: string;
   user_id: string;
+  search_terms?: string[];
 };
 
 /** 1 プロジェクト × ソースぶんの Queue メッセージを組み立てる */
@@ -25,6 +26,7 @@ export function buildCollectBatch(
           source,
           run_date: opts.runDate,
           user_id: p.user_id,
+          search_terms: p.search_terms?.length ? p.search_terms : undefined,
         },
       });
     }
