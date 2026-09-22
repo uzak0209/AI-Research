@@ -95,6 +95,70 @@ describe('survey_reports', () => {
     expect(missing.map((r) => r.run_id)).toEqual(['run-empty-trend']);
   });
 
+  it('生の JSON が入った報告も未着として取り直しに出す', () => {
+    upsertPapers(db, PROJ, [
+      {
+        external_id: 'x1',
+        source: 'openalex',
+        title: 'Paper one',
+        abstract: null,
+        run_id: 'run-broken',
+      },
+    ]);
+    upsertSurveyReport(db, {
+      run_id: 'run-broken',
+      project_id: PROJ,
+      run_date: '2026-01-04',
+      status: 'ok',
+      trend: '{"trend": "提示された論文群は、クラウドの低レベ',
+      created_at: '2026-01-04T00:00:00Z',
+    });
+
+    expect(reportsMissingTrend(db, PROJ).map((r) => r.run_id)).toContain('run-broken');
+  });
+
+  it('openDb 時に壊れたトレンドを未着へ戻す', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'airesearch-trend-'));
+    const path = join(dir, 'app.db');
+    try {
+      let d = openDb({ path });
+      createProject(d, {
+        project_id: PROJ,
+        title: 'Title',
+        summary: 'DPDK latency',
+        embed_model: 'Xenova/bge-small-en-v1.5',
+      });
+      upsertSurveyReport(d, {
+        run_id: 'run-broken',
+        project_id: PROJ,
+        run_date: '2026-01-04',
+        status: 'ok',
+        trend: '{"trend": "提示された論文群は、クラウドの低レベ',
+        themes: ['壊れた'],
+        created_at: '2026-01-04T00:00:00Z',
+      });
+      upsertSurveyReport(d, {
+        run_id: 'run-ok',
+        project_id: PROJ,
+        run_date: '2026-01-05',
+        status: 'ok',
+        trend: '高速経路の研究が増えている',
+        created_at: '2026-01-05T00:00:00Z',
+      });
+      d.close();
+
+      d = openDb({ path });
+      const byId = new Map(listSurveyReports(d, PROJ).map((r) => [r.run_id, r]));
+      expect(byId.get('run-broken')?.trend).toBeNull();
+      expect(byId.get('run-broken')?.themes_json).toBeNull();
+      // 正しい本文は消さない
+      expect(byId.get('run-ok')?.trend).toBe('高速経路の研究が増えている');
+      d.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('後から来た trend で上書きし、空では消さない', () => {
     upsertSurveyReport(db, {
       run_id: 'run-1',

@@ -9,7 +9,7 @@ import { attachProblemExcerpts, REVIEW_ENDPOINT } from '../application/problem-e
 import { COLLECT_ENDPOINT, buildSearchQuery } from '../application/search-terms';
 import type { OrcaChatOk } from '../../shared/orca/chat';
 import { orcaKey } from '../../shared/orca/chat';
-import { reviewPolicy } from '../../shared/orca/policy';
+import { trendPolicy } from '../../shared/orca/policy';
 import { TREND_ENDPOINT, createTrendApp } from '../../trend';
 import type {
   CollectClock,
@@ -171,7 +171,7 @@ export function ingestDeps(env: Env): IngestDeps {
     },
     trend: {
       async analyze(summary, papers) {
-        const policy = reviewPolicy(env);
+        const policy = trendPolicy(env);
         const apiKey = orcaKey(env, policy.slot);
         if (!apiKey || papers.length === 0) return { report: { trend: null, themes: [] }, usage: null };
         const got = await createTrendApp({

@@ -34,6 +34,11 @@ const REVIEW_CHAIN = ['google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'] a
 export const COLLECT_MAX_TOKENS = 200;
 export const REVIEW_MAX_TOKENS = 700;
 export const BIBLIOGRAPHY_MAX_TOKENS = 600;
+/**
+ * トレンドは本文 2〜6 文＋次テーマ 5 件を 1 回で返す。
+ * 日本語は 1 文字 1 トークン前後で、700 だと途中で切れて JSON が壊れる。
+ */
+export const TREND_MAX_TOKENS = 1600;
 
 /** 書誌補完（C1）。Named Router に載せない */
 export const ORCA_POLICY = {
@@ -93,4 +98,9 @@ export function reviewPolicy(env: Env): OrcaClassPolicy {
     failOpen: false,
     maxTokens: REVIEW_MAX_TOKENS,
   };
+}
+
+/** トレンドは 2 段目と同じ宛先。出力だけ長い（切れると JSON が壊れる） */
+export function trendPolicy(env: Env): OrcaClassPolicy {
+  return { ...reviewPolicy(env), maxTokens: TREND_MAX_TOKENS };
 }

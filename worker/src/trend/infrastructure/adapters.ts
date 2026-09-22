@@ -25,6 +25,8 @@ export function orcaTrendLlm(apiKey: string, policy: OrcaClassPolicy): TrendLlm 
           { role: 'user', content: trendPrompt(topic, papers) },
         ],
         policy,
+        // JSON を強制する。地の文で返されると本文が丸ごと trend に落ちる
+        true,
       );
       if (!result.ok) return { ok: false };
       return {

@@ -68,6 +68,47 @@ export function parseThemesJson(raw: string | null | undefined): string[] {
   }
 }
 
+function unescapeJsonString(raw: string): string | null {
+  try {
+    return JSON.parse(`"${raw}"`) as string;
+  } catch {
+    // 末尾が切れて \ や \u が欠けた分だけ落とす
+    const safe = raw.replace(/\\u[0-9a-fA-F]{0,3}$/, '').replace(/\\$/, '');
+    try {
+      return JSON.parse(`"${safe}"`) as string;
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * 出力が途中で切れた JSON から拾えるだけ拾う。
+ * `{"trend": "…` を本文として画面に出さないための最後の砦（C-07）。
+ */
+function salvageTruncatedJson(body: string): TrendReport {
+  const trendMatch = body.match(/"trend"\s*:\s*"((?:[^"\\]|\\.)*)/);
+  const trend = trendMatch ? unescapeJsonString(trendMatch[1] ?? '')?.trim() || null : null;
+
+  const themesMatch = body.match(/"themes"\s*:\s*\[([\s\S]*?)(?:\]|$)/);
+  const themes: string[] = [];
+  if (themesMatch?.[1]) {
+    for (const m of themesMatch[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+      const t = unescapeJsonString(m[1] ?? '')?.trim();
+      if (!t) continue;
+      if (themes.some((x) => x.toLowerCase() === t.toLowerCase())) continue;
+      themes.push(t);
+      if (themes.length >= THEME_LIMIT) break;
+    }
+  }
+  return { trend, themes };
+}
+
+/** JSON のつもりで返ってきたか。地の文と壊れた JSON を分ける */
+function looksLikeJsonObject(body: string): boolean {
+  return body.startsWith('{') && /"(trend|summary|themes)"\s*:/.test(body);
+}
+
 /** モデル出力をトレンド本文と次テーマに分ける。JSON でなければ本文だけ */
 export function parseTrendReport(text: string): TrendReport {
   const trimmed = text.trim();
@@ -92,6 +133,8 @@ export function parseTrendReport(text: string): TrendReport {
     if (!trend && themes.length === 0) return { trend: trimmed, themes: [] };
     return { trend, themes };
   } catch {
+    // 出力が長さ上限で切れた JSON。生の波括弧を本文として見せない
+    if (looksLikeJsonObject(body)) return salvageTruncatedJson(body);
     return { trend: trimmed, themes: [] };
   }
 }

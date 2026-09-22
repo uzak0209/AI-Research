@@ -109,6 +109,22 @@ function migrate(db: Db): void {
 
   rebuildNotesIfLegacy(db);
   backfillSurveyReports(db);
+  clearBrokenTrends(db);
+}
+
+/**
+ * 生の JSON が本文として入った報告を未着に戻す。
+ * モデル出力が長さ上限で切れて JSON が壊れ、`{"trend": "…` を保存していた。
+ * 壊れた本文を見せるより未着にして取り直させる（C-07）。
+ */
+function clearBrokenTrends(db: Db): void {
+  db.exec(`
+    UPDATE survey_reports
+       SET trend = NULL, themes_json = NULL
+     WHERE trend IS NOT NULL
+       AND trim(trend) LIKE '{%'
+       AND trim(trend) LIKE '%"trend"%'
+  `);
 }
 
 /** 報告表より前に取り込んだ papers.run_id を報告へ載せる。無いと既存候補が画面から消える */
