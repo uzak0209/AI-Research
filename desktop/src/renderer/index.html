@@ -28,6 +28,7 @@
           />
         </div>
         <button class="btn" data-variant="primary" id="welcome-create">プロジェクトを作る</button>
+        <p class="welcome-error" id="welcome-error" role="alert" hidden></p>
       </div>
     </div>
 
@@ -50,7 +51,7 @@
                 d="M5 7h14M5 12h14M5 17h9"
               />
             </svg>
-            <span>新着</span>
+            <span>報告</span>
           </button>
           <button
             class="app-nav-item"
@@ -69,10 +70,29 @@
             </svg>
             <span>ライブラリ</span>
           </button>
+          <button
+            class="app-nav-item"
+            role="tab"
+            id="tab-mypaper"
+            aria-selected="false"
+            aria-controls="view-mypaper"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                d="M7 4.5h7l4 4V19.5H7Z"
+              />
+              <path fill="none" stroke="currentColor" stroke-width="1.8" d="M14 4.5V9h4.5" />
+            </svg>
+            <span>My paper</span>
+          </button>
         </nav>
 
         <div class="nav-context" id="nav-feed">
-          <p class="hint">関連度の高い順。読むための順位であり、有効／除外の判定ではありません。</p>
+          <p class="hint" id="feed-score-hint">1 回の調査を 1 報告にまとめます。トレンドと次のテーマは、その回で集まった論文から出します。</p>
         </div>
 
         <div class="nav-context" id="nav-library" hidden>
@@ -106,11 +126,15 @@
             </div>
           </nav>
         </div>
+
+        <div class="nav-context" id="nav-mypaper" hidden>
+          <p class="hint">自分の原稿と論文の置き場です。PDF を置くと書誌を作ります。md / tex / typ は読む順の正本で、クラウドへは出しません。</p>
+        </div>
       </aside>
 
       <div class="workbench">
         <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="true">
-          <section class="list-pane" aria-label="関連度順の新着候補">
+          <section class="list-pane" aria-label="調査の報告">
             <div class="pane-head">
               <button class="btn" data-variant="primary" id="feed-collect">調査する</button>
               <button class="btn" data-variant="secondary" id="feed-sync">取り込む</button>
@@ -120,10 +144,10 @@
             <div class="scroll" id="feed-list"></div>
           </section>
 
-          <section class="detail-pane" id="feed-detail" aria-label="候補の詳細" aria-live="polite">
+          <section class="detail-pane" id="feed-detail" aria-label="報告の詳細" aria-live="polite">
             <div class="empty-state">
-              <p class="empty-title">候補を選ぶ</p>
-              <p class="empty">左から選ぶと要旨が開きます。関連ならライブラリへ入れます。</p>
+              <p class="empty-title">報告を選ぶ</p>
+              <p class="empty">左から選ぶと、その調査のトレンド・次のテーマ・見つけた論文がまとめて開きます。</p>
             </div>
           </section>
         </div>
@@ -156,6 +180,23 @@
             </div>
           </section>
         </div>
+
+        <div class="view" id="view-mypaper" role="tabpanel" aria-labelledby="tab-mypaper" data-active="false">
+          <section class="list-pane" aria-label="自分の論文">
+            <div class="pane-head">
+              <button class="btn" data-variant="primary" id="mypaper-import">配置</button>
+              <button class="btn" data-variant="secondary" id="mypaper-reveal">Finder で表示</button>
+            </div>
+            <div class="scroll" id="mypaper-list"></div>
+          </section>
+
+          <section class="detail-pane" id="mypaper-detail" aria-label="自分の論文の詳細" aria-live="polite">
+            <div class="empty-state">
+              <p class="empty-title">ファイルを置く</p>
+              <p class="empty">配置するか、mypaper フォルダに PDF / 原稿を入れるとここに出ます。PDF は書誌を作ります。</p>
+            </div>
+          </section>
+        </div>
       </div>
     </div>
 
@@ -169,6 +210,7 @@
         </header>
 
         <div class="settings-body">
+          <p class="settings-status" id="settings-status" hidden role="status" aria-live="polite"></p>
           <div class="field">
             <label for="proj-title">プロジェクト名</label>
             <input id="proj-title" type="text" autocomplete="off" placeholder="例: DPDK 研究" />
@@ -176,7 +218,7 @@
 
           <div class="field auth-block">
             <label>クラウド</label>
-            <p class="hint" id="auth-label">未ログイン — 新着の取り込みに必要です</p>
+            <p class="hint" id="auth-label">未ログイン — 調査の取り込みに必要です</p>
             <div class="actions" data-align="start">
               <button type="button" class="btn" data-variant="primary" id="auth-login">
                 Google でログイン
@@ -198,9 +240,16 @@
           </div>
 
           <div class="field">
-            <label for="claims">関連技術</label>
-            <p class="hint">1 行に 1 つ。技術名・キーワード。</p>
-            <textarea id="claims" rows="6" placeholder="DPDK&#10;RSS&#10;XDP"></textarea>
+            <label>キーワード</label>
+            <p class="hint">課題意識から推測します。合わないものは × で外す。足りなければ足す。</p>
+            <div class="keyword-tags" id="keyword-tags"></div>
+            <div class="keyword-add-row">
+              <label class="visually-hidden" for="keyword-add">キーワードを足す</label>
+              <input id="keyword-add" type="text" autocomplete="off" placeholder="足す（Enter）" />
+              <button type="button" class="btn" data-variant="secondary" id="keyword-infer">
+                課題意識から推測
+              </button>
+            </div>
           </div>
 
           <div class="field">

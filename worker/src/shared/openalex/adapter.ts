@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   authorsFromAuthorships,
   doiOrNull,
+  pickOaPdfUrl,
   publicWorkUrl,
   rebuildAbstract,
   type FetchedPaper,
@@ -27,6 +28,11 @@ export function collectFromPublicationDate(now = new Date()): string {
   return `${now.getUTCFullYear() - COLLECT_RECENT_YEARS}-01-01`;
 }
 
+const oaLocationSchema = z
+  .object({ pdf_url: z.string().nullable().optional() })
+  .nullable()
+  .optional();
+
 const openAlexWorkSchema = z.object({
   id: z.string(),
   doi: z.string().nullable().optional(),
@@ -34,6 +40,14 @@ const openAlexWorkSchema = z.object({
   publication_date: z.string().nullable().optional(),
   authorships: z.array(z.unknown()).nullable().optional(),
   abstract_inverted_index: z.record(z.string(), z.array(z.number())).nullable().optional(),
+  best_oa_location: oaLocationSchema,
+  primary_location: oaLocationSchema,
+  // arXiv などの全文リポジトリは locations の 2 番目以降に入ることがある
+  locations: z.array(oaLocationSchema).nullable().optional(),
+  open_access: z
+    .object({ oa_url: z.string().nullable().optional() })
+    .nullable()
+    .optional(),
 });
 
 const openAlexResponseSchema = z.object({
@@ -56,7 +70,8 @@ export function openAlexWorksUrl(query: string, opts: OpenAlexOpts = {}): URL {
   url.searchParams.set('sort', 'publication_date:desc');
   url.searchParams.set(
     'select',
-    'id,doi,display_name,publication_date,authorships,abstract_inverted_index',
+    // 直 PDF もここで取る。後から DOI で引き直すと 1 件ごとに往復が増える
+    'id,doi,display_name,publication_date,authorships,abstract_inverted_index,best_oa_location,primary_location,locations,open_access',
   );
   if (opts.page && opts.page > 1) url.searchParams.set('page', String(opts.page));
   if (opts.apiKey) url.searchParams.set('api_key', opts.apiKey);
@@ -77,6 +92,12 @@ function mapWork(raw: unknown): FetchedPaper | null {
     abstract: rebuildAbstract(w.abstract_inverted_index),
     url: publicWorkUrl({ doi: w.doi, id: w.id }),
     published_at: w.publication_date ?? null,
+    pdf_url: pickOaPdfUrl([
+      w.best_oa_location?.pdf_url,
+      w.primary_location?.pdf_url,
+      ...(w.locations ?? []).map((l) => l?.pdf_url),
+      w.open_access?.oa_url,
+    ]),
   };
 }
 

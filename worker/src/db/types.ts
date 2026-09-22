@@ -22,6 +22,9 @@ export interface Runs {
   run_date: string;
   status: string;
   failed_sources_json: string | null;
+  search_terms_json: string | null;
+  trend_summary: string | null;
+  themes_json: string | null;
   created_at: string;
 }
 
@@ -34,6 +37,8 @@ export interface RunPapers {
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** OA の直 PDF。取得はデスクトップ（ADR-0003） */
+  pdf_url: string | null;
   coarse_score: number | null;
   problem_excerpt: string | null;
 }

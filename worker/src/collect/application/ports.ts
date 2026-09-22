@@ -39,8 +39,19 @@ export type PaperFetcher = {
   fetch(source: string, query: string, opts?: FetchPapersOpts): Promise<FetchedPaper[]>;
 };
 
+export type CollectReport = {
+  trend: string | null;
+  themes: string[];
+};
+
 export type RunStore = {
-  save(msg: CollectMessage, papers: ScoredPaper[], failure: string | null): Promise<void>;
+  save(
+    msg: CollectMessage,
+    papers: ScoredPaper[],
+    failure: string | null,
+    searchTerms?: string[],
+    report?: CollectReport,
+  ): Promise<void>;
   knownExternalIds(projectId: string): Promise<Set<string>>;
 };
 
@@ -51,10 +62,18 @@ export type SearchQueryBuilder = {
 export type CollectUsage = {
   recordSearch(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
   recordReview(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
+  recordTrend?(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
 };
 
 export type ProblemExcerptPort = {
   attach(papers: ScoredPaper[]): Promise<{ papers: ScoredPaper[]; usage: OrcaChatOk | null }>;
+};
+
+export type CollectTrendPort = {
+  analyze(
+    summary: string,
+    papers: ScoredPaper[],
+  ): Promise<{ report: CollectReport; usage: OrcaChatOk | null }>;
 };
 
 export type IngestDeps = {
@@ -63,4 +82,5 @@ export type IngestDeps = {
   search: SearchQueryBuilder;
   problemExcerpt: ProblemExcerptPort;
   usage: CollectUsage;
+  trend: CollectTrendPort;
 };

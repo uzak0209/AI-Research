@@ -29,6 +29,7 @@ const api = {
       inserted: number;
       pulled: number;
       statuses: string[];
+      searchTerms?: string[];
       timedOut: boolean;
     }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
@@ -66,6 +67,8 @@ const api = {
   listClaims: (projectId: string) => ipcRenderer.invoke('claims:list', projectId),
   setClaims: (projectId: string, claims: string[]) =>
     ipcRenderer.invoke('claims:set', projectId, claims),
+  inferKeywords: (topic: string) =>
+    ipcRenderer.invoke('bff:keywords', topic) as Promise<{ terms: string[] }>,
 
   // --- 新着候補 ---
   ranked: (projectId: string) => ipcRenderer.invoke('papers:ranked', projectId),
@@ -80,6 +83,34 @@ const api = {
     return () => ipcRenderer.off('score:event', h);
   },
 
+  reports: {
+    list: (projectId: string) =>
+      ipcRenderer.invoke('reports:list', projectId) as Promise<{
+        reports: unknown[];
+        unscored: number;
+        unscoredMissingPdf: number;
+        scoreMode: 'mypaper' | 'blend';
+        searchTerms: string[];
+      }>,
+    get: (projectId: string, runId: string) => ipcRenderer.invoke('reports:get', projectId, runId),
+  },
+
+  mypaper: {
+    list: (projectId: string) => ipcRenderer.invoke('mypaper:list', projectId),
+    import: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:import', projectId) as Promise<{
+        imported: { path: string; existed: boolean }[];
+        failed: { path: string; error: string }[];
+      }>,
+    reveal: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:reveal', projectId) as Promise<{ ok: true } | { ok: false; error: string }>,
+    onChanged: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on('mypaper:changed', h);
+      return () => ipcRenderer.off('mypaper:changed', h);
+    },
+  },
+
   // --- ライブラリ（FR-05 / FR-14） ---
   lib: {
     list: (projectId: string, filter?: unknown) => ipcRenderer.invoke('lib:list', projectId, filter),
@@ -91,9 +122,13 @@ const api = {
       ipcRenderer.invoke('lib:add', projectId, item) as Promise<{
         reference_id: string;
         pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        citeConflict: boolean;
       }>,
     follow: (projectId: string, referenceId: string) =>
-      ipcRenderer.invoke('lib:follow', projectId, referenceId),
+      ipcRenderer.invoke('lib:follow', projectId, referenceId) as Promise<{
+        pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        cite: 'ok' | 'skipped' | 'conflict';
+      }>,
     update: (referenceId: string, patch: unknown) =>
       ipcRenderer.invoke('lib:update', referenceId, patch),
     remove: (referenceId: string) => ipcRenderer.invoke('lib:delete', referenceId),

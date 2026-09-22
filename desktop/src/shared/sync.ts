@@ -3,7 +3,7 @@
 
 import type { CloudClient } from '@ai-research/core';
 import type { Db } from './db.js';
-import { getProject, listChunks, setLastRunId, upsertPapers } from './repo.js';
+import { getProject, listChunks, parseSearchTerms, setLastRunId, setLastSearchTerms, upsertPapers, upsertSurveyReport } from './repo.js';
 
 /** クラウド収集材料。課題意識＋関連技術（未公開の提案手法は載せない）。 */
 export function cloudSummaryFromLocal(
@@ -26,6 +26,7 @@ export async function syncProjectFromCloud(
   pulled: number;
   lastRunId: string | null;
   statuses: string[];
+  searchTerms: string[];
 }> {
   const project = getProject(db, projectId);
   if (!project) throw new Error(`project not found: ${projectId}`);
@@ -38,8 +39,10 @@ export async function syncProjectFromCloud(
   let inserted = 0;
   let pulled = 0;
   const statuses: string[] = [];
+  let searchTerms: string[] = parseSearchTerms(project.last_search_terms);
   for (const run of runs ?? []) {
     statuses.push(run.status);
+    if (run.search_terms?.length) searchTerms = run.search_terms;
     const papers = run.papers ?? [];
     pulled += papers.length;
     inserted += upsertPapers(
@@ -53,17 +56,29 @@ export async function syncProjectFromCloud(
         abstract: p.abstract,
         url: p.url,
         published_at: p.published_at,
+        pdf_url: p.pdf_url ?? null,
         coarse_score: p.coarse_score,
         problem_excerpt: p.problem_excerpt,
         run_id: run.run_id,
       })),
     );
+    upsertSurveyReport(db, {
+      run_id: run.run_id,
+      project_id: projectId,
+      run_date: run.run_date,
+      status: run.status,
+      search_terms: run.search_terms,
+      trend: run.trend,
+      themes: run.themes,
+      created_at: run.created_at,
+    });
   }
 
   const lastRunId = runs.length > 0 ? runs[runs.length - 1]!.run_id : project.last_run_id;
   if (runs.length > 0) {
     setLastRunId(db, projectId, lastRunId);
+    if (searchTerms.length) setLastSearchTerms(db, projectId, searchTerms);
   }
 
-  return { inserted, pulled, lastRunId, statuses };
+  return { inserted, pulled, lastRunId, statuses, searchTerms };
 }

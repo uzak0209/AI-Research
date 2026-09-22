@@ -13,7 +13,8 @@ import {
   type CollectMessage,
 } from '../src/index';
 import { openAlexWorksUrl, collectFromPublicationDate, fetchFromSource } from '../src/shared/openalex/adapter';
-import { publicWorkUrl } from '../src/shared/papers/domain';
+import { pickOaPdfUrl, publicWorkUrl } from '../src/shared/papers/domain';
+import { pickTopPapers } from '../src/collect/application/ingest';
 
 const RUN_DATE = '2026-09-20';
 const PROJECT = 'proj-1';
@@ -100,6 +101,12 @@ describe('HTTP', () => {
     const body = (await res.json()) as { project_id: string; runs: { run_id: string }[] };
     expect(body.project_id).toBe(PROJECT);
     expect(body.runs.some((r) => r.run_id === `${PROJECT}:sync`)).toBe(true);
+    const run = (body.runs as { run_id: string; search_terms: string[] }[]).find(
+      (r) => r.run_id === `${PROJECT}:sync`,
+    );
+    expect(run?.search_terms).toEqual([]);
+    expect((run as { trend?: string | null; themes?: string[] })?.trend ?? null).toBeNull();
+    expect((run as { themes?: string[] })?.themes).toEqual([]);
   });
 
   it('PUT /projects は summary を upsert する', async () => {
@@ -235,6 +242,70 @@ describe('OpenAlex URL', () => {
     expect(publicWorkUrl({ doi: 'https://doi.org/10.1234/foo' })).toBe('https://doi.org/10.1234/foo');
     expect(publicWorkUrl({ id: 'https://openalex.org/W1' })).toBe('https://openalex.org/W1');
     expect(publicWorkUrl({ landing: 'https://example.org/p', doi: '10.1234/foo' })).toBe('https://example.org/p');
+  });
+
+  it('直 PDF も select に入れる。後から 1 件ずつ引き直さない', () => {
+    const select = openAlexWorksUrl('DPDK').searchParams.get('select') ?? '';
+    expect(select).toContain('best_oa_location');
+    expect(select).toContain('locations');
+  });
+});
+
+describe('pickOaPdfUrl（arXiv 優先）', () => {
+  it('出版社より arXiv を先に選ぶ', () => {
+    expect(
+      pickOaPdfUrl(['https://publisher.example/x.pdf', 'https://arxiv.org/pdf/2409.00001.pdf']),
+    ).toBe('https://arxiv.org/pdf/2409.00001.pdf');
+  });
+
+  it('arXiv が無ければ先に来た https 直 PDF', () => {
+    expect(pickOaPdfUrl([null, 'https://publisher.example/x.pdf', 'https://other.example/y.pdf'])).toBe(
+      'https://publisher.example/x.pdf',
+    );
+  });
+
+  it('HTML と http は取らない。無ければ null（未取得。C-07）', () => {
+    expect(pickOaPdfUrl(['https://publisher.example/abs.html', 'http://arxiv.org/pdf/x.pdf'])).toBeNull();
+    expect(pickOaPdfUrl([])).toBeNull();
+  });
+
+  it('参考文献だけの PDF と DOI ランディングは後ろに回す', () => {
+    expect(
+      pickOaPdfUrl(['https://www.nature.com/articles/x_reference.pdf', 'https://publisher.example/full.pdf']),
+    ).toBe('https://publisher.example/full.pdf');
+    expect(pickOaPdfUrl(['https://doi.org/10.1234/foo', 'https://publisher.example/full.pdf'])).toBe(
+      'https://publisher.example/full.pdf',
+    );
+  });
+
+  it('弱い候補しか無ければそれを返す。勝手に「無し」にしない', () => {
+    expect(pickOaPdfUrl(['https://doi.org/10.1234/foo'])).toBe('https://doi.org/10.1234/foo');
+  });
+});
+
+describe('pickTopPapers（同点なら読めるもの）', () => {
+  const base = { title: 't', authors: null, abstract: null, url: null, problem_excerpt: null };
+
+  it('粗点が同じなら OA 直 PDF がある方を上に出す', () => {
+    const got = pickTopPapers(
+      [
+        { ...base, external_id: 'no-pdf', published_at: '2026-09-01', pdf_url: null, coarse_score: 0.5 },
+        { ...base, external_id: 'pdf', published_at: '2026-09-01', pdf_url: 'https://arxiv.org/pdf/a.pdf', coarse_score: 0.5 },
+      ],
+      2,
+    );
+    expect(got.map((p) => p.external_id)).toEqual(['pdf', 'no-pdf']);
+  });
+
+  it('粗点の差は PDF の有無で覆さない', () => {
+    const got = pickTopPapers(
+      [
+        { ...base, external_id: 'pdf', published_at: '2026-09-01', pdf_url: 'https://arxiv.org/pdf/a.pdf', coarse_score: 0.1 },
+        { ...base, external_id: 'relevant', published_at: '2026-09-01', pdf_url: null, coarse_score: 0.9 },
+      ],
+      2,
+    );
+    expect(got[0]?.external_id).toBe('relevant');
   });
 });
 
@@ -383,6 +454,9 @@ describe('収集の記録（FR-08 / C-07）', () => {
           { raw_author_name: 'Alan Turing' },
         ],
         abstract_inverted_index: { graph: [0], neural: [1], networks: [2] },
+        best_oa_location: { pdf_url: 'https://publisher.example/full.pdf' },
+        // arXiv は locations の後ろに入ることがある。それでも優先する
+        locations: [{ pdf_url: 'https://arxiv.org/pdf/2409.00001.pdf' }],
       },
     ]);
 
@@ -395,15 +469,23 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(run?.failed_sources_json).toBeNull();
 
     const papers = await env.DB.prepare(
-      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url, MIN(authors) AS authors FROM run_papers WHERE run_id = ?',
+      'SELECT COUNT(*) AS n, MIN(external_id) AS external_id, MIN(url) AS url, MIN(authors) AS authors, MIN(pdf_url) AS pdf_url FROM run_papers WHERE run_id = ?',
     )
       .bind(`${PROJECT}:${RUN_DATE}`)
-      .first<{ n: number; external_id: string; url: string; authors: string }>();
+      .first<{ n: number; external_id: string; url: string; authors: string; pdf_url: string }>();
     expect(papers?.n).toBe(1);
     // desktop の papers.external_id / url と同じ形。DOI 生文字列を URL にしない
     expect(papers?.external_id).toBe('10.1234/a');
     expect(papers?.url).toBe('https://doi.org/10.1234/a');
     expect(papers?.authors).toBe('Ada Lovelace; Alan Turing');
+    // 収集時に直 PDF まで取り、arXiv を選ぶ（ADR-0003）
+    expect(papers?.pdf_url).toBe('https://arxiv.org/pdf/2409.00001.pdf');
+
+    const terms = await env.DB.prepare('SELECT search_terms_json FROM runs WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ search_terms_json: string }>();
+    const parsed = JSON.parse(terms?.search_terms_json ?? '[]') as string[];
+    expect(parsed).toContain('graph');
   });
 
   it('0 件は empty。failed にしない', async () => {
@@ -477,10 +559,15 @@ describe('収集の記録（FR-08 / C-07）', () => {
     await handleQueueMessage(message(), env);
 
     const statements = spy.mock.calls[0]?.[0] ?? [];
-    // runs 1 文 + run_papers を 10 件ずつ（100 バインド ÷ 10 列）= 3 文。合計 4 文
-    expect(statements.length).toBe(4);
+    // 利用者に渡すのは上位 5 件。runs 1 文 + run_papers 1 文
+    expect(statements.length).toBe(2);
     // Free 枠は 1 実行 50 クエリまで
     expect(statements.length).toBeLessThanOrEqual(50);
+
+    const saved = await env.DB.prepare('SELECT COUNT(*) AS n FROM run_papers WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ n: number }>();
+    expect(saved?.n).toBe(5);
   });
 
   it('未知のソースは failed として残る（黙って握りつぶさない）', async () => {

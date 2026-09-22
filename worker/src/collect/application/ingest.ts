@@ -3,7 +3,8 @@ import type { FetchedPaper } from '../../shared/papers/domain';
 import { coarseScore, collectMessageSchema, type ScoredPaper } from '../domain';
 import type { IngestDeps } from './ports';
 import {
-  COLLECT_TAKE,
+  COLLECT_DELIVER,
+  COLLECT_POOL,
   MAX_COMBO_QUERIES,
   PER_COMBO_PAGES,
   PER_COMBO_TAKE,
@@ -19,16 +20,28 @@ export function mergeLatestPapers(papers: FetchedPaper[], take: number): Fetched
     .slice(0, take);
 }
 
+/**
+ * 粗い一致を優先し、同点なら全文が読めるもの（OA 直 PDF あり）、その次に新しい順。
+ * 読めない候補を上位に置いても読む順として役に立たない（ADR-0003）。
+ */
+export function pickTopPapers(papers: ScoredPaper[], take: number): ScoredPaper[] {
+  return [...papers]
+    .sort((a, b) => {
+      const score = (b.coarse_score ?? 0) - (a.coarse_score ?? 0);
+      if (score !== 0) return score;
+      const pdf = (b.pdf_url ? 1 : 0) - (a.pdf_url ? 1 : 0);
+      if (pdf !== 0) return pdf;
+      return (b.published_at ?? '').localeCompare(a.published_at ?? '');
+    })
+    .slice(0, take);
+}
+
 export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Promise<void> {
   const parsed = collectMessageSchema.safeParse(raw);
   if (!parsed.success) throw new Error('invalid collect message');
   const msg = parsed.data;
 
-  // 1 段目: summary から検索語を作る（ADR-0005 §1）。
-  // 失敗しても summary をそのまま使って収集は続ける（NFR-01, C-07）
   const search = await deps.search.build(msg.summary);
-
-  // 呼べたぶんは必ず記録する。検索語が採れなくても課金は発生している
   if (search.usage) await deps.usage.recordSearch(msg, search.usage);
 
   let papers: ScoredPaper[] = [];
@@ -55,19 +68,31 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
       }
     }
 
-    const fetched = mergeLatestPapers(collected, COLLECT_TAKE);
-    const scored = fetched.map((p) => ({
+    const pooled = mergeLatestPapers(collected, COLLECT_POOL);
+    const scored = pooled.map((p) => ({
       ...p,
       coarse_score: coarseScore(msg.summary, `${p.title} ${p.abstract ?? ''}`),
       problem_excerpt: null as string | null,
     }));
-    const excerpt = await deps.problemExcerpt.attach(scored);
+    const top = pickTopPapers(scored, COLLECT_DELIVER);
+    const excerpt = await deps.problemExcerpt.attach(top);
     papers = excerpt.papers;
     if (excerpt.usage) await deps.usage.recordReview(msg, excerpt.usage);
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }
 
-  await deps.runs.save(msg, papers, failure);
+  let report = { trend: null as string | null, themes: [] as string[] };
+  if (!failure && papers.length > 0) {
+    try {
+      const analyzed = await deps.trend.analyze(msg.summary, papers);
+      report = analyzed.report;
+      if (analyzed.usage) await deps.usage.recordTrend?.(msg, analyzed.usage);
+    } catch {
+      // 論文は残す。トレンドが欠けたことは報告で見せる（C-07）
+    }
+  }
+
+  await deps.runs.save(msg, papers, failure, search.combo, report);
   if (failure) throw new Error(failure);
 }

@@ -51,8 +51,19 @@ export const GoogleLoginBodySchema = z
 
 export const TrendBodySchema = z
   .object({
-    // トピックだけ。原稿や手元論文を載せない（C-01, C-09）
     topic: z.string().trim().min(1).max(200),
+    // 収集済みの公開論文。あれば OpenAlex を取り直さない
+    papers: z
+      .array(
+        z.object({
+          title: z.string().trim().min(1).max(500),
+          abstract: z.string().max(4000).nullable().optional(),
+          url: z.string().max(2000).nullable().optional(),
+          published_at: z.string().max(32).nullable().optional(),
+        }),
+      )
+      .max(12)
+      .optional(),
   })
   .openapi('TrendBody');
 
@@ -69,9 +80,24 @@ export const TrendResponseSchema = z
     classification: z.literal('C1'),
     model: z.string().nullable(),
     summary: z.string().nullable(),
+    themes: z.array(z.string()),
     papers: z.array(TrendPaperSchema),
   })
   .openapi('TrendResponse');
+
+export const KeywordsBodySchema = z
+  .object({
+    topic: z.string().trim().min(1).max(2000),
+  })
+  .openapi('KeywordsBody');
+
+export const KeywordsResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    terms: z.array(z.string()),
+  })
+  .openapi('KeywordsResponse');
 
 export const BibliographyBodySchema = z
   .object({
@@ -118,6 +144,8 @@ export const RunPaperSchema = z
     abstract: z.string().nullable(),
     url: z.string().nullable(),
     published_at: z.string().nullable(),
+    /** OA の直 PDF。無ければ null = 未取得（C-07）。取得はデスクトップ */
+    pdf_url: z.string().nullable(),
     coarse_score: z.number().nullable(),
     problem_excerpt: z.string().nullable(),
   })
@@ -129,6 +157,9 @@ export const RunSchema = z
     run_date: z.string(),
     status: z.enum(['ok', 'empty', 'failed', 'partial']),
     failed_sources_json: z.string().nullable(),
+    search_terms: z.array(z.string()),
+    trend: z.string().nullable(),
+    themes: z.array(z.string()),
     created_at: z.string(),
     papers: z.array(RunPaperSchema),
   })

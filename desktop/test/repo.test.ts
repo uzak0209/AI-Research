@@ -12,6 +12,7 @@ import {
   listLibrary,
   listRanked,
   listUnscored,
+  fillPaperAuthors,
   makeBibtexKey,
   saveScore,
   getChunkEmbedding,
@@ -112,6 +113,16 @@ describe('論文の取り込み', () => {
       ]),
     ).toBe(0);
     const row = db.prepare('SELECT authors FROM papers WHERE external_id = ?').get('doi:1') as { authors: string };
+    expect(row.authors).toBe('Ada Lovelace');
+  });
+
+  it('fillPaperAuthors は空のときだけ埋める', () => {
+    upsertPapers(db, PROJ, [{ external_id: 'doi:2', source: 'openalex', title: 'X', abstract: 'a' }]);
+    const id = (db.prepare('SELECT paper_id FROM papers WHERE external_id = ?').get('doi:2') as { paper_id: string })
+      .paper_id;
+    expect(fillPaperAuthors(db, id, 'Ada Lovelace')).toBe(true);
+    expect(fillPaperAuthors(db, id, 'Someone Else')).toBe(false);
+    const row = db.prepare('SELECT authors FROM papers WHERE paper_id = ?').get(id) as { authors: string };
     expect(row.authors).toBe('Ada Lovelace');
   });
 });

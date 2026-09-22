@@ -7,7 +7,7 @@
 
 import type { Db } from './db.js';
 import { EMBED_DIM, cosine } from './db.js';
-import { loadMypaperChunks } from './mypaper.js';
+import { loadMypaperScoringTexts } from './mypaper.js';
 import {
   blendScore,
   getChunkEmbedding,
@@ -113,7 +113,7 @@ export async function scoreProject(
     );
   }
 
-  const mypaperTexts = loadMypaperChunks(project.root_path);
+  const mypaperTexts = await loadMypaperScoringTexts(project.root_path);
   if (mypaperTexts.length > 0) {
     return scoreWithMypaper(db, projectId, embedder, mypaperTexts, opts);
   }

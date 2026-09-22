@@ -8,6 +8,9 @@ import { createUsage } from '../../usage';
 import { attachProblemExcerpts, REVIEW_ENDPOINT } from '../application/problem-excerpt';
 import { COLLECT_ENDPOINT, buildSearchQuery } from '../application/search-terms';
 import type { OrcaChatOk } from '../../shared/orca/chat';
+import { orcaKey } from '../../shared/orca/chat';
+import { reviewPolicy } from '../../shared/orca/policy';
+import { TREND_ENDPOINT, createTrendApp } from '../../trend';
 import type {
   CollectClock,
   CollectIdempotency,
@@ -23,7 +26,7 @@ import type { ScoredPaper } from '../domain';
 /** D1 の 1 文あたりのバインド変数の上限 */
 const D1_MAX_BIND_PARAMS = 100;
 /** run_papers に 1 行あたり入れる列数 */
-const RUN_PAPER_COLUMNS = 10;
+const RUN_PAPER_COLUMNS = 11;
 
 export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
   return {
@@ -80,20 +83,26 @@ export function d1Runs(d1: D1Database): RunStore {
       );
       return new Set(rows.map((r) => r.external_id));
     },
-    async save(msg, papers: ScoredPaper[], failure) {
+    async save(msg, papers: ScoredPaper[], failure, searchTerms = [], report = { trend: null, themes: [] }) {
       const status = failure ? 'failed' : papers.length === 0 ? 'empty' : 'ok';
       const failedJson = failure ? JSON.stringify([{ source: msg.source, error: failure }]) : null;
+      const termsJson = JSON.stringify(searchTerms);
+      const trendSummary = report.trend;
+      const themesJson = JSON.stringify(report.themes);
 
       const statements = [
         sql`
-          INSERT INTO runs (run_id, project_id, run_date, status, failed_sources_json)
-          VALUES (${msg.run_id}, ${msg.project_id}, ${msg.run_date}, ${status}, ${failedJson})
+          INSERT INTO runs (run_id, project_id, run_date, status, failed_sources_json, search_terms_json, trend_summary, themes_json)
+          VALUES (${msg.run_id}, ${msg.project_id}, ${msg.run_date}, ${status}, ${failedJson}, ${termsJson}, ${trendSummary}, ${themesJson})
           ON CONFLICT (run_id) DO UPDATE SET
             status = CASE
               WHEN runs.status = excluded.status THEN runs.status
               ELSE 'partial'
             END,
-            failed_sources_json = COALESCE(excluded.failed_sources_json, runs.failed_sources_json)
+            failed_sources_json = COALESCE(excluded.failed_sources_json, runs.failed_sources_json),
+            search_terms_json = excluded.search_terms_json,
+            trend_summary = COALESCE(excluded.trend_summary, runs.trend_summary),
+            themes_json = COALESCE(excluded.themes_json, runs.themes_json)
         `.compile(db),
       ];
 
@@ -114,6 +123,7 @@ export function d1Runs(d1: D1Database): RunStore {
                   abstract: p.abstract,
                   url: p.url,
                   published_at: p.published_at,
+                  pdf_url: p.pdf_url ?? null,
                   coarse_score: p.coarse_score,
                   problem_excerpt: p.problem_excerpt,
                 })),
@@ -154,6 +164,35 @@ export function ingestDeps(env: Env): IngestDeps {
       },
       async recordReview(msg, usage) {
         await recordCollectLlm(env, msg, REVIEW_ENDPOINT, usage);
+      },
+      async recordTrend(msg, usage) {
+        await recordCollectLlm(env, msg, TREND_ENDPOINT, usage);
+      },
+    },
+    trend: {
+      async analyze(summary, papers) {
+        const policy = reviewPolicy(env);
+        const apiKey = orcaKey(env, policy.slot);
+        if (!apiKey || papers.length === 0) return { report: { trend: null, themes: [] }, usage: null };
+        const got = await createTrendApp({
+          orcaKey: apiKey,
+          openAlexKey: env.OPENALEX_API_KEY,
+          policy,
+        }).surveyPapers(summary, papers);
+        if (!got.ok) return { report: { trend: null, themes: [] }, usage: null };
+        const usage: OrcaChatOk | null = got.model
+          ? {
+              ok: true,
+              text: got.summary ?? '',
+              model: got.model,
+              requestedModel: got.requestedModel ?? got.model,
+              tokens: got.tokens,
+              costUsd: got.costUsd,
+              latencyMs: got.latencyMs,
+              fallbackUsed: got.fallbackUsed,
+            }
+          : null;
+        return { report: { trend: got.summary, themes: got.themes }, usage };
       },
     },
   };

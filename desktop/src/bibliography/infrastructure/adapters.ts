@@ -26,12 +26,13 @@ import { isEmptyRecord, type BibliographicRecord, type BibliographyHint } from '
 import {
   citeInner,
   citeMarkers,
-  spliceManaged,
+  planSplice,
   type CiteFormat,
   type CiteItem,
 } from '../domain/cite-format.js';
 import type {
   BibliographyGateway,
+  CiteExportResult,
   CiteFiles,
   Paths,
   PdfExtractor,
@@ -147,8 +148,11 @@ export function bffBibliographyGateway(getClient: () => CloudClient | null): Bib
         throw new Error(`書誌を取れなかった (${detail})`);
       }
       const body = (await res.json()) as { record?: BibliographicRecord; pdf_url?: string | null };
-      if (isEmptyRecord(body.record)) throw new Error('書誌を補れなかった');
-      return { record: body.record!, pdf_url: httpsPdfUrl(body.pdf_url ?? null) };
+      const pdf_url = httpsPdfUrl(body.pdf_url ?? null);
+      const record = isEmptyRecord(body.record) ? null : body.record!;
+      // 著者無しは成功にしない（C-07）。ただし OA の直 PDF は後で 1 ページ目を読ませるために残す
+      if (!record && !pdf_url) throw new Error('書誌を補れなかった');
+      return { record, pdf_url };
     },
   };
 }
@@ -201,9 +205,23 @@ function guessCiteTarget(root: string): { path: string; format: CiteFormat } | n
   return null;
 }
 
+function getCiteExportHash(db: Db, path: string): string | null {
+  const row = db.prepare('SELECT inner_hash FROM cite_exports WHERE path = ?').get(path) as
+    | { inner_hash: string }
+    | undefined;
+  return row?.inner_hash ?? null;
+}
+
+function setCiteExportHash(db: Db, path: string, hash: string): void {
+  db.prepare(
+    `INSERT INTO cite_exports (path, inner_hash, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(path) DO UPDATE SET inner_hash = excluded.inner_hash, updated_at = excluded.updated_at`,
+  ).run(path, hash);
+}
+
 export function fsCiteFiles(db: Db): CiteFiles {
   return {
-    exportAll(projectId, items) {
+    exportAll(projectId, items): CiteExportResult {
       const project = getProject(db, projectId);
       const settings = createSettingsStore(db);
       const bibPath = settings.get(EXPORT_BIB_PATH_KEY)?.value ?? null;
@@ -214,15 +232,19 @@ export function fsCiteFiles(db: Db): CiteFiles {
       } else if (project?.root_path) {
         target = guessCiteTarget(project.root_path);
       }
-      if (!target || !existsSync(target.path)) return;
+      if (!target || !existsSync(target.path)) return 'skipped';
       const format: CiteFormat =
         target.format === 'hayagriva' || extname(target.path).toLowerCase() !== '.bib' ? target.format : 'bibtex';
       const { begin, end } = citeMarkers(format);
       const inner = citeInner(items, format);
       const source = readFileSync(target.path, 'utf8');
-      const next = spliceManaged(source, inner, begin, end);
-      if (next === null) return;
-      writeFileSync(target.path, next);
+      const key = resolve(target.path);
+      const plan = planSplice(source, inner, begin, end, getCiteExportHash(db, key));
+      if (plan.status === 'skip_removed' || plan.status === 'skip_broken') return 'skipped';
+      if (plan.status === 'skip_conflict') return 'conflict';
+      writeFileSync(target.path, plan.next);
+      setCiteExportHash(db, key, plan.hash);
+      return 'ok';
     },
   };
 }

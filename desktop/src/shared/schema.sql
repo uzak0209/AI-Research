@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS projects (
   -- プロジェクトに 1 つ固定。別モデルのベクトルは比較できない
   embed_model  TEXT NOT NULL,
   last_run_id  TEXT,                        -- 同期位置。settings には置かない
+  last_search_terms TEXT,                   -- 直近の収集で LLM が推測した略語 JSON。見せる（C-07）
   -- 作業フォルダ（references / mypaper / claims）。未設定可。索引の正本は SQLite
   root_path    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
@@ -78,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_papers_rank ON papers(project_id, relevance DESC)
 -- 未採点の行を拾うだけで再開できる。採点キュー表は作らない
 CREATE INDEX IF NOT EXISTS idx_papers_unscored ON papers(project_id, scored_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_papers_external ON papers(project_id, source, external_id);
+CREATE INDEX IF NOT EXISTS idx_papers_run ON papers(project_id, run_id);
 
 -- アプリ内参考文献ライブラリの本体（FR-05）。
 -- `references` は SQLite の予約語なので reference_items
@@ -173,6 +175,20 @@ CREATE TABLE IF NOT EXISTS annotations (
 
 CREATE INDEX IF NOT EXISTS idx_annotations_attachment ON annotations(attachment_id, page);
 
+-- 収集 1 回の報告（いつ・トレンド・次テーマ）。論文行は papers.run_id で辿る
+CREATE TABLE IF NOT EXISTS survey_reports (
+  run_id       TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+  run_date     TEXT NOT NULL,
+  status       TEXT NOT NULL,
+  search_terms TEXT,
+  trend        TEXT,
+  themes_json  TEXT,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_reports_project ON survey_reports(project_id, run_date DESC, created_at DESC);
+
 -- 文献ごとの自由記述。未公開の思考なので外に出さない（C-01）。
 -- 1 文献 1 本にする。複数あると「どれが本文か」が曖昧になる
 CREATE TABLE IF NOT EXISTS notes (
@@ -186,4 +202,12 @@ CREATE TABLE IF NOT EXISTS settings (
   key       TEXT PRIMARY KEY,
   value     TEXT,
   encrypted INTEGER NOT NULL DEFAULT 0
+);
+
+-- 引用ファイル書き出し先ごとの前回書き出し記録（FR-12, C-08）。
+-- マーカーが消えたとき「初回」と区別し、マーカー内の手編集を検知するために持つ
+CREATE TABLE IF NOT EXISTS cite_exports (
+  path       TEXT PRIMARY KEY,
+  inner_hash TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

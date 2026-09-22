@@ -25,9 +25,9 @@ on:
         type: string
         default: '7'
       dry_run:
-        description: 'issue を作らず、見つけた内容をログに出すだけ'
+        description: 'チェックすると issue を作らない（ログのみ）。既定は issue を出す'
         type: boolean
-        default: true
+        default: false
       d1_target:
         description: 'router-retro が読む D1。test はスキャン専用（dev/prod を汚さない）。定時は live'
         type: choice
@@ -143,7 +143,7 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}
           SCAN_TYPE: ${{ matrix.scan_type }}
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
           D1_TARGET: ${{ github.event.inputs.d1_target || 'live' }}
@@ -167,7 +167,7 @@ jobs:
             }
           prompt: |
             対象は ${{ github.repository }}。スキャン種別は ${{ matrix.scan_type }}。
-            環境変数 DRY_RUN は "${{ github.event.inputs.dry_run || 'false' }}"。
+            環境変数 DRY_RUN は "${{ github.event.inputs.dry_run == 'true' && 'true' || 'false' }}"。
             D1_TARGET は "${{ github.event.inputs.d1_target || 'live' }}"。
             D1 の集計は `d1-retro/` にある。Cloudflare のトークンは渡していない。
 
