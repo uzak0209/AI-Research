@@ -32,7 +32,16 @@ export async function syncProjectFromCloud(
   if (!project) throw new Error(`project not found: ${projectId}`);
 
   const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
-  await client.putProject(projectId, { title: project.title, summary });
+  // summary 空は PUT が 400 を返す（worker/src/http/schema.ts）。課題意識・関連技術が
+  // 未登録の新規プロジェクトでも起動時プル同期（FR-15）を止めないよう、put の失敗は
+  // pullRuns と切り離す。
+  if (summary) {
+    try {
+      await client.putProject(projectId, { title: project.title, summary });
+    } catch (e) {
+      console.error(`putProject failed for ${projectId}:`, e);
+    }
+  }
 
   const { runs } = await client.pullRuns(projectId, project.last_run_id);
 

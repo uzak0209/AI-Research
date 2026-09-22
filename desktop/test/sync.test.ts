@@ -146,4 +146,34 @@ describe('syncProjectFromCloud', () => {
     });
     await syncProjectFromCloud(db, mockClient({ pullRuns }), PROJ);
   });
+
+  it('summary が空なら putProject を呼ばずに pullRuns へ進む', async () => {
+    createProject(db, {
+      project_id: 'proj-empty',
+      title: 'Title',
+      summary: '',
+      embed_model: 'Xenova/bge-small-en-v1.5',
+    });
+    const putProject = vi.fn();
+    const pullRuns = vi.fn(async () => ({ project_id: 'proj-empty', runs: [] }));
+
+    await syncProjectFromCloud(db, mockClient({ putProject, pullRuns }), 'proj-empty');
+
+    expect(putProject).not.toHaveBeenCalled();
+    expect(pullRuns).toHaveBeenCalled();
+  });
+
+  it('putProject が失敗（400 等）しても pullRuns は実行する', async () => {
+    const putProject = vi.fn(async () => {
+      throw new Error('putProject failed: 400');
+    });
+    const pullRuns = vi.fn(async () => ({ project_id: PROJ, runs: [] }));
+
+    await expect(
+      syncProjectFromCloud(db, mockClient({ putProject, pullRuns }), PROJ),
+    ).resolves.toBeDefined();
+
+    expect(putProject).toHaveBeenCalled();
+    expect(pullRuns).toHaveBeenCalled();
+  });
 });
