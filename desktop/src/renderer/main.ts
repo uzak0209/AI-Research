@@ -47,6 +47,7 @@ interface RankedPaper {
   sim_summary: number | null;
   nearest_chunk_text: string | null;
   nearest_chunk_sim: number | null;
+  scored_at: string | null;
   in_library: number;
   problem_excerpt: string | null;
   venue?: string | null;
@@ -1045,7 +1046,6 @@ function feedEmptyState(
   summary: string,
   scoreMode: 'mypaper' | 'blend',
   missingPdf: number,
-  hasReports: boolean,
 ): HTMLElement {
   const goSettings = () => {
     const b = el('button', { class: 'btn', type: 'button' }, '設定を開く');
@@ -1078,6 +1078,12 @@ function feedEmptyState(
       goSettings(),
     );
   }
+  const notes: HTMLElement[] = [];
+  if (unscored > 0) {
+    const pdfNote =
+      scoreMode === 'mypaper' && missingPdf > 0 ? `（うち PDF 未取得 ${missingPdf} 件）` : '';
+    notes.push(el('p', { class: 'note-info' }, `未採点の候補が ${unscored} 件たまっています${pdfNote}。`));
+  }
   return el(
     'div',
     { class: 'empty-state' },
@@ -1087,6 +1093,7 @@ function feedEmptyState(
       { class: 'empty' },
       '上の「調査する」で収集を始めます。日次の調査も、終わった分は「取り込む」でここに入ります。',
     ),
+    ...notes,
   );
 }
 
@@ -1113,7 +1120,7 @@ async function refreshFeed() {
 
   if (res.reports.length === 0) {
     const summary = ($('summary') as HTMLTextAreaElement).value.trim();
-    list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf, false));
+    list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf));
     selectedRunId = null;
     return;
   }
@@ -1259,6 +1266,7 @@ async function renderReportDetail(runId: string) {
   }
 
   got.papers.forEach((p, i) => {
+    const unscoredLabel = unscoredReasonLabel(p, lastScoreMode);
     const row = el(
       'button',
       { class: 'row report-paper', 'aria-current': String(selectedPaper === p.paper_id) },
@@ -1267,6 +1275,7 @@ async function renderReportDetail(runId: string) {
         'span',
         { class: 'row-meta' },
         el('span', {}, [p.authors ?? '著者不明', yearFromPublishedAt(p.published_at) ?? '年不明'].join(' / ')),
+        ...(unscoredLabel ? [el('span', { class: 'chip', 'data-tone': 'reading' }, unscoredLabel)] : []),
       ),
     );
     row.addEventListener('click', () => {
@@ -1275,6 +1284,15 @@ async function renderReportDetail(runId: string) {
     });
     pane.append(row);
   });
+}
+
+// 未採点の候補に出す理由（PDF 無し／取得失敗を区別。捏造せず「未採点」に留める。C-07）
+function unscoredReasonLabel(p: RankedPaper, scoreMode: 'mypaper' | 'blend'): string | null {
+  if (p.scored_at != null) return null;
+  if (scoreMode !== 'mypaper') return '未採点';
+  if (!p.pdf_url) return '未採点・PDF未取得';
+  if (!p.fulltext_path) return '未採点・PDF取得失敗';
+  return '未採点';
 }
 
 function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
