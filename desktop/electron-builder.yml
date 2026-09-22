@@ -1,0 +1,39 @@
+# 配布物。秘密は載せない（C-06）。署名は初版ではしない。
+appId: link.streeeak.ai-research
+productName: AI Research
+copyright: Copyright © 2026
+directories:
+  output: dist
+files:
+  - out/**/*
+  - package.json
+  - node_modules/**/*
+  - '!src/**'
+  - '!test/**'
+  - '!scripts/**'
+asarUnpack:
+  - '**/*.{node,dll,dylib,so}'
+  - node_modules/sqlite-vec/**
+  - node_modules/@huggingface/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/pdfjs-dist/**
+mac:
+  category: public.app-category.education
+  identity: null
+  target:
+    - dmg
+    - zip
+  artifactName: ai-research-${version}-mac-${arch}.${ext}
+win:
+  target:
+    - nsis
+    - zip
+  artifactName: ai-research-${version}-win-${arch}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ai-research-${version}-win-${arch}-setup.${ext}
+dmg:
+  artifactName: ai-research-${version}-mac-${arch}.${ext}
+npmRebuild: true
+publish: null
