@@ -2,8 +2,8 @@
  * 収集 2 段目: abstract から課題・限界を述べた短い引用だけを抜く（C-07: 捏造しない）。
  */
 import type { Env } from '../../env';
-import { chatCompletion, orcaKey, type OrcaChatOk } from '../../shared/orca/chat';
-import { reviewPolicy } from '../../shared/orca/policy';
+import { chatCompletion, combineUsage, orcaKey, type OrcaChatOk } from '../../shared/orca/chat';
+import { reviewPolicy, reviewSelfFallbackModel } from '../../shared/orca/policy';
 import type { ScoredPaper } from '../domain';
 
 export const REVIEW_ENDPOINT = '/cron/review';
@@ -24,50 +24,47 @@ function truncate(text: string | null): string {
   return t.length <= ABSTRACT_MAX ? t : `${t.slice(0, ABSTRACT_MAX)}…`;
 }
 
+export type ParsedProblemExcerpts = {
+  /** false は JSON が壊れている・形が違う（＝形式不正。ADR-0005 §5） */
+  ok: boolean;
+  excerpts: Map<string, string | null>;
+};
+
 /** モデル出力を external_id → 引用 に正規化する。形が違えば全部 null（C-07） */
 export function parseProblemExcerpts(
   raw: string,
   allowedIds: ReadonlySet<string>,
-): Map<string, string | null> {
-  const out = new Map<string, string | null>();
-  for (const id of allowedIds) out.set(id, null);
+): ParsedProblemExcerpts {
+  const excerpts = new Map<string, string | null>();
+  for (const id of allowedIds) excerpts.set(id, null);
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw.trim());
   } catch {
-    return out;
+    return { ok: false, excerpts };
   }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, excerpts };
+  }
 
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
     if (!allowedIds.has(key)) continue;
     if (value === null) {
-      out.set(key, null);
+      excerpts.set(key, null);
       continue;
     }
     if (typeof value !== 'string') continue;
     const quote = value.trim();
-    out.set(key, quote.length > 0 ? quote : null);
+    excerpts.set(key, quote.length > 0 ? quote : null);
   }
-  return out;
+  return { ok: true, excerpts };
 }
 
 export type ProblemExcerptResult = {
   papers: ScoredPaper[];
   usage: OrcaChatOk | null;
 };
-
-function addUsage(a: OrcaChatOk | null, b: OrcaChatOk): OrcaChatOk {
-  if (!a) return b;
-  return {
-    ...b,
-    tokens: a.tokens + b.tokens,
-    costUsd: a.costUsd == null || b.costUsd == null ? null : a.costUsd + b.costUsd,
-    latencyMs: a.latencyMs + b.latencyMs,
-    fallbackUsed: a.fallbackUsed || b.fallbackUsed,
-  };
-}
 
 export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Promise<ProblemExcerptResult> {
   const excerpts = new Map<string, string | null>();
@@ -83,27 +80,43 @@ export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Pr
   for (let i = 0; i < papers.length; i += MAX_PAPERS_PER_CALL) {
     const batch = papers.slice(i, i + MAX_PAPERS_PER_CALL);
     const allowed = new Set(batch.map((p) => p.external_id));
-    const payload = batch.map((p) => ({
-      external_id: p.external_id,
-      title: p.title,
-      abstract: truncate(p.abstract),
-    }));
+    const messages = [
+      { role: 'system' as const, content: SYSTEM },
+      {
+        role: 'user' as const,
+        content: JSON.stringify(
+          batch.map((p) => ({
+            external_id: p.external_id,
+            title: p.title,
+            abstract: truncate(p.abstract),
+          })),
+        ),
+      },
+    ];
 
-    const result = await chatCompletion(
-      apiKey,
-      [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: JSON.stringify(payload) },
-      ],
-      policy,
-    );
+    const result = await chatCompletion(apiKey, messages, policy);
     if (!result.ok) {
       for (const p of batch) excerpts.set(p.external_id, excerpts.get(p.external_id) ?? null);
       continue;
     }
-    usage = addUsage(usage, result);
-    const parsed = parseProblemExcerpts(result.text, allowed);
-    for (const [id, quote] of parsed) excerpts.set(id, quote);
+    usage = combineUsage(usage, result);
+    let parsed = parseProblemExcerpts(result.text, allowed);
+
+    // 形式不正（HTTP 200 だが JSON が壊れている）はゲートウェイでは拾えない。
+    // 同じモデルに投げ直さず、別モデルへ 1 回だけ自前で投げ直す（ADR-0005 §5）。
+    // レビュー段は同格のみへ落とす（安価モデルへ落とすと捏造率を実測していない出力が混入する）。
+    if (!parsed.ok) {
+      const fallbackModel = reviewSelfFallbackModel(result.model);
+      if (fallbackModel) {
+        const retry = await chatCompletion(apiKey, messages, { ...policy, model: fallbackModel, fallbacks: [] });
+        if (retry.ok) {
+          usage = combineUsage(usage, retry);
+          parsed = parseProblemExcerpts(retry.text, allowed);
+        }
+      }
+    }
+
+    for (const [id, quote] of parsed.excerpts) excerpts.set(id, quote);
   }
 
   return {
