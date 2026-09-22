@@ -251,5 +251,5 @@ ER 図で未決だった点。実機で `vec_version()` = v0.1.9、KNN も正し
   ペンでの書き込みはできる
 - 消しゴム（線の一部を消す）。いまは線ごと削除のみ
 - クラウド同期、引用ファイル書き出し、CLI
-- 配布（electron-builder 等）と署名
+- 配布（electron-builder。CI が macOS / Windows を GitHub Release に載せる。署名はしない）
 - 日本語の要旨・プロフィールでの採点精度（未計測）
