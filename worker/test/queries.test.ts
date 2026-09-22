@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_INFERRED_ABBR,
   MIN_INFERRED_ABBR,
-  extractLatinTerms,
   isInferredAbbreviation,
-  openAlexQueryFromSummary,
+  isQueryAxisTerm,
   openAlexQueryFromTerms,
   parseInferredAbbreviations,
+  parseSearchDecomposition,
   parseKeywordTags,
   mergeKeywordTags,
   parseSearchTermsJson,
@@ -74,6 +74,14 @@ describe('parseKeywordTags', () => {
     ).toEqual(['DPDK', 'ゼロコピー', 'RSS']);
   });
 
+  it('core を先に並べ、機能語は出さない', () => {
+    expect(
+      parseKeywordTags(
+        JSON.stringify({ core: ['Transformer', 'self-attention'], related: ['The', 'of', 'ConvS2S'] }),
+      ),
+    ).toEqual(['Transformer', 'self-attention', 'ConvS2S']);
+  });
+
   it('重複と長文は捨てる', () => {
     expect(
       parseKeywordTags(JSON.stringify(['DPDK', 'dpdk', 'これは長すぎてキーワードとして採用しない説明の文章である'])),
@@ -82,7 +90,7 @@ describe('parseKeywordTags', () => {
 });
 
 describe('mergeKeywordTags', () => {
-  it('種語を先に残す', () => {
+  it('主題語を先に残す', () => {
     expect(mergeKeywordTags(['DPDK'], ['RSS', 'DPDK'])).toEqual(['DPDK', 'RSS']);
   });
 });
@@ -98,8 +106,8 @@ describe('isInferredAbbreviation', () => {
 });
 
 describe('preciseSearchQueries', () => {
-  it('種語単独と種語×各略語の AND を全部並べる', () => {
-    const qs = preciseSearchQueries('DPDK', ['DPDK', 'RSS', 'XDP', 'eBPF']);
+  it('主題語単独と主題語×各関連語の AND を全部並べる', () => {
+    const qs = preciseSearchQueries(['DPDK'], ['DPDK', 'RSS', 'XDP', 'eBPF']);
     expect(qs[0]).toBe('DPDK');
     expect(qs).toContain('DPDK RSS');
     expect(qs).toContain('DPDK XDP');
@@ -107,12 +115,56 @@ describe('preciseSearchQueries', () => {
     expect(qs.some((q) => q.split(' ').length > 2)).toBe(false);
   });
 
-  it('summary の種語は毎回載る', () => {
-    const seeds = extractLatinTerms('dpdkによる高スループットの実現\nDPDK');
-    expect(seeds.map((t) => t.toLowerCase())).toContain('dpdk');
-    const qs = preciseSearchQueries('dpdkによる高スループットの実現\nDPDK', POOL);
-    expect(qs[0]?.toLowerCase()).toBe('dpdk');
+  it('主題語は毎回載り、関連語の数だけ組み合わせが出る', () => {
+    const qs = preciseSearchQueries(['DPDK'], POOL);
+    expect(qs[0]).toBe('DPDK');
     expect(qs.length).toBeGreaterThan(MIN_INFERRED_ABBR - 1);
+  });
+
+  it('機能語は軸にしない。軸が無ければクエリを作らない（C-07）', () => {
+    expect(preciseSearchQueries(['The'], ['RSS', 'XDP'])).toEqual([]);
+    expect(preciseSearchQueries([], POOL)).toEqual([]);
+  });
+});
+
+describe('isQueryAxisTerm', () => {
+  it('機能語と一般語は軸にしない', () => {
+    for (const t of ['The', 'of', 'goal', 'reducing', 'using', 'paper']) {
+      expect(isQueryAxisTerm(t)).toBe(false);
+    }
+  });
+
+  it('技術語・略語は軸になる', () => {
+    for (const t of ['DPDK', 'eBPF', 'dpdk', 'IPv6']) {
+      expect(isQueryAxisTerm(t)).toBe(true);
+    }
+  });
+
+  it('空白を含む句は軸にしない（OpenAlex の AND が崩れる）', () => {
+    expect(isQueryAxisTerm('packet I/O')).toBe(false);
+  });
+});
+
+describe('parseSearchDecomposition', () => {
+  it('core と related に分ける', () => {
+    const got = parseSearchDecomposition(
+      JSON.stringify({ core: ['DPDK'], related: ['RSS', 'XDP', 'eBPF'] }),
+    );
+    expect(got.core).toEqual(['DPDK']);
+    expect(got.related).toEqual(['RSS', 'XDP', 'eBPF']);
+  });
+
+  it('core から機能語を落とす。LLM が The を返しても軸にしない', () => {
+    const got = parseSearchDecomposition(
+      JSON.stringify({ core: ['The', 'goal', 'DPDK'], related: ['RSS'] }),
+    );
+    expect(got.core).toEqual(['DPDK']);
+  });
+
+  it('フェンス付きでも読む。形が違えば空', () => {
+    expect(parseSearchDecomposition('```json\n{"core":["DPDK"],"related":[]}\n```').core).toEqual(['DPDK']);
+    expect(parseSearchDecomposition('not json')).toEqual({ core: [], related: [] });
+    expect(parseSearchDecomposition('["DPDK"]')).toEqual({ core: [], related: [] });
   });
 });
 
@@ -167,18 +219,6 @@ describe('mergeLatestPapers', () => {
     );
     expect(got.map((p) => p.external_id)).toEqual(['b', 'a']);
     expect(got[1]?.title).toBe('old');
-  });
-});
-
-describe('openAlexQueryFromSummary', () => {
-  it('フォールバックはラテン種語だけ', () => {
-    const q = openAlexQueryFromSummary('dpdkによる高スループットの実現\nクラウドネイティブ\n\nDPDK');
-    expect(q.toLowerCase()).toContain('dpdk');
-    expect(q).not.toMatch(/スループット|クラウド/);
-  });
-
-  it('ラテンが無ければ空', () => {
-    expect(openAlexQueryFromSummary('高スループット\n実現')).toBe('');
   });
 });
 

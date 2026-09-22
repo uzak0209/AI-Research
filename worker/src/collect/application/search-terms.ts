@@ -2,20 +2,24 @@
  * ADR-0005 §1 の 1 段目: 検索語を作る。
  *
  * 流れ:
- *   1. summary から種になるラテン略語を取る
- *   2. 同じ分野の関連略語を LLM が 20 件以上推測する
- *   3. 種語単独 ＋ 種語×各略語の AND を全部 OpenAlex に当て、公開日の新しい順で取る
+ *   1. **LLM が課題意識を分解する**。主題語（core）と同分野の関連語（related）に分ける
+ *   2. core 単独 ＋ core×各関連語の AND を全部 OpenAlex に当て、公開日の新しい順で取る
+ *
+ * 分解を LLM に任せるのは、文章の先頭から機械的に英単語を拾うと
+ * `The` `goal` `of` のような機能語が検索の軸になるため。
+ * モデルが落ちたときの受け皿は Named Router が持つ（`routers/rs-collect.yaml`）。
+ * コード側に語の切り出しを残さない。
  *
  * 時間はかけてよい（NFR-01）。精度優先。乱択で組み合わせを間引かない。
  *
  * 入り口を無制限に増やさせない（§7）:
- *   - 出力は略語の配列に閉じる。任意 URL も任意ツールも渡さない
+ *   - 出力は語の配列に閉じる。任意 URL も任意ツールも渡さない
  *   - 推測プールに上限を置く
- *   - 分野を跨ぐ語・略語の形でないものは捨てる
+ *   - 分野を跨ぐ語・語の形でないものは捨てる
  *
- * LLM 失敗時は種語だけ。日本語全文は OpenAlex に投げない（C-07）。
+ * LLM 失敗時は絞った種語だけ。日本語全文は OpenAlex に投げない（C-07）。
  */
-import { chatCompletion, type OrcaChatOk } from '../../shared/orca/chat';
+import { chatCompletion, orcaKey, type OrcaChatOk } from '../../shared/orca/chat';
 import { collectPolicy, type OrcaClassPolicy } from '../../shared/orca/policy';
 import type { Env } from '../../env';
 
@@ -26,8 +30,8 @@ export const KEYWORDS_ENDPOINT = '/bff/keywords';
 export const MIN_INFERRED_ABBR = 20;
 /** 推測プールの上限。これ以上は捨てる */
 export const MAX_INFERRED_ABBR = 40;
-/** summary から取る種語の上限 */
-export const MAX_SEED_TERMS = 6;
+/** 検索の軸にする主題語の上限。多いと AND が絞りすぎる */
+export const MAX_CORE_TERMS = 3;
 /** 内部で集めて粗い順位を付ける件数。利用者に渡すのは COLLECT_DELIVER */
 export const COLLECT_POOL = 80;
 /** 利用者に渡す件数 */
@@ -43,16 +47,42 @@ export const MAX_COMBO_QUERIES = 22;
 export const MAX_TERMS = MAX_INFERRED_ABBR;
 
 const SYSTEM = [
-  'You expand a research project summary into related technical abbreviations for OpenAlex.',
-  'Infer abbreviations and acronyms used in the SAME subfield as the summary.',
-  'Include abbreviations that appear in the summary, then add related ones that researchers in that subfield actually use.',
+  'You decompose a research problem statement into OpenAlex search terms.',
+  'Reply with ONLY a JSON object. No prose, no code fence.',
+  'Format: {"core":["DPDK"],"related":["RSS","XDP","eBPF"]}',
+  '"core": 1-4 terms that pin down THIS topic and nothing else.',
+  'Pick the distinctive technical term or acronym. Translate Japanese into the English term researchers use.',
+  'Never put function or generic words in "core" (the, of, goal, reducing, learning, neural networks).',
+  `"related": at least ${MIN_INFERRED_ABBR} and at most ${MAX_INFERRED_ABBR} abbreviations and acronyms used in the SAME subfield.`,
   'Do not jump to another field (e.g. no biology terms for packet I/O).',
   'Do not invent URLs. Do not call tools. Do not write full English phrases.',
-  'Reply with ONLY a JSON array of strings. No prose, no code fence.',
-  `Format: ["DPDK","RSS","XDP","eBPF",...]`,
-  `At least ${MIN_INFERRED_ABBR} items, at most ${MAX_INFERRED_ABBR}.`,
-  'Each item is 2-12 Latin characters (letters, digits, + _ - .).',
+  'Every item is 2-12 Latin characters (letters, digits, + _ - .) with no spaces.',
 ].join(' ');
+
+/**
+ * 検索の軸にならない語。機械的な種語抽出（LLM 失敗時）で機能語を拾わないため。
+ * LLM の出力にも当てる——`core` に `the` が来たら軸にしない。
+ */
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'but', 'not', 'no', 'of', 'to', 'in', 'on', 'at', 'by', 'for',
+  'with', 'from', 'as', 'into', 'over', 'under', 'between', 'during', 'while', 'than', 'then',
+  'is', 'are', 'was', 'were', 'be', 'been', 'being', 'do', 'does', 'did', 'done', 'can', 'may',
+  'this', 'that', 'these', 'those', 'it', 'its', 'we', 'our', 'they', 'their', 'he', 'she',
+  'how', 'what', 'why', 'when', 'where', 'which', 'who',
+  'also', 'both', 'each', 'other', 'others', 'same', 'such', 'very', 'much', 'many', 'few',
+  'more', 'most', 'less', 'least', 'first', 'second', 'new', 'novel',
+  // 分野を絞れない一般名詞・動詞。軸に置くと何にでも当たる
+  'goal', 'goals', 'paper', 'papers', 'study', 'studies', 'work', 'works', 'problem', 'problems',
+  'approach', 'approaches', 'method', 'methods', 'result', 'results', 'use', 'used', 'using',
+  'based', 'via', 'reducing', 'increasing', 'improving', 'proposed', 'propose',
+]);
+
+/** OpenAlex のクエリ語として使えるか。空白を含む句と機能語は軸にしない */
+export function isQueryAxisTerm(term: string): boolean {
+  const t = term.trim();
+  if (!isDistinctiveSearchTerm(t)) return false;
+  return !STOPWORDS.has(t.toLowerCase());
+}
 
 export function isInferredAbbreviation(term: string): boolean {
   const t = term.trim();
@@ -107,37 +137,19 @@ export function isDistinctiveSearchTerm(term: string): boolean {
   return isInferredAbbreviation(term) || /^[A-Za-z][A-Za-z0-9_+.-]{1,11}$/.test(term.trim());
 }
 
-export function extractLatinTerms(summary: string): string[] {
-  const latin = [...summary.matchAll(/[A-Za-z][A-Za-z0-9_+.-]{1,31}/g)].map((m) => m[0]);
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const t of latin) {
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t);
-    if (out.length >= MAX_SEED_TERMS) break;
-  }
-  return out;
-}
-
-export function openAlexQueryFromSummary(summary: string): string {
-  return andSearchQuery(extractLatinTerms(summary));
-}
-
 /**
- * 精度優先のクエリ列。種語だけで最新を取り、続けて種語×各略語を AND する。
+ * 精度優先のクエリ列。主題語だけで最新を取り、続けて主題語×各関連語を AND する。
  * 時間をかけて全部当てる（NFR-01）。
  */
-export function preciseSearchQueries(summary: string, inferred: string[]): string[] {
-  const seeds = extractLatinTerms(summary);
-  const primary = seeds[0] ?? null;
-  const seedKeys = new Set(seeds.map((s) => s.toLowerCase()));
-  const extras = inferred.filter((t) => !seedKeys.has(t.toLowerCase()));
-  const queries: string[] = [];
-  if (primary) queries.push(primary);
+export function preciseSearchQueries(core: string[], related: string[]): string[] {
+  const axes = core.filter(isQueryAxisTerm);
+  const primary = axes[0] ?? null;
+  if (!primary) return [];
+  const coreKeys = new Set(axes.map((s) => s.toLowerCase()));
+  const extras = related.filter((t) => !coreKeys.has(t.toLowerCase()));
+  const queries: string[] = [andSearchQuery(axes)];
   for (const t of extras) {
-    queries.push(primary ? andSearchQuery([primary, t]) : t);
+    queries.push(andSearchQuery([primary, t]));
   }
   return queries.filter(Boolean);
 }
@@ -146,15 +158,20 @@ export function preciseSearchQueries(summary: string, inferred: string[]): strin
 export function parseInferredAbbreviations(raw: string): string[] {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim());
+    parsed = JSON.parse(stripFence(raw));
   } catch {
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
+  const list = Array.isArray(parsed)
+    ? parsed
+    : Array.isArray((parsed as { related?: unknown })?.related)
+      ? (parsed as { related: unknown[] }).related
+      : null;
+  if (!list) return [];
 
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const item of parsed) {
+  for (const item of list) {
     const t = typeof item === 'string' ? item.trim() : '';
     if (!isInferredAbbreviation(t)) continue;
     const key = t.toLowerCase();
@@ -166,6 +183,42 @@ export function parseInferredAbbreviations(raw: string): string[] {
   return out;
 }
 
+function stripFence(raw: string): string {
+  return raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+}
+
+export type Decomposed = { core: string[]; related: string[] };
+
+/** 課題意識の分解。core は検索の軸にできる語だけ。形が違えば空（C-07） */
+export function parseSearchDecomposition(raw: string): Decomposed {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripFence(raw));
+  } catch {
+    return { core: [], related: [] };
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { core: [], related: [] };
+  }
+  const o = parsed as { core?: unknown; related?: unknown };
+
+  const core: string[] = [];
+  const seen = new Set<string>();
+  if (Array.isArray(o.core)) {
+    for (const item of o.core) {
+      const t = typeof item === 'string' ? item.trim() : '';
+      if (!isQueryAxisTerm(t)) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      core.push(t);
+      if (core.length >= MAX_CORE_TERMS) break;
+    }
+  }
+
+  return { core, related: parseInferredAbbreviations(JSON.stringify(o.related ?? [])) };
+}
+
 export type SearchTerms = {
   query: string;
   queries: string[];
@@ -174,19 +227,29 @@ export type SearchTerms = {
   combo: string[];
 };
 
+const EMPTY_TERMS: SearchTerms = {
+  query: '',
+  queries: [],
+  generated: false,
+  usage: null,
+  combo: [],
+};
+
+/**
+ * 分解は LLM に任せる。落ちたときの受け皿も LLM——**それは Named Router の仕事**。
+ *
+ * `rs-collect` が候補 3 本と受け皿 1 本を持ち、`extra_body.route=fallback` で
+ * 別ベンダーへも落ちる（`routers/rs-collect.yaml`, ADR-0005 §3 / §5）。
+ * だからここでモデルを段積みしない。呼ぶのは 1 回。
+ *
+ * その受け皿ごと全滅したら、**機械的な語の切り出しには落とさない**——
+ * `The` のような機能語が検索の軸になり、関係の無い論文を集めてしまう。
+ * 空で返し、収集を失敗として残す（C-07）。
+ */
 export async function buildSearchQuery(env: Env, summary: string): Promise<SearchTerms> {
   const policy = collectPolicy(env);
-  const apiKey = env.ORCAROUTER_API_KEY_CRON ?? env.ORCAROUTER_API_KEY;
-  const fallbackQueries = preciseSearchQueries(summary, []);
-  const fallback: SearchTerms = {
-    query: fallbackQueries[0] ?? '',
-    queries: fallbackQueries,
-    generated: false,
-    usage: null,
-    combo: extractLatinTerms(summary),
-  };
-
-  if (!apiKey) return fallback;
+  const apiKey = orcaKey(env, policy.slot);
+  if (!apiKey) return EMPTY_TERMS;
 
   const result = await chatCompletion(
     apiKey,
@@ -195,51 +258,67 @@ export async function buildSearchQuery(env: Env, summary: string): Promise<Searc
       { role: 'user', content: summary },
     ],
     policy,
+    true,
   );
+  if (!result.ok) return EMPTY_TERMS;
 
-  if (!result.ok) return fallback;
+  const { core, related } = parseSearchDecomposition(result.text);
+  const queries = preciseSearchQueries(core, related);
+  if (queries.length === 0) return { ...EMPTY_TERMS, usage: result };
 
-  const inferred = parseInferredAbbreviations(result.text);
-  if (inferred.length === 0) {
-    return { ...fallback, usage: result };
-  }
-
-  const queries = preciseSearchQueries(summary, inferred);
   return {
     query: queries[0] ?? '',
     queries,
     generated: true,
     usage: result,
-    combo: inferred,
+    combo: mergeKeywordTags(core, related),
   };
 }
 
 const KEYWORD_SYSTEM = [
-  'You extract search keywords from a research problem statement.',
-  'Reply with ONLY a JSON array of strings. No prose, no code fence.',
-  `At least ${MIN_INFERRED_ABBR} items, at most ${MAX_INFERRED_ABBR}.`,
-  'Each item is a short keyword used in the SAME subfield: abbreviations (DPDK, XDP) or short technical terms (2-24 characters).',
+  'You decompose a research problem statement into search keywords.',
+  'Reply with ONLY a JSON object. No prose, no code fence.',
+  'Format: {"core":["DPDK","packet I/O"],"related":["RSS","XDP","eBPF"]}',
+  '"core": 1-4 keywords that pin down THIS topic. Put them first because the user reads them first.',
+  `"related": at least ${MIN_INFERRED_ABBR} and at most ${MAX_INFERRED_ABBR} keywords used in the SAME subfield.`,
+  'Each item is a short keyword: an abbreviation (DPDK, XDP) or a short technical term (2-24 characters).',
+  'Never emit function or filler words (the, of, goal, reducing, operations, learning).',
   'Japanese short nouns are OK when the topic is Japanese. No sentences. No URLs. No paper titles.',
   'Do not jump to another field.',
 ].join(' ');
 
-/** 設定画面の確認用。略語に限らず短いキーワードを残す */
+/**
+ * 設定画面の確認用。略語に限らず短いキーワードを残す。
+ * `{"core":[…],"related":[…]}` でも素の配列でも読む（core が先）。
+ */
 export function parseKeywordTags(raw: string): string[] {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''));
+    parsed = JSON.parse(stripFence(raw));
   } catch {
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
+  const list: unknown[] = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object'
+      ? [
+          ...((parsed as { core?: unknown }).core instanceof Array ? (parsed as { core: unknown[] }).core : []),
+          ...((parsed as { related?: unknown }).related instanceof Array
+            ? (parsed as { related: unknown[] }).related
+            : []),
+        ]
+      : [];
+
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const item of parsed) {
+  for (const item of list) {
     if (typeof item !== 'string') continue;
     const t = item.trim().replace(/\s+/g, ' ');
     if (!t || t.length > 24) continue;
     if (/https?:\/\//i.test(t) || t.includes('://')) continue;
     if ((t.match(/ /g) ?? []).length > 2) continue;
+    // 機能語・一般語は出さない。利用者が毎回 × で消す手間になる
+    if (STOPWORDS.has(t.toLowerCase())) continue;
     const key = t.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -264,27 +343,30 @@ export function mergeKeywordTags(base: string[], extra: string[]): string[] {
   return out;
 }
 
-/** 課題意識からキーワード。利用者が設定で確認する（C-07）。原稿は載せない */
+/**
+ * 課題意識からキーワード。利用者が設定で確認する（C-07）。原稿は載せない。
+ * 分解は LLM。取れなければ空で返し、文章から語を切り出して埋めたふりをしない。
+ */
 export async function inferKeywords(
   apiKey: string,
   policy: OrcaClassPolicy,
   summary: string,
 ): Promise<{ terms: string[]; usage: OrcaChatOk | null }> {
-  const seeds = extractLatinTerms(summary);
   const result = await chatCompletion(
     apiKey,
     [
       { role: 'system', content: KEYWORD_SYSTEM },
       { role: 'user', content: summary },
     ],
-    { ...policy, maxTokens: Math.max(policy.maxTokens ?? 0, 400) },
+    { ...policy, maxTokens: Math.max(policy.maxTokens ?? 0, 600) },
+    true,
   );
   if (!result.ok) {
-    return { terms: seeds, usage: null };
+    return { terms: [], usage: null };
   }
-  const inferred = parseKeywordTags(result.text);
+  const tags = parseKeywordTags(result.text);
   return {
-    terms: mergeKeywordTags(seeds, inferred.length ? inferred : parseInferredAbbreviations(result.text)),
+    terms: tags.length ? tags : parseInferredAbbreviations(result.text),
     usage: result,
   };
 }
