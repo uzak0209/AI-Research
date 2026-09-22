@@ -50,6 +50,8 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   try {
     const skipIds = new Set(await deps.runs.knownExternalIds(msg.project_id));
     const queries = (search.queries?.length ? search.queries : [search.query]).filter((q) => q.trim());
+    // 検索語が取れないまま集めない。機能語を軸にすると無関係な論文が入る（C-07）
+    if (queries.length === 0) throw new Error('検索語を作れなかった（LLM が全滅）');
     const collected: FetchedPaper[] = [];
     let queriesRun = 0;
 

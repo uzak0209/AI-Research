@@ -45,14 +45,29 @@ const message = (over: Partial<CollectMessage> = {}): CollectMessage => ({
  * Response の body は一度しか読めないので、呼ばれるたびに作り直す
  * （使い回すと 2 回目に "Body has already been used" になる）
  */
-function mockOpenAlex(works: unknown[], status = 200) {
+/** 収集 1 段目の分解。検索語は LLM しか作らないので、ここが空だと収集は失敗する */
+const DECOMPOSITION = JSON.stringify({
+  core: ['GNN'],
+  related: ['GCN', 'GAT', 'MPNN'],
+});
+
+function orcaResponse(content: string) {
+  return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+function mockOpenAlex(works: unknown[], status = 200, decomposition: string | null = DECOMPOSITION) {
   return vi
     .spyOn(globalThis, 'fetch')
     .mockImplementation(async (input) => {
       const url = String(input);
       // 収集 1 段目が Orca に検索語を取りに行く。テストでは外部を叩かない
       if (url.includes('orcarouter')) {
-        return new Response('no', { status: 502 });
+        return decomposition === null
+          ? new Response('no', { status: 502 })
+          : orcaResponse(decomposition);
       }
       return new Response(JSON.stringify({ results: works }), { status });
     });
@@ -524,8 +539,27 @@ describe('収集の記録（FR-08 / C-07）', () => {
     const terms = await env.DB.prepare('SELECT search_terms_json FROM runs WHERE run_id = ?')
       .bind(`${PROJECT}:${RUN_DATE}`)
       .first<{ search_terms_json: string }>();
+    // 見せる検索語は LLM の分解（主題語が先）。文章から切り出した機能語は載らない
     const parsed = JSON.parse(terms?.search_terms_json ?? '[]') as string[];
-    expect(parsed).toContain('graph');
+    expect(parsed[0]).toBe('GNN');
+    expect(parsed).toContain('GAT');
+  });
+
+  it('検索語を作れなければ failed。0 件と混ぜない（C-07）', async () => {
+    // Orca が全滅。機械的な語の切り出しには落とさない
+    mockOpenAlex([{ id: 'https://openalex.org/W1', display_name: 'GNN', publication_date: '2026-09-01' }], 200, null);
+
+    await expect(handleQueueMessage(message(), env)).rejects.toThrow();
+
+    const run = await env.DB.prepare('SELECT status FROM runs WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ status: string }>();
+    expect(run?.status).toBe('failed');
+
+    const papers = await env.DB.prepare('SELECT COUNT(*) AS n FROM run_papers WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ n: number }>();
+    expect(papers?.n).toBe(0);
   });
 
   it('0 件は empty。failed にしない', async () => {
