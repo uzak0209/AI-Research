@@ -34,9 +34,8 @@ CREATE TABLE runs (
   status             TEXT NOT NULL CHECK (status IN ('ok', 'empty', 'failed', 'partial')),
   -- 欠けた依存だけを記録する。成功したソースは書かない
   failed_sources_json TEXT,
-  created_at         TEXT NOT NULL DEFAULT (datetime('now')),
-  -- cron・Queues とも at-least-once。同じ日の重複実行を無視できるようにする
-  UNIQUE (project_id, run_date)
+  -- 一意は run_id（PK）。日次と自発で同日複数 run を許す（migration 0005）
+  created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE INDEX idx_runs_project_created ON runs(project_id, created_at);

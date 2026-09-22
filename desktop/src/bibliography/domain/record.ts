@@ -34,7 +34,20 @@ export type ReferenceSnapshot = {
 };
 
 export function isEmptyRecord(r: BibliographicRecord | null | undefined): boolean {
-  return !r || (!r.title && !r.doi);
+  // 公開文献に著者が無い補完は成功と偽らない（C-07）
+  return !r || (!r.title && !r.doi) || !r.authors?.trim();
+}
+
+/**
+ * 引用を書くのに足りているか。
+ * 足りているなら書誌補完（C1）を呼ばない。OpenAlex 由来の候補はここで止まる。
+ */
+export function needsCompletion(r: ReferenceSnapshot): boolean {
+  if (!r.title.trim()) return true;
+  if (!r.authors?.trim()) return true;
+  if (!r.year) return true;
+  // 掲載誌か DOI のどちらかは要る。preprint は掲載誌が無く DOI で足りる
+  return !r.venue?.trim() && !r.doi?.trim();
 }
 
 /** 取れた項目だけ上書き。空で既存を消さない */

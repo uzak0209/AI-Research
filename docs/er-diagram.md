@@ -20,7 +20,7 @@
 | FR-06 プロジェクト切替 | プロジェクト | 両方 `projects` |
 | FR-07 原稿取り込み | 原稿ファイル | ローカル `documents` |
 | FR-08 欠損≠成功 | 実行状態と欠けた依存 | クラウド `runs` |
-| FR-09 テーマ候補 | 候補の元 | `papers` から都度生成（保存しない） |
+| FR-09 テーマ候補 | その収集の公開論文から生成し実行行に残す | クラウド `runs.themes_json` / ローカル `survey_reports` |
 | FR-10 統制下の LLM | 表は不要（BFF の経路で担保） | — |
 | FR-11 CLI | GUI と同一ストア（新表なし） | ローカル全表 |
 | FR-13 ローカル関連度付け | 関連度と最近傍の主張（新表なし） | ローカル `papers` |
@@ -34,6 +34,7 @@ erDiagram
     users ||--o{ projects : owns
     projects ||--o{ runs : has
     runs ||--o{ run_papers : contains
+    runs ||--o{ llm_calls : logs
 
     users {
         text user_id PK
@@ -51,15 +52,41 @@ erDiagram
         date run_date
         text status "ok|empty|failed|partial"
         text failed_sources_json "欠けた依存のみ"
+        text search_terms_json "LLM が分解した主題語＋関連語。見せる"
+        text trend_summary "その回の公開論文からのトレンド"
+        text themes_json "次テーマ候補 JSON"
     }
     run_papers {
         text run_id FK
         text external_id "ソース内ID/DOI"
         text title
+        text authors "OpenAlex authorships"
         text abstract
         text url
         date published_at
+        text venue "掲載誌・会議名"
+        text item_type "引用の種別"
+        text pdf_url "OA直PDF。arXiv優先。取得はデスクトップ"
         real coarse_score
+        text problem_excerpt "課題・問題の抜粋"
+        bool problem_excerpt_verified "abstractとの照合成否（捏造検知）"
+    }
+    llm_calls {
+        text call_id PK
+        text run_id FK
+        text endpoint
+        text classification "C1|C2|C3（ADR-0002）"
+        text stage "1段目|2段目|retro"
+        text router "Named Router 名"
+        text requested_model
+        text resolved_model
+        text fallback_target "自前フォールバックの落とし先。未使用ならNULL"
+        int tokens_in
+        int tokens_out
+        real cost_usd "OrcaRouterの実額"
+        int duration_ms
+        text guardrail_result
+        text failure_reason "5xx|429|timeout|invalid_format"
     }
 ```
 
@@ -67,14 +94,16 @@ erDiagram
 
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
 - **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
-- **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示
-- **`run_papers`**: その実行で見つかった論文。タイトル・要旨も行に直接持つ（クラウドに `papers` を作らない）。`coarse_score` は `summary` と照らした粗い絞り込み。精密判定は未公開データが要るのでローカルで行う
+- **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID（日次は `{project_id}:{日付}`、自発は `{project_id}:manual:{unix}`）。一意は `run_id` のみで同日複数可（FR-17）。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示。`search_terms_json` は課題意識を LLM が分解した主題語＋関連語で、隠さず同期して見せる（C-07）。`trend_summary` / `themes_json` はその回の公開論文から出した今のトレンドと次テーマ（FR-09）。利用者に渡す論文は粗い順位の上位 5 件
+- **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`venue` / `item_type` は引用を書くのに要るので**候補の時点で OpenAlex から取る**——後から 1 件ずつ書誌補完（C1）を呼ぶと、自動処理が利用者の 1 日の LLM 上限（NFR-04）を食い潰す（ADR-0003）。`pdf_url` は OpenAlex の location から選んだ https の直 PDF で、**複数あれば arXiv 等の全文リポジトリを優先**する。無ければ null＝未取得で、PDF バイトはクラウドに置かない。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。`problem_excerpt_verified` は `problem_excerpt` が `abstract` に字面で存在するかの照合結果で、捏造率の算出に使う（ADR-0005 §10）。候補論文との精密な順位はローカル（ADR-0001）
+- **`llm_calls`**: 1 段目・2 段目・`retro`（内省ループ自身）を含む外部 LLM 呼び出し 1 回の記録（ADR-0005 §8〜§10）。`resolved_model` は Named Router が解決した実モデル、`fallback_target` は自前フォールバックが発生した場合の落とし先。`cost_usd` は `X-OrcaRouter-Include-Cost` で受け取る実額で、OrcaRouter の Request Logs と突合する基礎データ。`failure_reason` はガードレール・形式不正を含む失敗分類
 
 ## ローカル（SQLite + sqlite-vec）
 
 ```mermaid
 erDiagram
     projects ||--o{ papers : pulled
+    projects ||--o{ survey_reports : reports
     projects ||--o{ documents : has
     projects ||--o{ references : library
     papers |o--o| references : saved_as
@@ -91,6 +120,7 @@ erDiagram
         text title
         text embed_model
         text last_run_id "同期位置"
+        text last_search_terms "設定で確定した検索語 JSON。次の収集がそのまま使う。未確定なら関連技術タグにフォールバック"
         text root_path "作業フォルダ。未設定可"
     }
     papers {
@@ -98,15 +128,27 @@ erDiagram
         text project_id FK
         text run_id
         text title
+        text authors "収集時の公開著者。ライブラリへコピー"
         text abstract
+        text problem_excerpt "課題文抜粋"
         real coarse_score "クラウドの粗選別"
         real relevance "blend の採点値。順位はこれで付ける"
-        real sim_summary "概要との cos"
+        real sim_summary "課題意識との cos"
         text nearest_claim_id "最も近い自分の主張"
         real nearest_claim_sim "その cos"
         text embed_model "採点に使った埋め込みモデル"
         text scored_at "採点確定時刻。未採点ならNULL"
         bool in_library "ライブラリ収録済みか"
+    }
+    survey_reports {
+        text run_id PK
+        text project_id FK
+        date run_date
+        text status
+        text search_terms
+        text trend
+        text themes_json
+        text created_at
     }
     references {
         text reference_id PK
@@ -193,8 +235,9 @@ erDiagram
 
 ### 各表の意味
 
-- **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）。`root_path` は作業フォルダ（`references` / `mypaper` / `claims`）。未設定のままでもプロジェクト行は作れる。索引の正本は SQLite
-- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 概要 cos × 0.7 ＋ 最近傍の主張 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_claim_id` は最も近い自分の主張で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
+- **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`last_search_terms` は設定で確定した検索語で、次の収集がそのままクエリに使う。未確定なら関連技術タグにフォールバックする。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）。`root_path` は作業フォルダ（`references` / `mypaper` / `claims`）。未設定のままでもプロジェクト行は作れる。索引の正本は SQLite
+- **`survey_reports`**: 収集 1 回の報告。クラウド `runs` のいつ・状態・検索語・トレンド・次テーマを手元に残す。論文は `papers.run_id` で辿る
+- **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 課題意識 cos × 0.7 ＋ 最近傍の関連技術 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_chunk_id` は最も近い関連技術で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
 - **`references`**: アプリ内参考文献ライブラリの本体（FR-05）。日次候補から入れた場合は `paper_id` で辿れる。手で足した文献は `paper_id` が空。GUI と CLI が同じこの表を読み書きする（FR-11）。`bibtex_key` は `\cite{}` に使う識別子で、**プロジェクト内で一意**。著者姓＋年で自動生成し、衝突時は英字サフィックスを付ける（FR-12）。この表が引用ファイルの書き出し内容の唯一の元になる
 - **`collections` / `collection_items`**: コレクション相当の整理。1 文献を複数コレクションに入れられるよう中間表にする
 - **`attachments`**: 文献に添付した PDF の実体への参照（FR-14）。`hash` は原本が外部で差し替えられたときに注釈の位置がずれることを検知するために持つ
@@ -210,8 +253,8 @@ erDiagram
 
 1. 未起動でもクラウドが `projects.summary` を見て収集し、`runs` / `run_papers` に溜める
 2. 起動時、`last_run_id` より後をローカル `papers` に取り込む
-3. プロジェクト概要と自分の主張のベクトルと照らして `relevance` を付け、順位を出す（外部送信なし。`C-09`）
-4. 結果からライブラリ追加（`references`）やテーマ候補の生成を行う
+3. 課題意識と関連技術のベクトルと照らして `relevance` を付け、順位を出す（外部送信なし。`C-09`）
+4. 報告画面でその回のトレンド・次テーマ・論文をまとめて見る。ライブラリ追加は報告から行う
 5. CLI は 2〜4 のローカル側と同じストアを直接読み書きする（FR-11）
 
 ## 持たない表と代償
@@ -219,8 +262,7 @@ erDiagram
 | 持たない | 代わり | 代償 |
 |---|---|---|
 | クラウド `papers` | `run_papers` に論文情報を直接持つ | 実行ごとに重複。保存量は増えるが結合が減る |
-| クラウド `llm_usage` | Workers 側のログ | 利用上限を数えるなら表が必要 |
-| `themes` | `papers` から都度生成 | 過去の候補を見返せない |
+| `themes` 表 | `runs.themes_json` / ローカル `survey_reports` | 過去の候補は報告単位で見返せる |
 | `fc_claims` | 保存しない（要件で未決） | 検査結果は画面で見るだけ |
 | 保存キュー表 | `papers.in_library` | ライブラリはローカルなので再試行が要らない |
 | 有効／除外の列 | `papers.relevance` の順位のみ | 後から線を引きたくなったとき根拠がない |

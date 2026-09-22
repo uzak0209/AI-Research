@@ -112,6 +112,7 @@ html,
 body {
   height: 100%;
   margin: 0;
+  -webkit-app-region: no-drag;
 }
 
 body {
@@ -152,6 +153,15 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.titlebar-btn {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 body[data-platform='darwin'] .titlebar {
@@ -170,6 +180,105 @@ body[data-platform='linux'] .titlebar {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
+}
+
+.shell[hidden] {
+  display: none;
+}
+
+/* --- 設定（メニューから。普段は触らない） ----------------------------------- */
+
+.settings {
+  width: min(32rem, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  margin-top: 48px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  -webkit-app-region: no-drag;
+}
+
+.settings *,
+.welcome,
+.welcome *,
+.shell,
+.shell *,
+.statusbar,
+.statusbar * {
+  -webkit-app-region: no-drag;
+}
+
+.settings::backdrop {
+  background: rgba(20, 24, 28, 0.4);
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 64px);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.settings-body {
+  padding: var(--space-5);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.settings-body .field {
+  margin: 0;
+}
+
+.settings-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+.settings-status[data-tone='error'] {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.settings-status[data-tone='busy'] {
+  color: var(--warning-fg);
+}
+
+.settings-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+#settings-root-path {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--fg-muted);
+  word-break: break-all;
+  direction: ltr;
+  text-align: left;
 }
 
 .nav-sidebar {
@@ -311,25 +420,6 @@ body[data-platform='linux'] .titlebar {
 .tree li::before {
   content: '▸ ';
   color: var(--fg-muted);
-}
-
-#proj-empty .btn,
-#proj-tree .btn,
-#nav-project .btn {
-  width: 100%;
-}
-
-#proj-empty .btn + .btn,
-#nav-project .field .btn + .btn {
-  margin-top: var(--space-2);
-}
-
-#nav-project .field {
-  margin-top: var(--space-4);
-}
-
-#nav-project .field:first-child {
-  margin-top: 0;
 }
 
 /* --- レイアウト ------------------------------------------------------------ */
@@ -568,13 +658,36 @@ body[data-platform='linux'] .titlebar {
   color: var(--primary);
 }
 
-.chip button {
-  all: unset;
-  cursor: pointer;
-  padding: 0 2px;
-  min-width: 18px;
-  min-height: 18px;
-  text-align: center;
+.chip button:hover {
+  color: var(--error);
+}
+
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 2rem;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+}
+
+.keyword-tags .chip {
+  font-size: 12px;
+  padding: 4px 4px 4px 10px;
+}
+
+.keyword-add-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.keyword-add-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
 }
 
 /* --- ボタン（3 階層） ------------------------------------------------------ */
@@ -594,6 +707,10 @@ body[data-platform='linux'] .titlebar {
   justify-content: center;
   gap: var(--space-2);
   white-space: nowrap;
+}
+
+.btn[hidden] {
+  display: none;
 }
 
 .btn[data-variant='primary'] {
@@ -672,6 +789,10 @@ body[data-platform='linux'] .titlebar {
 
 .actions[data-align='end'] {
   justify-content: flex-end;
+}
+
+.actions[data-align='start'] {
+  justify-content: flex-start;
 }
 
 .actions .spacer,
@@ -791,13 +912,70 @@ textarea::placeholder {
   text-align: left;
 }
 
-/* --- 空・注意表示 ----------------------------------------------------------- */
+/* --- ウェルカム（プロジェクト未作成） -------------------------------------- */
+
+.welcome {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, var(--primary-bg), transparent 70%),
+    var(--bg);
+}
+
+.welcome[hidden] {
+  display: none;
+}
+
+.welcome-card {
+  width: min(22rem, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+
+.welcome-lede {
+  margin: 0;
+  color: var(--fg-muted);
+  line-height: 1.55;
+  font-size: var(--font-body);
+}
+
+.welcome-card .btn {
+  align-self: stretch;
+  min-height: 2.5rem;
+}
+
+.welcome-error {
+  margin: 0;
+  color: var(--error);
+  font-size: var(--font-ui);
+  line-height: 1.45;
+}
+
+.welcome-error[data-tone='busy'] {
+  color: var(--fg-muted);
+}
 
 .empty-state {
   max-width: 28rem;
   margin: 48px auto;
   text-align: center;
   padding: 0 var(--space-4);
+}
+
+.empty-state .btn {
+  margin-top: var(--space-4);
 }
 
 .empty-title {
@@ -816,9 +994,75 @@ textarea::placeholder {
   font-size: var(--font-body);
 }
 
+.lede {
+  margin: 0 0 var(--space-5);
+  color: var(--fg-muted);
+  line-height: 1.55;
+  font-size: var(--font-body);
+}
+
+.howto-side {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.25rem;
+  color: var(--fg);
+  font-size: var(--font-ui);
+  line-height: 1.7;
+}
+
+.auth-block {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-4);
+}
+
 .scroll > .empty,
 .scroll > .empty-state {
   padding: var(--space-6) var(--space-4);
+}
+
+.feed-keywords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 var(--space-3);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+  background: var(--sidebar);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+
+.feed-keywords-label {
+  font-weight: 600;
+  color: var(--fg);
+  margin-right: 4px;
+}
+
+.theme-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--fg);
+  font-size: var(--font-ui);
+  line-height: 1.6;
+}
+
+.report-papers-head {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row.report-paper {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
+}
+
+.detail-back {
+  margin-bottom: var(--space-3);
 }
 
 .callout {

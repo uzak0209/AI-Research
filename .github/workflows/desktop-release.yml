@@ -1,0 +1,63 @@
+# デスクトップ配布物を GitHub Release に載せる（C-02）。
+# ネイティブ拡張（sqlite-vec / ONNX）があるので、各 OS の runner でビルドする。
+# 秘密は載せない。macOS 署名はしない。
+
+name: Desktop release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag（例: v0.0.1）'
+        required: true
+        default: 'v0.0.1'
+
+concurrency:
+  group: desktop-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            script: dist:mac
+          - os: windows-latest
+            script: dist:win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+      - name: Package
+        working-directory: desktop
+        run: npm run ${{ matrix.script }}
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: ${{ github.event.inputs.tag || github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          files: |
+            desktop/dist/ai-research-*.dmg
+            desktop/dist/ai-research-*.zip
+            desktop/dist/ai-research-*.exe
+          fail_on_unmatched_files: false

@@ -51,8 +51,19 @@ export const GoogleLoginBodySchema = z
 
 export const TrendBodySchema = z
   .object({
-    // トピックだけ。原稿や手元論文を載せない（C-01, C-09）
     topic: z.string().trim().min(1).max(200),
+    // 収集済みの公開論文。あれば OpenAlex を取り直さない
+    papers: z
+      .array(
+        z.object({
+          title: z.string().trim().min(1).max(500),
+          abstract: z.string().max(4000).nullable().optional(),
+          url: z.string().max(2000).nullable().optional(),
+          published_at: z.string().max(32).nullable().optional(),
+        }),
+      )
+      .max(12)
+      .optional(),
   })
   .openapi('TrendBody');
 
@@ -69,9 +80,25 @@ export const TrendResponseSchema = z
     classification: z.literal('C1'),
     model: z.string().nullable(),
     summary: z.string().nullable(),
+    themes: z.array(z.string()),
     papers: z.array(TrendPaperSchema),
   })
   .openapi('TrendResponse');
+
+export const KeywordsBodySchema = z
+  .object({
+    // 設定の「研究の概要」は論文抜粋になりうる。2000 だと Zod が落ちて原因が消えていた
+    topic: z.string().trim().min(1).max(12000),
+  })
+  .openapi('KeywordsBody');
+
+export const KeywordsResponseSchema = z
+  .object({
+    classification: z.literal('C1'),
+    model: z.string().nullable(),
+    terms: z.array(z.string()),
+  })
+  .openapi('KeywordsResponse');
 
 export const BibliographyBodySchema = z
   .object({
@@ -108,3 +135,71 @@ export const BibliographyResponseSchema = z
     pdf_url: z.string().nullable(),
   })
   .openapi('BibliographyResponse');
+
+export const RunPaperSchema = z
+  .object({
+    external_id: z.string(),
+    source: z.string(),
+    title: z.string(),
+    authors: z.string().nullable(),
+    abstract: z.string().nullable(),
+    url: z.string().nullable(),
+    published_at: z.string().nullable(),
+    /** 掲載誌・会議名。引用に要るので候補の時点で載せる */
+    venue: z.string().nullable(),
+    item_type: z.string().nullable(),
+    /** OA の直 PDF。無ければ null = 未取得（C-07）。取得はデスクトップ */
+    pdf_url: z.string().nullable(),
+    coarse_score: z.number().nullable(),
+    problem_excerpt: z.string().nullable(),
+  })
+  .openapi('RunPaper');
+
+export const RunSchema = z
+  .object({
+    run_id: z.string(),
+    run_date: z.string(),
+    status: z.enum(['ok', 'empty', 'failed', 'partial']),
+    failed_sources_json: z.string().nullable(),
+    search_terms: z.array(z.string()),
+    trend: z.string().nullable(),
+    themes: z.array(z.string()),
+    created_at: z.string(),
+    papers: z.array(RunPaperSchema),
+  })
+  .openapi('Run');
+
+export const RunsResponseSchema = z
+  .object({
+    project_id: z.string(),
+    runs: z.array(RunSchema),
+  })
+  .openapi('RunsResponse');
+
+export const SearchTermsSchema = z.array(z.string().trim().min(1).max(24)).max(40);
+
+export const ProjectPutBodySchema = z
+  .object({
+    title: z.string().trim().min(1),
+    summary: z.string().trim().min(1),
+    search_terms: SearchTermsSchema.optional(),
+  })
+  .openapi('ProjectPutBody');
+
+export const ProjectResponseSchema = z
+  .object({
+    project_id: z.string(),
+    title: z.string(),
+    summary: z.string(),
+    search_terms: z.array(z.string()),
+  })
+  .openapi('ProjectResponse');
+
+export const CollectAcceptedSchema = z
+  .object({
+    project_id: z.string(),
+    run_id: z.string(),
+    run_date: z.string(),
+    enqueued: z.number().int().nonnegative(),
+  })
+  .openapi('CollectAccepted');

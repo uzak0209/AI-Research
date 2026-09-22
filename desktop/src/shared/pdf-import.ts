@@ -180,3 +180,46 @@ export async function extractFromPdf(data: Uint8Array): Promise<ExtractedMeta> {
   await task.destroy();
   return meta;
 }
+
+const FULLTEXT_MAX_CHARS = 200_000;
+
+/**
+ * 採点用の本文を PDF から取る。ページを走査し、上限で切る。
+ * 空・画像のみは null（要旨で埋めない。C-07）。
+ */
+export async function extractFullTextFromPdf(data: Uint8Array): Promise<string | null> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const task = pdfjs.getDocument({ data, useSystemFonts: true });
+  const doc = await task.promise;
+  try {
+    const parts: string[] = [];
+    let total = 0;
+    for (let p = 1; p <= doc.numPages; p++) {
+      const page = await doc.getPage(p);
+      const tc = await page.getTextContent();
+      const items = tc.items as { str?: string; hasEOL?: boolean }[];
+      let cur = '';
+      const pageLines: string[] = [];
+      for (const it of items) {
+        cur = appendPiece(cur, it.str ?? '');
+        if (it.hasEOL) {
+          pageLines.push(cur);
+          cur = '';
+        }
+      }
+      if (cur.trim()) pageLines.push(cur);
+      const pageText = pageLines.join('\n').trim();
+      if (!pageText) continue;
+      if (total + pageText.length > FULLTEXT_MAX_CHARS) {
+        parts.push(pageText.slice(0, FULLTEXT_MAX_CHARS - total));
+        break;
+      }
+      parts.push(pageText);
+      total += pageText.length + 1;
+    }
+    const joined = parts.join('\n\n').trim();
+    return joined.length > 0 ? joined : null;
+  } finally {
+    await task.destroy();
+  }
+}

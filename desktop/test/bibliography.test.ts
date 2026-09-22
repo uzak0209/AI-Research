@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NotSignedInError, type CloudClient } from '@ai-research/core';
 import { followReference } from '../src/bibliography/application/follow-reference.js';
@@ -7,13 +10,23 @@ import { doiFromExternalId } from '../src/bibliography/domain/doi.js';
 import {
   BIB_BEGIN,
   BIB_END,
+  hashInner,
+  planSplice,
   renderBibtex,
   renderHayagriva,
-  spliceManaged,
 } from '../src/bibliography/domain/cite-format.js';
 import { httpsPdfUrl } from '../src/bibliography/domain/oa-url.js';
-import { hintFromReference, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
-import { bffBibliographyGateway } from '../src/bibliography/infrastructure/adapters.js';
+import {
+  hintFromReference,
+  isEmptyRecord,
+  mergeRecord,
+  needsCompletion,
+  type ReferenceSnapshot,
+} from '../src/bibliography/domain/record.js';
+import { candidatePdfPath } from '../src/shared/workspace.js';
+import { bffBibliographyGateway, fsCiteFiles } from '../src/bibliography/infrastructure/adapters.js';
+import { openDb } from '../src/shared/db.js';
+import { createProject, setProjectRoot } from '../src/shared/repo.js';
 
 function client(res: Response | Error): CloudClient {
   return {
@@ -51,7 +64,10 @@ function snapshot(over: Partial<ReferenceSnapshot> = {}): ReferenceSnapshot {
   };
 }
 
-function memoryRepo(initial: ReferenceSnapshot[] = []): ReferenceRepo & { rows: Map<string, ReferenceSnapshot> } {
+function memoryRepo(
+  initial: ReferenceSnapshot[] = [],
+  opts: { paperPdfUrl?: string | null } = {},
+): ReferenceRepo & { rows: Map<string, ReferenceSnapshot> } {
   const rows = new Map(initial.map((r) => [r.reference_id, r]));
   const attachments = new Map<string, { path: string }[]>();
   const byPath = new Map<string, string>();
@@ -92,6 +108,8 @@ function memoryRepo(initial: ReferenceSnapshot[] = []): ReferenceRepo & { rows: 
       return id ? { reference_id: id } : undefined;
     },
     projectRoot: () => '/proj',
+    paperId: () => null,
+    paperPdfUrl: () => opts.paperPdfUrl ?? null,
     citeItems: () =>
       [...rows.values()].map((r) => ({
         bibtex_key: r.bibtex_key,
@@ -117,7 +135,7 @@ function deps(over: Partial<BibliographyDeps> & { refs?: ReferenceRepo } = {}): 
       rememberWrite() {},
       wasWritten: () => false,
     },
-    cites: { exportAll() {} },
+    cites: { exportAll: () => 'ok' },
     extract: {
       fromBytes: async () => ({
         title: 'From PDF',
@@ -155,6 +173,62 @@ describe('hintFromReference', () => {
   });
 });
 
+describe('needsCompletion', () => {
+  it('引用が書ける行は補完しない（著者・年・掲載誌か DOI）', () => {
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: 'SIGCOMM' }))).toBe(false);
+    // preprint は掲載誌が無く DOI で足りる
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: null, doi: '10.1/a' }))).toBe(false);
+  });
+
+  it('欠けていれば補完する', () => {
+    expect(needsCompletion(snapshot({ authors: null, year: 2024, venue: 'SIGCOMM' }))).toBe(true);
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: null, venue: 'SIGCOMM' }))).toBe(true);
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: null, doi: null }))).toBe(true);
+    expect(needsCompletion(snapshot({ title: '  ', authors: 'Ada', year: 2024, venue: 'X' }))).toBe(true);
+  });
+});
+
+describe('followReference の補完省略', () => {
+  const complete = snapshot({ authors: 'Ada Lovelace', year: 2024, venue: 'SIGCOMM' });
+
+  it('書誌が揃っていれば LLM を呼ばない', async () => {
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({ refs: memoryRepo([complete]), gateway });
+
+    await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).not.toHaveBeenCalled();
+  });
+
+  it('補完を飛ばしても候補の直リンクから PDF を取る', async () => {
+    const download = vi.fn(async () => 'ok' as const);
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({
+      refs: memoryRepo([complete], { paperPdfUrl: 'https://arxiv.org/pdf/2409.00001.pdf' }),
+      gateway,
+      pdfs: { download, rememberWrite() {}, wasWritten: () => false },
+    });
+
+    const got = await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).not.toHaveBeenCalled();
+    expect(download).toHaveBeenCalledWith(
+      'https://arxiv.org/pdf/2409.00001.pdf',
+      '/proj/references/gnn2024.pdf',
+    );
+    expect(got.pdf).toBe('ok');
+  });
+
+  it('欠けている行はこれまでどおり補完する', async () => {
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({ refs: memoryRepo([snapshot({ authors: null })]), gateway });
+
+    await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).toHaveBeenCalled();
+  });
+});
+
 describe('doiFromExternalId', () => {
   it('収集側と同じ正規化。DOI でなければ null', () => {
     expect(doiFromExternalId('https://doi.org/10.1234/foo')).toBe('10.1234/foo');
@@ -183,13 +257,33 @@ describe('mergeRecord', () => {
   });
 });
 
-describe('cite markers', () => {
-  it('マーカーが無ければ末尾に足す。片方だけなら触らない（C-08）', () => {
-    expect(spliceManaged('hello', '@article{a,}', BIB_BEGIN, BIB_END)).toContain(BIB_BEGIN);
-    expect(spliceManaged(`${BIB_BEGIN}\nold\n${BIB_END}\n`, '@article{a,}', BIB_BEGIN, BIB_END)).toContain(
-      '@article{a,}',
-    );
-    expect(spliceManaged(BIB_BEGIN, 'x', BIB_BEGIN, BIB_END)).toBeNull();
+describe('cite markers (planSplice)', () => {
+  it('初回はマーカーが無ければ末尾に足す', () => {
+    const plan = planSplice('hello', '@article{a,}', BIB_BEGIN, BIB_END, null);
+    expect(plan.status).toBe('create');
+    if (plan.status === 'create' || plan.status === 'update') expect(plan.next).toContain(BIB_BEGIN);
+  });
+
+  it('マーカーが両方あり前回分と一致すれば再生成する', () => {
+    const lastHash = hashInner('old');
+    const plan = planSplice(`${BIB_BEGIN}\nold\n${BIB_END}\n`, '@article{a,}', BIB_BEGIN, BIB_END, lastHash);
+    expect(plan.status).toBe('update');
+    if (plan.status === 'create' || plan.status === 'update') expect(plan.next).toContain('@article{a,}');
+  });
+
+  it('片方だけなら触らない（C-08）', () => {
+    expect(planSplice(BIB_BEGIN, 'x', BIB_BEGIN, BIB_END, null).status).toBe('skip_broken');
+  });
+
+  it('マーカーが消され、前回書き出し記録があれば復元しない（C-08 却下事項）', () => {
+    const lastHash = hashInner('old');
+    expect(planSplice('hello（マーカーなし）', 'x', BIB_BEGIN, BIB_END, lastHash).status).toBe('skip_removed');
+  });
+
+  it('マーカー内が前回書き出し分と食い違えば手編集とみなし上書きしない（C-08）', () => {
+    const lastHash = hashInner('old');
+    const edited = `${BIB_BEGIN}\nold\n手で足した行\n${BIB_END}\n`;
+    expect(planSplice(edited, '@article{a,}', BIB_BEGIN, BIB_END, lastHash).status).toBe('skip_conflict');
   });
 
   it('BibTeX と Hayagriva を出す', () => {
@@ -208,6 +302,87 @@ describe('cite markers', () => {
   });
 });
 
+describe('fsCiteFiles.exportAll (C-08)', () => {
+  const item = {
+    bibtex_key: 'ada2024',
+    title: 'GNN',
+    authors: 'Ada Lovelace',
+    year: 2024,
+    doi: '10.1234/foo',
+    url: null,
+    venue: 'SIGCOMM',
+    item_type: 'article',
+  };
+
+  function setup() {
+    const dir = mkdtempSync(join(tmpdir(), 'biblio-cite-'));
+    mkdirSync(join(dir, 'mypaper'), { recursive: true });
+    const bibPath = join(dir, 'mypaper', 'refs.bib');
+    writeFileSync(bibPath, '');
+    const db = openDb({ path: ':memory:' });
+    const project = createProject(db, { title: 't', summary: 's', embed_model: 'm' });
+    setProjectRoot(db, project.project_id, dir);
+    return { dir, bibPath, db, projectId: project.project_id };
+  }
+
+  it('初回は新規にマーカーを作る', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      expect(readFileSync(bibPath, 'utf8')).toContain('@article{ada2024,');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('マーカーごと消された後は復元しない（ADR-0003 却下事項）', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      // 利用者がマーカーを含めて丸ごと消した
+      writeFileSync(bibPath, '% 自分のメモだけ残す\n');
+      expect(cites.exportAll(projectId, [item])).toBe('skipped');
+      expect(readFileSync(bibPath, 'utf8')).toBe('% 自分のメモだけ残す\n');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('マーカー内の手編集は上書きしない（ADR-0003 C-08）', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      const generated = readFileSync(bibPath, 'utf8');
+      // マーカー内に手で行を足す
+      writeFileSync(bibPath, generated.replace('@article{ada2024,', '% 手編集\n@article{ada2024,'));
+      const edited = readFileSync(bibPath, 'utf8');
+      expect(cites.exportAll(projectId, [{ ...item, year: 2025 }])).toBe('conflict');
+      expect(readFileSync(bibPath, 'utf8')).toBe(edited);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('手編集が無ければ内容の更新で再生成できる', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      expect(cites.exportAll(projectId, [{ ...item, year: 2025 }])).toBe('ok');
+      expect(readFileSync(bibPath, 'utf8')).toContain('year = {2025}');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('bffBibliographyGateway', () => {
   const hint = { doi: '10.1234/foo', title: 'GNN' };
 
@@ -216,6 +391,32 @@ describe('bffBibliographyGateway', () => {
       client(new Response(JSON.stringify({ classification: 'C1', record, pdf_url: 'https://arxiv.org/pdf/x.pdf' }), { status: 200 })),
     ).complete(hint);
     expect(got?.record).toEqual(record);
+    expect(got?.pdf_url).toBe('https://arxiv.org/pdf/x.pdf');
+  });
+
+  it('著者無しでも OA の pdf_url は残す（1 ページ目を後で読ませる）', async () => {
+    const got = await bffBibliographyGateway(() =>
+      client(
+        new Response(
+          JSON.stringify({
+            classification: 'C1',
+            record: {
+              title: 'GNN',
+              authors: null,
+              year: 2024,
+              doi: '10.1234/foo',
+              url: null,
+              venue: null,
+              abstract: null,
+              item_type: 'article',
+            },
+            pdf_url: 'https://arxiv.org/pdf/x.pdf',
+          }),
+          { status: 200 },
+        ),
+      ),
+    ).complete(hint);
+    expect(got?.record).toBeNull();
     expect(got?.pdf_url).toBe('https://arxiv.org/pdf/x.pdf');
   });
 
@@ -242,6 +443,43 @@ describe('bffBibliographyGateway', () => {
         ),
       ).complete(hint),
     ).rejects.toThrow(/書誌を補れなかった/);
+  });
+
+  it('著者無しは公開文献の補完成功にしない', async () => {
+    await expect(
+      bffBibliographyGateway(() =>
+        client(
+          new Response(
+            JSON.stringify({
+              classification: 'C1',
+              record: {
+                title: 'GNN',
+                authors: null,
+                year: 2024,
+                doi: '10.1234/foo',
+                url: null,
+                venue: null,
+                abstract: null,
+                item_type: 'article',
+              },
+            }),
+            { status: 200 },
+          ),
+        ),
+      ).complete(hint),
+    ).rejects.toThrow(/書誌を補れなかった/);
+    expect(
+      isEmptyRecord({
+        title: 'GNN',
+        authors: null,
+        year: 2024,
+        doi: '10.1234/foo',
+        url: null,
+        venue: null,
+        abstract: null,
+        item_type: 'article',
+      }),
+    ).toBe(true);
   });
 
   it('未ログインは握りつぶさない', async () => {
@@ -282,6 +520,7 @@ describe('followReference', () => {
         cites: {
           exportAll(_id, items) {
             cites.push(items.map((i) => i.bibtex_key));
+            return 'ok';
           },
         },
       }),
@@ -320,6 +559,92 @@ describe('followReference', () => {
     );
     expect(got.pdf).toBe('skipped');
     expect(repo.get('r1')?.title).toBe('GNN');
+  });
+
+  it('候補 PDF の 1 ページ目を先に渡す', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'biblio-cand-'));
+    try {
+      const repo = memoryRepo([snapshot({ authors: null })]);
+      repo.paperId = () => 'paper-1';
+      repo.projectRoot = () => dir;
+      const complete = vi.fn(async (hint: { first_page?: string }) => {
+        expect(hint.first_page).toContain('Ada Lovelace');
+        return { record: { ...record, authors: 'Ada Lovelace; Alan Turing' }, pdf_url: null };
+      });
+      const extract = {
+        fromBytes: async () => ({
+          title: null,
+          authors: null,
+          year: null,
+          doi: null,
+          firstPageText: null,
+          titleSource: null,
+        }),
+        firstPageFromPath: async (path: string) =>
+          path.includes('paper-1') ? 'Ada Lovelace; Alan Turing\nHigh-speed I/O' : null,
+      };
+      const src = candidatePdfPath(dir, 'paper-1');
+      mkdirSync(join(dir, 'candidates'), { recursive: true });
+      mkdirSync(join(dir, 'references'), { recursive: true });
+      writeFileSync(src, '%PDF-1.4\n');
+
+      const got = await followReference(
+        deps({
+          refs: repo,
+          gateway: { complete },
+          extract,
+          paths: {
+            resolve: (p) => p,
+            basename: (p) => p.split('/').pop() ?? p,
+            isPdf: (p) => p.toLowerCase().endsWith('.pdf'),
+            oaDest: (root, key) => join(root, 'references', `${key}.pdf`),
+          },
+        }),
+        'p1',
+        'r1',
+      );
+      expect(got.pdf).toBe('exists');
+      expect(repo.get('r1')?.authors).toBe('Ada Lovelace; Alan Turing');
+      expect(complete).toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('PDF を取ったあと 1 ページ目で著者を取り直す', async () => {
+    const repo = memoryRepo([snapshot({ authors: null })]);
+    const complete = vi.fn(async (hint: { first_page?: string }) => {
+      if (!hint.first_page) {
+        return { record: null, pdf_url: 'https://arxiv.org/pdf/x.pdf' };
+      }
+      expect(hint.first_page).toContain('title page');
+      return { record: { ...record, authors: 'From PDF' }, pdf_url: 'https://arxiv.org/pdf/x.pdf' };
+    });
+    const download = vi.fn(async () => 'ok' as const);
+    const got = await followReference(
+      deps({
+        refs: repo,
+        gateway: { complete },
+        pdfs: { download, rememberWrite() {}, wasWritten: () => false },
+        extract: {
+          fromBytes: async () => ({
+            title: null,
+            authors: null,
+            year: null,
+            doi: null,
+            firstPageText: null,
+            titleSource: null,
+          }),
+          firstPageFromPath: async (path: string) => (path.includes('references') ? 'title page authors' : null),
+        },
+      }),
+      'p1',
+      'r1',
+    );
+    expect(got.pdf).toBe('ok');
+    expect(download).toHaveBeenCalled();
+    expect(complete.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(repo.get('r1')?.authors).toBe('From PDF');
   });
 });
 

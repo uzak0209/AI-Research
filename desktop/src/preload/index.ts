@@ -13,7 +13,25 @@ const api = {
     ipcRenderer.invoke('projects:updateTitle', projectId, title),
   createWorkspace: () => ipcRenderer.invoke('projects:createWorkspace'),
   openWorkspace: () => ipcRenderer.invoke('projects:openWorkspace'),
+  createUnderRecycle: (title: string) =>
+    ipcRenderer.invoke('projects:createUnderRecycle', title) as Promise<
+      | { ok: true; root: string; title: string; action: 'create' | 'open'; project_id?: string }
+      | { ok: false; canceled?: true; error?: string }
+    >,
   revealWorkspace: (projectId: string) => ipcRenderer.invoke('projects:revealWorkspace', projectId),
+  syncProject: (projectId: string) =>
+    ipcRenderer.invoke('projects:sync', projectId) as Promise<{ inserted: number; lastRunId: string | null }>,
+  startCollect: (projectId: string) =>
+    ipcRenderer.invoke('projects:startCollect', projectId) as Promise<{
+      run_id: string;
+      run_date: string;
+      enqueued: number;
+      inserted: number;
+      pulled: number;
+      statuses: string[];
+      searchTerms?: string[];
+      timedOut: boolean;
+    }>,
   onWorkspaceChanged: (cb: (e: { root: string; title: string; action: 'create' | 'open' }) => void) => {
     const h = (_: unknown, e: { root: string; title: string; action: 'create' | 'open' }) => cb(e);
     ipcRenderer.on('workspace:changed', h);
@@ -23,6 +41,11 @@ const api = {
     const h = (_: unknown, message: string) => cb(message);
     ipcRenderer.on('workspace:error', h);
     return () => ipcRenderer.off('workspace:error', h);
+  },
+  onOpenSettings: (cb: () => void) => {
+    const h = () => cb();
+    ipcRenderer.on('settings:open', h);
+    return () => ipcRenderer.off('settings:open', h);
   },
 
   auth: {
@@ -44,6 +67,8 @@ const api = {
   listClaims: (projectId: string) => ipcRenderer.invoke('claims:list', projectId),
   setClaims: (projectId: string, claims: string[]) =>
     ipcRenderer.invoke('claims:set', projectId, claims),
+  inferKeywords: (topic: string) =>
+    ipcRenderer.invoke('bff:keywords', topic) as Promise<{ terms: string[] }>,
 
   // --- 新着候補 ---
   ranked: (projectId: string) => ipcRenderer.invoke('papers:ranked', projectId),
@@ -58,6 +83,34 @@ const api = {
     return () => ipcRenderer.off('score:event', h);
   },
 
+  reports: {
+    list: (projectId: string) =>
+      ipcRenderer.invoke('reports:list', projectId) as Promise<{
+        reports: unknown[];
+        unscored: number;
+        unscoredMissingPdf: number;
+        scoreMode: 'mypaper' | 'blend';
+        searchTerms: string[];
+      }>,
+    get: (projectId: string, runId: string) => ipcRenderer.invoke('reports:get', projectId, runId),
+  },
+
+  mypaper: {
+    list: (projectId: string) => ipcRenderer.invoke('mypaper:list', projectId),
+    import: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:import', projectId) as Promise<{
+        imported: { path: string; existed: boolean }[];
+        failed: { path: string; error: string }[];
+      }>,
+    reveal: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:reveal', projectId) as Promise<{ ok: true } | { ok: false; error: string }>,
+    onChanged: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on('mypaper:changed', h);
+      return () => ipcRenderer.off('mypaper:changed', h);
+    },
+  },
+
   // --- ライブラリ（FR-05 / FR-14） ---
   lib: {
     list: (projectId: string, filter?: unknown) => ipcRenderer.invoke('lib:list', projectId, filter),
@@ -65,9 +118,17 @@ const api = {
     counts: (projectId: string) => ipcRenderer.invoke('lib:counts', projectId),
     tags: (projectId: string) => ipcRenderer.invoke('lib:tags', projectId),
 
-    add: (projectId: string, item: unknown) => ipcRenderer.invoke('lib:add', projectId, item),
+    add: (projectId: string, item: unknown) =>
+      ipcRenderer.invoke('lib:add', projectId, item) as Promise<{
+        reference_id: string;
+        pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        citeConflict: boolean;
+      }>,
     follow: (projectId: string, referenceId: string) =>
-      ipcRenderer.invoke('lib:follow', projectId, referenceId),
+      ipcRenderer.invoke('lib:follow', projectId, referenceId) as Promise<{
+        pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped';
+        cite: 'ok' | 'skipped' | 'conflict';
+      }>,
     update: (referenceId: string, patch: unknown) =>
       ipcRenderer.invoke('lib:update', referenceId, patch),
     remove: (referenceId: string) => ipcRenderer.invoke('lib:delete', referenceId),

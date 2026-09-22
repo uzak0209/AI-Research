@@ -14,6 +14,7 @@ import type { Db } from '../shared/db.js';
 export type Cloud = {
   client: CloudClient;
   session: AuthSession;
+  endpoint: string;
 };
 
 export function createCloud(db: Db): Cloud {
@@ -30,7 +31,7 @@ export function createCloud(db: Db): Cloud {
     DEFAULT_CLOUD_ENDPOINT
   ).replace(/\/$/, '');
 
-  return { client: new CloudClient(endpoint, session), session };
+  return { client: new CloudClient(endpoint, session), session, endpoint };
 }
 
 export function cloudSignedIn(session: AuthSession): boolean {

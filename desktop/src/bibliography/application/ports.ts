@@ -31,12 +31,18 @@ export interface ReferenceRepo {
   findByDoi(projectId: string, doi: string): string | undefined;
   findByPath(path: string): { reference_id: string } | undefined;
   projectRoot(projectId: string): string | null;
+  /** 候補から保存したときの papers.paper_id。無ければ null */
+  paperId(referenceId: string): string | null;
+  /** 候補が収集時に持っていた OA 直 PDF。書誌補完を呼ばずに取るために使う */
+  paperPdfUrl(referenceId: string): string | null;
   citeItems(projectId: string): CiteItem[];
 }
 
 export interface BibliographyGateway {
   /** 未ログインなら null。失敗は throw */
-  complete(hint: BibliographyHint): Promise<{ record: BibliographicRecord; pdf_url: string | null } | null>;
+  complete(
+    hint: BibliographyHint,
+  ): Promise<{ record: BibliographicRecord | null; pdf_url: string | null } | null>;
 }
 
 export interface PdfStore {
@@ -45,8 +51,15 @@ export interface PdfStore {
   wasWritten(path: string): boolean;
 }
 
+/**
+ * - `ok`: 書いた（初回作成／再生成）
+ * - `skipped`: 書き出し先が無い・マーカーが消された・片方だけ壊れている（C-08。何もしない）
+ * - `conflict`: マーカー内に手編集を検知した。上書きしなかった（C-08。警告して終わる）
+ */
+export type CiteExportResult = 'ok' | 'skipped' | 'conflict';
+
 export interface CiteFiles {
-  exportAll(projectId: string, items: CiteItem[]): void;
+  exportAll(projectId: string, items: CiteItem[]): CiteExportResult;
 }
 
 export interface PdfExtractor {

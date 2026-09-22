@@ -2,9 +2,20 @@
 // 索引の正本は SQLite。ここは原稿・文献・主張の置き場だけで、中身を勝手に書き換えない（C-08）。
 
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-export const PROJECT_WORKSPACE_DIRS = ['references', 'mypaper', 'claims'] as const;
+/** 作業フォルダとして認識するための必須ディレクトリ */
+export const PROJECT_WORKSPACE_REQUIRED = ['references', 'mypaper', 'claims'] as const;
+
+/** 新規作成時に揃えるディレクトリ（採点用 candidates を含む） */
+export const PROJECT_WORKSPACE_DIRS = [
+  ...PROJECT_WORKSPACE_REQUIRED,
+  'candidates',
+] as const;
+
+/** 新規プロジェクトの規定の置き場（~/IdeaProjects と同階層） */
+export const DEFAULT_PROJECTS_ROOT = join(homedir(), 'Recycle');
 
 export class WorkspaceError extends Error {
   constructor(message: string) {
@@ -24,19 +35,56 @@ export function sanitizeProjectDirName(raw: string): string {
   return name;
 }
 
+/** ~/Recycle が無ければ作る。規定のプロジェクト置き場。 */
+export function ensureProjectsRoot(): string {
+  try {
+    if (!existsSync(DEFAULT_PROJECTS_ROOT)) {
+      mkdirSync(DEFAULT_PROJECTS_ROOT, { recursive: true });
+    } else if (!statSync(DEFAULT_PROJECTS_ROOT).isDirectory()) {
+      throw new WorkspaceError(`${DEFAULT_PROJECTS_ROOT} がディレクトリではない`);
+    }
+  } catch (e) {
+    if (e instanceof WorkspaceError) throw e;
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new WorkspaceError(
+      `${DEFAULT_PROJECTS_ROOT} を用意できなかった（${detail}）。先に作るか権限を確認してください`,
+    );
+  }
+  return DEFAULT_PROJECTS_ROOT;
+}
+
+export function pathUnderProjectsRoot(title: string): string {
+  return join(ensureProjectsRoot(), sanitizeProjectDirName(title));
+}
+
 function isEmptyDir(root: string): boolean {
   return readdirSync(root).filter((n) => n !== '.DS_Store').length === 0;
 }
 
 export function isProjectWorkspace(root: string): boolean {
-  return PROJECT_WORKSPACE_DIRS.every((d) => {
+  return PROJECT_WORKSPACE_REQUIRED.every((d) => {
     const p = join(root, d);
     return existsSync(p) && statSync(p).isDirectory();
   });
 }
 
+/** 既存作業フォルダに `candidates/` が無ければ足す（C-08: 既存は触らない） */
+export function ensureCandidatesDir(root: string): string {
+  const p = join(root, 'candidates');
+  if (!existsSync(p)) {
+    mkdirSync(p, { recursive: true });
+  } else if (!statSync(p).isDirectory()) {
+    throw new WorkspaceError('candidates と同じ名前のファイルがある');
+  }
+  return p;
+}
+
+export function candidatePdfPath(root: string, paperId: string): string {
+  return join(ensureCandidatesDir(root), `${paperId}.pdf`);
+}
+
 /**
- * `{root}/references` `{root}/mypaper` `{root}/claims` を作る。
+ * `{root}/references` `{root}/mypaper` `{root}/claims` `{root}/candidates` を作る。
  * 親は既にあること。空でない未知のフォルダには作らない（C-08）。
  */
 export function createProjectWorkspace(root: string): void {

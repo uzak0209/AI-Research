@@ -63,6 +63,48 @@ export function parseJsonObject(text: string): unknown {
   return JSON.parse(body) as unknown;
 }
 
+/** 安価モデルは authors を配列、year を文字列、キー省略をよく返す。欠けは null（C-07） */
+function coerceAuthors(raw: unknown): string | null {
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    return t ? t.slice(0, 500) : null;
+  }
+  if (!Array.isArray(raw)) return null;
+  const names: string[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string' && item.trim()) names.push(item.trim());
+    else if (item && typeof item === 'object') {
+      const o = item as { display_name?: unknown; name?: unknown };
+      const n = typeof o.display_name === 'string' ? o.display_name : typeof o.name === 'string' ? o.name : '';
+      if (n.trim()) names.push(n.trim());
+    }
+  }
+  if (names.length === 0) return null;
+  const joined = names.join('; ');
+  return joined.length > 500 ? joined.slice(0, 500) : joined;
+}
+
+function coerceYear(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isInteger(raw)) return raw;
+  if (typeof raw === 'string' && /^\d{4}$/.test(raw.trim())) return Number(raw.trim());
+  return null;
+}
+
+function coerceModelRecord(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+  const o = raw as Record<string, unknown>;
+  return {
+    title: o.title ?? null,
+    authors: coerceAuthors(o.authors),
+    year: coerceYear(o.year),
+    doi: o.doi ?? null,
+    url: o.url ?? null,
+    venue: o.venue ?? null,
+    abstract: o.abstract ?? null,
+    item_type: o.item_type ?? 'article',
+  };
+}
+
 export function recordFromModelText(text: string): BibliographyRecord {
   let raw: unknown;
   try {
@@ -70,15 +112,17 @@ export function recordFromModelText(text: string): BibliographyRecord {
   } catch {
     return EMPTY_RECORD;
   }
-  const parsed = bibliographyRecordSchema.safeParse(raw);
+  const parsed = bibliographyRecordSchema.safeParse(coerceModelRecord(raw));
   return parsed.success ? parsed.data : EMPTY_RECORD;
 }
 
 export function bibliographyPrompt(hint: BibliographyHint): string {
   return [
-    'Fill a bibliographic record for one published scholarly work.',
-    'Use only the hint and first_page below. Do not invent a DOI that is not in the input.',
-    'If a field is unknown, use JSON null. item_type must be one of: article, inproceedings, book, phdthesis, misc.',
+    'Complete a public bibliographic record for one published scholarly work identified by the hint (and first_page if present).',
+    'If first_page is present, READ the author names from that title page. Names are usually under the title, before Abstract/Keywords.',
+    'A published work always has authors. authors is required: one string of names separated by "; " (example: "Ada Lovelace; Alan Turing"), never a JSON array, never null if you identified the work or the names appear on first_page.',
+    'Also fill title, year, venue, url, and abstract. Do not invent a DOI that is not in the hint or first_page.',
+    'If you cannot identify the work and first_page has no author names, every field is JSON null (including authors). item_type must be one of: article, inproceedings, book, phdthesis, misc.',
     'Reply with a JSON object only: title, authors, year, doi, url, venue, abstract, item_type.',
     `hint: ${JSON.stringify({
       title: hint.title ?? null,

@@ -12,18 +12,48 @@ import {
   GoogleLoginBodySchema,
   TrendBodySchema,
   TrendResponseSchema,
+  KeywordsBodySchema,
+  KeywordsResponseSchema,
   BibliographyBodySchema,
   BibliographyResponseSchema,
+  RunsResponseSchema,
+  ProjectPutBodySchema,
+  ProjectResponseSchema,
+  CollectAcceptedSchema,
 } from './schema';
+import { db } from '../db/kysely';
+import { execute } from '../db/execute';
 import { TREND_ENDPOINT, createTrendApp } from '../trend';
+import { parseThemesJson } from '../trend/domain';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
-import { ORCA_POLICY, reviewPolicy } from '../shared/orca/policy';
+import { ORCA_POLICY, collectPolicy, trendPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
+import { enqueueManualCollect } from '../collect/application/schedule';
+import { inferKeywords, KEYWORDS_ENDPOINT, parseSearchTermsJson } from '../collect/application/search-terms';
+import { queueCollect, utcClock } from '../collect/infrastructure/adapters';
 
 export type AppEnv = { Bindings: Env };
 
-export const app = new OpenAPIHono<AppEnv>();
+/**
+ * 入力検証で落ちたときの形を、他のエラーと同じ { error, detail } に揃える。
+ * 既定のままだと error に ZodError オブジェクトが入り、
+ * 受け側で文字列化して "[object Object]" になって原因が消える（C-07）。
+ */
+export const app = new OpenAPIHono<AppEnv>({
+  defaultHook: (result, c) => {
+    if (result.success) return;
+    const issues = result.error.issues ?? [];
+    const detail =
+      issues
+        .map((i) => {
+          const path = i.path.join('.');
+          return path ? `${path}: ${i.message}` : i.message;
+        })
+        .join(' / ') || '入力が不正です';
+    return c.json({ error: 'invalid_request', detail }, 400);
+  },
+});
 
 const ACCESS_TTL_SEC = 15 * 60;
 
@@ -33,7 +63,7 @@ function abort(fail: AuthFail): never {
   });
 }
 
-function fail(status: 400 | 401 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
+function fail(status: 400 | 401 | 403 | 404 | 429 | 501 | 502, body: { error: string; detail?: string }): never {
   throw new HTTPException(status, {
     res: Response.json(body, { status }),
   });
@@ -182,19 +212,325 @@ app.openapi(
   createRoute({
     method: 'get',
     path: '/runs',
+    request: {
+      query: z.object({
+        project_id: z.string().min(1),
+        after: z.string().min(1).optional(),
+      }),
+    },
     responses: {
+      200: {
+        description: 'プロジェクトの収集 run を増分取得。0 件も 200（C-07）',
+        content: { 'application/json': { schema: RunsResponseSchema } },
+      },
+      400: { description: 'project_id 欠落', ...jsonError },
       ...unauthorized,
-      ...notImplemented,
+      403: { description: '他ユーザーの project', ...jsonError },
     },
   }),
   async (c) => {
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
-    abort({
-      ok: false,
-      status: 501,
-      body: { error: 'not_implemented', detail: '同期 API の中身は未実装。認証だけ通った' },
+
+    const { project_id, after } = c.req.valid('query');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const owned = await execute<{ user_id: string }>(
+      c.env.DB,
+      db.selectFrom('projects').select('user_id').where('project_id', '=', project_id).compile(),
+    );
+    const owner = owned[0];
+    if (owner && owner.user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+
+    let afterCreatedAt: string | null = null;
+    if (after) {
+      const anchor = await execute<{ created_at: string }>(
+        c.env.DB,
+        db
+          .selectFrom('runs')
+          .select('created_at')
+          .where('run_id', '=', after)
+          .where('project_id', '=', project_id)
+          .compile(),
+      );
+      afterCreatedAt = anchor[0]?.created_at ?? null;
+    }
+
+    let runQuery = db
+      .selectFrom('runs')
+      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'search_terms_json', 'trend_summary', 'themes_json', 'created_at'])
+      .where('project_id', '=', project_id)
+      .orderBy('created_at', 'asc')
+      .limit(50);
+
+    if (afterCreatedAt) {
+      runQuery = runQuery.where('created_at', '>', afterCreatedAt);
+    }
+
+    const runs = await execute<{
+      run_id: string;
+      run_date: string;
+      status: string;
+      failed_sources_json: string | null;
+      search_terms_json: string | null;
+      trend_summary: string | null;
+      themes_json: string | null;
+      created_at: string;
+    }>(c.env.DB, runQuery.compile());
+
+    const runIds = runs.map((r) => r.run_id);
+    const paperRows =
+      runIds.length === 0
+        ? []
+        : await execute<{
+            run_id: string;
+            external_id: string;
+            source: string;
+            title: string;
+            authors: string | null;
+            abstract: string | null;
+            url: string | null;
+            published_at: string | null;
+            venue: string | null;
+            item_type: string | null;
+            pdf_url: string | null;
+            coarse_score: number | null;
+            problem_excerpt: string | null;
+          }>(
+            c.env.DB,
+            db
+              .selectFrom('run_papers')
+              .select([
+                'run_id',
+                'external_id',
+                'source',
+                'title',
+                'authors',
+                'abstract',
+                'url',
+                'published_at',
+                'venue',
+                'item_type',
+                'pdf_url',
+                'coarse_score',
+                'problem_excerpt',
+              ])
+              .where('run_id', 'in', runIds)
+              .compile(),
+          );
+
+    const papersByRun = new Map<string, typeof paperRows>();
+    for (const row of paperRows) {
+      const list = papersByRun.get(row.run_id) ?? [];
+      list.push(row);
+      papersByRun.set(row.run_id, list);
+    }
+
+    return c.json(
+      {
+        project_id,
+        runs: runs.map((r) => ({
+          run_id: r.run_id,
+          run_date: r.run_date,
+          status: r.status as 'ok' | 'empty' | 'failed' | 'partial',
+          failed_sources_json: r.failed_sources_json,
+          search_terms: parseSearchTermsJson(r.search_terms_json),
+          trend: r.trend_summary,
+          themes: parseThemesJson(r.themes_json),
+          created_at: r.created_at,
+          papers: (papersByRun.get(r.run_id) ?? []).map((p) => ({
+            external_id: p.external_id,
+            source: p.source,
+            title: p.title,
+            authors: p.authors,
+            abstract: p.abstract,
+            url: p.url,
+            published_at: p.published_at,
+            venue: p.venue,
+            item_type: p.item_type,
+            pdf_url: p.pdf_url,
+            coarse_score: p.coarse_score,
+            problem_excerpt: p.problem_excerpt,
+          })),
+        })),
+      },
+      200,
+    );
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: 'put',
+    path: '/projects/{project_id}',
+    request: {
+      params: z.object({ project_id: z.string().min(1) }),
+      body: {
+        content: { 'application/json': { schema: ProjectPutBodySchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: '課題意識と確定検索語の同期。判定の書き戻しはしない',
+        content: { 'application/json': { schema: ProjectResponseSchema } },
+      },
+      400: { description: 'title / summary 欠落', ...jsonError },
+      ...unauthorized,
+      403: { description: '他ユーザーの project', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const { project_id } = c.req.valid('param');
+    const { title, summary, search_terms } = c.req.valid('json');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const existing = await execute<{ user_id: string; search_terms_json: string | null }>(
+      c.env.DB,
+      db
+        .selectFrom('projects')
+        .select(['user_id', 'search_terms_json'])
+        .where('project_id', '=', project_id)
+        .compile(),
+    );
+    if (existing[0] && existing[0].user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+
+    const termsJson =
+      search_terms !== undefined ? JSON.stringify(search_terms) : (existing[0]?.search_terms_json ?? null);
+
+    if (existing[0]) {
+      await execute(
+        c.env.DB,
+        db
+          .updateTable('projects')
+          .set({
+            title,
+            summary,
+            ...(search_terms !== undefined ? { search_terms_json: termsJson } : {}),
+          })
+          .where('project_id', '=', project_id)
+          .where('user_id', '=', userId)
+          .compile(),
+      );
+    } else {
+      await execute(
+        c.env.DB,
+        db
+          .insertInto('projects')
+          .values({
+            project_id,
+            user_id: userId,
+            title,
+            summary,
+            search_terms_json: termsJson,
+            created_at: new Date().toISOString(),
+          })
+          .compile(),
+      );
+    }
+
+    return c.json(
+      {
+        project_id,
+        title,
+        summary,
+        search_terms: parseSearchTermsJson(termsJson),
+      },
+      200,
+    );
+  },
+);
+
+/** 自発調査の連打抑止（秒）。Queue 投入だけなので短め */
+const MANUAL_COLLECT_COOLDOWN_SEC = 60;
+
+app.openapi(
+  createRoute({
+    method: 'post',
+    path: '/projects/{project_id}/collect',
+    request: {
+      params: z.object({ project_id: z.string().min(1) }),
+    },
+    responses: {
+      202: {
+        description: 'Queue へ投入した。収集本体は consumer（FR-17）',
+        content: { 'application/json': { schema: CollectAcceptedSchema } },
+      },
+      400: { description: 'summary 空など', ...jsonError },
+      ...unauthorized,
+      403: { description: '他ユーザーの project', ...jsonError },
+      404: { description: 'project が無い', ...jsonError },
+      429: { description: '短時間の連打', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const { project_id } = c.req.valid('param');
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+
+    const cooldownKey = `collect:manual:${userId}`;
+    const cool = await c.env.IDEMPOTENCY.get(cooldownKey);
+    if (cool) {
+      fail(429, { error: 'rate_limited', detail: `wait ${MANUAL_COLLECT_COOLDOWN_SEC}s before next collect` });
+    }
+
+    const rows = await execute<{
+      user_id: string;
+      summary: string;
+      title: string;
+      search_terms_json: string | null;
+    }>(
+      c.env.DB,
+      db
+        .selectFrom('projects')
+        .select(['user_id', 'summary', 'title', 'search_terms_json'])
+        .where('project_id', '=', project_id)
+        .compile(),
+    );
+    const project = rows[0];
+    if (!project) fail(404, { error: 'not_found', detail: 'project not found' });
+    if (project.user_id !== userId) {
+      fail(403, { error: 'forbidden', detail: 'project not owned by user' });
+    }
+    if (!project.summary.trim()) {
+      fail(400, { error: 'bad_request', detail: 'summary is empty' });
+    }
+
+    const got = await enqueueManualCollect(
+      { clock: utcClock(), queue: queueCollect(c.env.COLLECT_QUEUE) },
+      {
+        project_id,
+        summary: project.summary,
+        user_id: userId,
+        search_terms: parseSearchTermsJson(project.search_terms_json),
+      },
+    );
+
+    await c.env.IDEMPOTENCY.put(cooldownKey, '1', {
+      expirationTtl: MANUAL_COLLECT_COOLDOWN_SEC,
     });
+
+    return c.json(
+      {
+        project_id,
+        run_id: got.run_id,
+        run_date: got.run_date,
+        enqueued: got.enqueued,
+      },
+      202,
+    );
   },
 );
 
@@ -228,7 +564,7 @@ app.openapi(
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const policy = reviewPolicy(c.env);
+    const policy = trendPolicy(c.env);
     const apiKey = orcaKey(c.env, policy.slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
@@ -241,12 +577,26 @@ app.openapi(
       fail(429, { error: 'rate_limited', detail: 'daily LLM call limit' });
     }
 
-    const { topic } = c.req.valid('json');
-    const got = await createTrendApp({
+    const { topic, papers: given } = c.req.valid('json');
+    const app = createTrendApp({
       orcaKey: apiKey,
       openAlexKey: c.env.OPENALEX_API_KEY,
       policy,
-    }).survey(topic);
+    });
+    const got =
+      given && given.length > 0
+        ? await app.surveyPapers(
+            topic,
+            given.map((p) => ({
+              external_id: p.title,
+              title: p.title,
+              authors: null,
+              abstract: p.abstract ?? null,
+              url: p.url ?? null,
+              published_at: p.published_at ?? null,
+            })),
+          )
+        : await app.survey(topic);
     if (!got.ok) {
       if (got.detail === 'orcarouter') fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
       fail(502, { error: 'source_failed', detail: got.detail });
@@ -271,7 +621,75 @@ app.openapi(
         classification: 'C1' as const,
         model: got.model,
         summary: got.summary,
+        themes: got.themes,
         papers: got.papers,
+      },
+      200,
+    );
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: 'post',
+    path: '/bff/keywords',
+    request: {
+      body: {
+        content: { 'application/json': { schema: KeywordsBodySchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: 'C1 キーワード。課題意識から出す。利用者が確認する（C-07）',
+        content: { 'application/json': { schema: KeywordsResponseSchema } },
+      },
+      ...unauthorized,
+      400: { description: '入力が不正', ...jsonError },
+      429: { description: '利用者単位の上限（NFR-04）', ...jsonError },
+      ...notImplemented,
+      502: { description: 'OrcaRouter が欠けた', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const policy = collectPolicy(c.env);
+    const apiKey = orcaKey(c.env, 'interactive') ?? orcaKey(c.env, policy.slot);
+    if (!apiKey) {
+      fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
+    }
+
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+    const used = await usage.dailyCallCount(userId);
+    if (used >= usage.limit) {
+      fail(429, { error: 'rate_limited', detail: 'daily LLM call limit' });
+    }
+
+    const { topic } = c.req.valid('json');
+    const got = await inferKeywords(apiKey, { ...policy, slot: 'interactive' }, topic);
+    if (!got.usage) {
+      fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
+    }
+    await usage.record({
+      userId,
+      endpoint: KEYWORDS_ENDPOINT,
+      classification: 'C1',
+      requestedModel: got.usage.requestedModel,
+      resolvedModel: got.usage.model,
+      tokens: got.usage.tokens,
+      costUsd: got.usage.costUsd,
+      latencyMs: got.usage.latencyMs,
+      fallbackUsed: got.usage.fallbackUsed,
+    });
+
+    return c.json(
+      {
+        classification: 'C1' as const,
+        model: got.usage.model,
+        terms: got.terms,
       },
       200,
     );

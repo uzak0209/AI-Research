@@ -19,11 +19,14 @@ export function orcaTrendLlm(apiKey: string, policy: OrcaClassPolicy): TrendLlm 
         [
           {
             role: 'system',
-            content: 'You summarize public research trends. Never claim a paper that is not in the user list.',
+            content:
+              'You summarize public research trends from the listed papers only. Reply with JSON: {"trend": string, "themes": string[]}. Never claim a paper that is not in the user list.',
           },
           { role: 'user', content: trendPrompt(topic, papers) },
         ],
         policy,
+        // JSON を強制する。地の文で返されると本文が丸ごと trend に落ちる
+        true,
       );
       if (!result.ok) return { ok: false };
       return {

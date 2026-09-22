@@ -12,16 +12,55 @@
   <body>
     <header class="titlebar" aria-hidden="false">
       <p class="titlebar-title" id="titlebar-title">AI-Research</p>
+      <button type="button" class="btn titlebar-btn" data-variant="tertiary" id="open-settings" hidden>
+        設定
+      </button>
     </header>
 
-    <div class="shell" id="shell">
+    <div class="welcome" id="welcome">
+      <div class="welcome-card">
+        <h1 class="welcome-title">AI-Research</h1>
+        <p class="welcome-lede">~/Recycle にプロジェクトを作成</p>
+        <div class="field">
+          <label for="welcome-title">プロジェクト名</label>
+          <input
+            id="welcome-title"
+            type="text"
+            autocomplete="off"
+            placeholder="例: DPDK 研究"
+          />
+        </div>
+        <button class="btn" data-variant="primary" id="welcome-create">プロジェクトを作る</button>
+        <p class="welcome-error" id="welcome-error" role="alert" hidden></p>
+      </div>
+    </div>
+
+    <div class="shell" id="shell" hidden>
       <aside class="nav-sidebar">
         <nav class="app-nav" role="tablist" aria-label="画面の切り替え">
           <button
             class="app-nav-item"
             role="tab"
-            id="tab-library"
+            id="tab-feed"
             aria-selected="true"
+            aria-controls="view-feed"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                d="M5 7h14M5 12h14M5 17h9"
+              />
+            </svg>
+            <span>報告</span>
+          </button>
+          <button
+            class="app-nav-item"
+            role="tab"
+            id="tab-library"
+            aria-selected="false"
             aria-controls="view-library"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -37,9 +76,9 @@
           <button
             class="app-nav-item"
             role="tab"
-            id="tab-feed"
+            id="tab-mypaper"
             aria-selected="false"
-            aria-controls="view-feed"
+            aria-controls="view-mypaper"
           >
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path
@@ -47,32 +86,15 @@
                 stroke="currentColor"
                 stroke-width="1.8"
                 stroke-linecap="round"
-                d="M5 7h14M5 12h14M5 17h9"
+                d="M7 4.5h7l4 4V19.5H7Z"
               />
+              <path fill="none" stroke="currentColor" stroke-width="1.8" d="M14 4.5V9h4.5" />
             </svg>
-            <span>新着候補</span>
-          </button>
-          <button
-            class="app-nav-item"
-            role="tab"
-            id="tab-project"
-            aria-selected="false"
-            aria-controls="view-project"
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linejoin="round"
-                d="M4 7.5h6l1.5 2H20v9.5H4V7.5Z"
-              />
-            </svg>
-            <span>プロジェクト</span>
+            <span>My paper</span>
           </button>
         </nav>
 
-        <div class="nav-context" id="nav-library">
+        <div class="nav-context" id="nav-library" hidden>
           <nav aria-label="ライブラリの絞り込み">
             <div class="side-group">
               <p class="side-label">すべて</p>
@@ -80,7 +102,7 @@
                 <span>すべての文献</span><span class="side-count" id="count-all">0</span>
               </button>
               <button class="side-item" data-filter="starred" aria-pressed="false">
-                <span>重要</span><span class="side-count" id="count-starred">0</span>
+                <span>ブックマーク</span><span class="side-count" id="count-starred">0</span>
               </button>
             </div>
 
@@ -104,52 +126,30 @@
           </nav>
         </div>
 
-        <div class="nav-context" id="nav-feed" hidden>
-          <p class="hint">
-            関連度の高い順です。有効／除外の判定ではありません。
-          </p>
-        </div>
 
-        <div class="nav-context" id="nav-project" hidden>
-          <nav class="explorer" aria-label="作業フォルダ">
-            <div class="field">
-              <label for="proj-title">名前</label>
-              <input id="proj-title" type="text" autocomplete="off" />
-            </div>
-
-            <div id="proj-empty">
-              <p class="hint">
-                メニューバーの <strong>ファイル → フォルダを作る / フォルダを開く</strong>
-                からも同じ操作ができます。中身のある既存フォルダには作りません。
-              </p>
-              <button class="btn" data-variant="primary" id="proj-mkdir">フォルダを作る</button>
-              <button class="btn" data-variant="secondary" id="proj-open">フォルダを開く</button>
-            </div>
-
-            <div class="field">
-              <p class="side-label">クラウド</p>
-              <p class="hint" id="auth-label">未ログイン</p>
-              <button class="btn" data-variant="secondary" id="auth-login">Google でログイン</button>
-              <button class="btn" data-variant="tertiary" id="auth-logout" hidden>ログアウト</button>
-              <p class="hint">書誌の補完に使います。メールはクラウドに残りません。</p>
-            </div>
-
-            <div id="proj-tree" hidden>
-              <p class="side-label">作業フォルダ</p>
-              <ul class="tree" aria-label="フォルダ構成">
-                <li>references</li>
-                <li>mypaper</li>
-                <li>claims</li>
-              </ul>
-              <button class="btn" data-variant="secondary" id="proj-reveal">Finder で表示</button>
-            </div>
-          </nav>
-        </div>
       </aside>
 
       <div class="workbench">
-        <!-- ================= ライブラリ ================= -->
-        <div class="view" id="view-library" role="tabpanel" aria-labelledby="tab-library" data-active="true">
+        <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="true">
+          <section class="list-pane" aria-label="調査の報告">
+            <div class="pane-head">
+              <button class="btn" data-variant="primary" id="feed-collect">最新情報を調査</button>
+              <button class="btn" data-variant="secondary" id="feed-sync">調査結果を受け取る</button>
+              <!-- <button class="btn" data-variant="secondary" id="feed-score">scoring</button> -->
+              <button class="btn" data-variant="tertiary" id="feed-cancel" disabled>キャンセル</button>
+            </div>
+            <div class="scroll" id="feed-list"></div>
+          </section>
+
+          <section class="detail-pane" id="feed-detail" aria-label="報告の詳細" aria-live="polite">
+            <div class="empty-state">
+              <p class="empty-title">論文を選択</p>
+              <p class="empty">調査結果から論文を選択してください。</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="view" id="view-library" role="tabpanel" aria-labelledby="tab-library" data-active="false">
           <section class="list-pane" aria-label="文献の一覧">
             <div class="pane-head">
               <label class="visually-hidden" for="lib-search">文献を検索</label>
@@ -173,63 +173,105 @@
           <section class="detail-pane" id="lib-detail" aria-label="文献の詳細" aria-live="polite">
             <div class="empty-state">
               <p class="empty-title">文献を選ぶ</p>
-              <p class="empty">左の一覧から文献を選ぶと、書誌と PDF がここに開きます。</p>
+              <p class="empty">左の一覧から選ぶと、書誌と PDF がここに開きます。</p>
             </div>
           </section>
         </div>
 
-        <!-- ================= 新着候補 ================= -->
-        <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="false">
-          <section class="list-pane" aria-label="関連度順の新着候補">
+        <div class="view" id="view-mypaper" role="tabpanel" aria-labelledby="tab-mypaper" data-active="false">
+          <section class="list-pane" aria-label="自分の論文">
             <div class="pane-head">
-              <button class="btn" data-variant="secondary" id="feed-cancel" disabled>中止</button>
-              <span class="spacer"></span>
-              <button class="btn" data-variant="primary" id="feed-score">採点する</button>
+              <button class="btn" data-variant="primary" id="mypaper-import">配置</button>
+              <button class="btn" data-variant="secondary" id="mypaper-reveal">Finder で表示</button>
             </div>
-            <div class="scroll" id="feed-list"></div>
+            <div class="scroll" id="mypaper-list"></div>
           </section>
 
-          <section class="detail-pane" id="feed-detail" aria-label="候補の詳細" aria-live="polite">
+          <section class="detail-pane" id="mypaper-detail" aria-label="自分の論文の詳細" aria-live="polite">
             <div class="empty-state">
-              <p class="empty-title">候補を選ぶ</p>
-              <p class="empty">左の一覧から候補を選ぶと詳細が開きます。</p>
-            </div>
-          </section>
-        </div>
-
-        <!-- ================= プロジェクト ================= -->
-        <div class="view" id="view-project" role="tabpanel" aria-labelledby="tab-project" data-active="false">
-          <section class="detail-pane project-pane" aria-label="プロジェクトの編集">
-            <h2 class="detail-title">概要と提案手法</h2>
-
-            <div class="field">
-              <label for="summary">概要</label>
-              <p class="hint">
-                収集の判断材料であり、<strong>クラウドに出る唯一の情報</strong>です。英語で 3〜5 行。
-              </p>
-              <textarea id="summary" rows="5"></textarea>
-            </div>
-
-            <div class="field">
-              <label for="claims">提案手法とその根拠</label>
-              <p class="hint">
-                1 行に 1 つ。自分がやる手法と、なぜそれかを書く。未公開で構いません。<strong>ローカルから出ません。</strong>
-                新着が「どの手法に近いか」を出すために使います。判定ではありません。
-              </p>
-              <textarea id="claims" rows="10"></textarea>
-            </div>
-
-            <div class="callout">
-              概要や手法を変えると採点の前提が変わるため、<strong>採点済みの印を落として採点し直し</strong>になります。
-            </div>
-
-            <div class="actions" data-align="end">
-              <button class="btn" data-variant="primary" id="proj-save">保存する</button>
+              <p class="empty-title">ファイルを置く</p>
+              <p class="empty"> PDF / 原稿を選択して閲覧・編集できます。</p>
             </div>
           </section>
         </div>
       </div>
     </div>
+
+    <dialog class="settings" id="settings" aria-labelledby="settings-title">
+      <div class="settings-form" id="settings-form">
+        <header class="settings-head">
+          <h2 class="settings-title" id="settings-title">設定</h2>
+          <button type="button" class="btn" data-variant="tertiary" id="settings-close">
+            閉じる
+          </button>
+        </header>
+
+        <div class="settings-body">
+          <p class="settings-status" id="settings-status" hidden role="status" aria-live="polite"></p>
+          <div class="field">
+            <label for="proj-title">プロジェクト名</label>
+            <input id="proj-title" type="text" autocomplete="off" placeholder="例: DPDK 研究" />
+          </div>
+
+          <div class="field auth-block">
+            <label>クラウド</label>
+            <p class="hint" id="auth-label">未ログイン — 調査の取り込みに必要です</p>
+            <div class="actions" data-align="start">
+              <button type="button" class="btn" data-variant="primary" id="auth-login">
+                Google でログイン
+              </button>
+              <button type="button" class="btn" data-variant="tertiary" id="auth-logout" hidden>
+                ログアウト
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="summary">研究の概要</label>
+            <p class="hint">公開できる範囲で研究の概要を入力してください。有効論文を収集する際に使用します。</p>
+            <textarea
+              id="summary"
+              rows="4"
+              placeholder="例: 高スループット NIC でパケット処理の遅延をどう下げるか"
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label>キーワード</label>
+            <p class="hint">OpenAlex 検索用。英語の専門語・略語にしてください。推測は日本語の概要を英訳します。</p>
+            <div class="keyword-tags" id="keyword-tags"></div>
+            <div class="keyword-add-row">
+              <label class="visually-hidden" for="keyword-add">キーワードを足す</label>
+              <input id="keyword-add" type="text" autocomplete="off" placeholder="英語で追加（Enter）" />
+              <button type="button" class="btn" data-variant="secondary" id="keyword-infer">
+               概要から推測
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <p class="side-label">プロジェクトの場所</p>
+            <div id="proj-empty">
+              <div class="actions" data-align="start">
+                <button type="button" class="btn" data-variant="secondary" id="proj-mkdir">
+                  プロジェクトを作る
+                </button>
+                <button type="button" class="btn" data-variant="tertiary" id="proj-open">
+                  プロジェクトを開く
+                </button>
+              </div>
+            </div>
+            <div id="proj-tree" hidden>
+              <p class="statusbar-path" id="settings-root-path"></p>
+            </div>
+          </div>
+        </div>
+
+        <footer class="settings-foot">
+          <button type="button" class="btn" data-variant="primary" id="proj-save">保存</button>
+        </footer>
+      </div>
+    </dialog>
 
     <footer class="statusbar">
       <p class="status" id="status" role="status" aria-live="polite"></p>

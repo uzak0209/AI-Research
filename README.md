@@ -1,6 +1,7 @@
 # AI-Research
 
-研究トレンドの自動追跡。日次収集・重複／活用・テーマ候補・**アプリ内参考文献（GUI＋CLI）**・
+研究トレンドの自動追跡。**課題意識に近い候補の日次収集**・**候補論文とのローカル類似順位**・
+テーマ候補・**アプリ内参考文献（GUI＋CLI）**・
 **`.bib` / Typst への自動書き出し**・原稿ファクトチェック。
 外部 LLM の統制利用も目的に含む。特定の参考文献マネージャへの依存は前提にしない。
 
@@ -10,15 +11,15 @@
 
 | | |
 |---|---|
-| [docs/requirements.md](docs/requirements.md) | 何を・なぜ |
+| [docs/requirements.md](docs/requirements.md) | 何を・なぜ（関連の二軸） |
 | [docs/adr/](docs/adr/) | どう作るか（0001〜0005） |
 | [docs/er-diagram.md](docs/er-diagram.md) | データ配置（ER 図） |
 
 ## 何ができるか（初版の目標）
 
-1. アプリ未起動でも日次で新着候補が溜まる
-2. 起動すると、**ローカル採点による関連度順**で新着を読める（初版は有効／除外を断定しない）
-3. アプリ内で参考文献を管理でき（**PDF 閲覧・注釈まで**）、原稿から `\cite{}` できる状態まで自動で届く
+1. アプリ未起動でも、課題意識が近い候補が日次で溜まる（Queue。時間をかけてよい）
+2. 起動すると候補が同期され、**課題意識・関連技術との類似度で順位づけ**された一覧が読める（初版は有効／除外を断定しない）
+3. 上から読んで本当に関連なら**ワンクリックで参考文献へ**。OA PDF は保存後に取得し、原稿から `\cite{}` できる状態まで届く
 4. 執筆中原稿の主張を検査できる
 5. 外部 LLM を統制下で呼べる（利用自体が目的）
 6. 新着から次のテーマ候補を提示できる
@@ -30,12 +31,15 @@
 - [ADR-0002](docs/adr/0002-external-llm-bff-classification.md) — OrcaRouter・BFF・C1/C2/C3
 - [ADR-0003](docs/adr/0003-references-and-manuscript-factcheck.md) — 参考文献ライブラリ・**PDF／注釈**・CLI・原稿 FC
 - [ADR-0004](docs/adr/0004-cloudflare-edge-and-scheduling.md) — クラウド全体構成（無料枠・収集・BFF・防御）
-- [ADR-0005](docs/adr/0005-cloud-trend-survey-model-tiering.md) — クラウド側トレンド調査・競合収集・Named Router によるモデル使い分け（提案）
+- [ADR-0005](docs/adr/0005-cloud-trend-survey-model-tiering.md) — クラウド側トレンド調査・競合収集の 2 段パイプライン（収集／レビュー）・Named Router によるモデル使い分け
 
 ```
 論文ソース → Workers cron → D1 → Electron（関連度採点 / ライブラリ UI+PDF / RAG / テーマ / FC）
                     共有ローカルストア ↗︎  CLI（ライブラリ等）
                               └→ BFF → OrcaRouter → 上流（テーマ・FC のみ）
+
+cron → Queues 収集 → OrcaRouter(rs-collect) → 論文ソース → D1
+              D1 → Queues レビュー → OrcaRouter(rs-review) → D1（competing/usable・reason・evidence）
 ```
 
 ## 原則

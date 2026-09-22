@@ -43,4 +43,6 @@ export interface CollectMessage {
   run_date: string;
   /** 収集段の LLM 利用の帰属先。配送中の古いメッセージには無い */
   user_id?: string;
+  /** 設定で確定した検索語。あれば 1 段目の LLM を呼ばない。古いメッセージには無い */
+  search_terms?: string[];
 }

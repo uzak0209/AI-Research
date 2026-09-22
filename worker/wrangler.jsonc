@@ -31,8 +31,8 @@
       "vars": {
         "ENVIRONMENT": "dev",
         "CONSENT_VERSION": "1",
-        "LLM_DAILY_CALL_LIMIT": "20",
-        // ADR-0005 §2: 段ごとの Named Router。コンソールに無い間は素のモデル ID を入れて逃がす
+        "LLM_DAILY_CALL_LIMIT": "100",
+        // ADR-0005 §2: Named Router（正本は routers/*.yaml。コンソールへ適用済み）
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },
@@ -71,7 +71,7 @@
       "vars": {
         "ENVIRONMENT": "test",
         "CONSENT_VERSION": "1",
-        "LLM_DAILY_CALL_LIMIT": "20",
+        "LLM_DAILY_CALL_LIMIT": "100",
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },
@@ -105,8 +105,8 @@
       "vars": {
         "ENVIRONMENT": "prod",
         "CONSENT_VERSION": "1",
-        "LLM_DAILY_CALL_LIMIT": "20",
-        // ADR-0005 §2: 段ごとの Named Router。コンソールに無い間は素のモデル ID を入れて逃がす
+        "LLM_DAILY_CALL_LIMIT": "100",
+        // ADR-0005 §2: Named Router（正本は routers/*.yaml。コンソールへ適用済み）
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },

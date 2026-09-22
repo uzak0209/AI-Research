@@ -56,12 +56,24 @@ export class CloudClient {
     return res;
   }
 
-  /** C1 トレンド。本文に手元論文や原稿を載せない（C-09） */
-  trends(topic: string): Promise<Response> {
-    return this.fetch('/bff/trends', {
+  /** C1 キーワード。課題意識だけを渡す。原稿は載せない */
+  keywords(topic: string): Promise<Response> {
+    return this.fetch('/bff/keywords', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ topic }),
+    });
+  }
+
+  /** C1 トレンド。本文に手元原稿は載せない。収集済みの公開論文があればそれを材料にする（C-09） */
+  trends(
+    topic: string,
+    papers?: { title: string; abstract?: string | null; url?: string | null; published_at?: string | null }[],
+  ): Promise<Response> {
+    return this.fetch('/bff/trends', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(papers?.length ? { topic, papers } : { topic }),
     });
   }
 
@@ -95,9 +107,12 @@ export class CloudClient {
   }
 
   async googleClientId(): Promise<string> {
-    const res = await this.fetchImpl(new URL('/auth/google', this.endpoint));
+    const url = new URL('/auth/google', this.endpoint.endsWith('/') ? this.endpoint : `${this.endpoint}/`);
+    // Hono は末尾スラッシュ付きを 404 にする。必ずスラッシュ無しに正規化する
+    url.pathname = '/auth/google';
+    const res = await this.fetchImpl(url);
     if (res.status === 501) throw new Error('Google ログインがクラウド側で閉じている');
-    if (!res.ok) throw new Error(`google client_id failed: ${res.status}`);
+    if (!res.ok) throw new Error(`google client_id failed: ${res.status} (${url.href})`);
     const body = (await res.json()) as { client_id?: string };
     if (!body.client_id) throw new Error('google client_id failed: empty');
     return body.client_id;
@@ -113,6 +128,47 @@ export class CloudClient {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(hint),
     });
+  }
+
+  /** 収集 run の増分取得（GET /runs）。LLM を通らない（ADR-0004） */
+  async pullRuns(projectId: string, after?: string | null): Promise<SyncRunsResponse> {
+    const q = new URLSearchParams({ project_id: projectId });
+    if (after) q.set('after', after);
+    const res = await this.fetch(`/runs?${q}`);
+    if (!res.ok) throw new Error(`pullRuns failed: ${res.status}`);
+    return (await res.json()) as SyncRunsResponse;
+  }
+
+  /** 課題意識と確定検索語をクラウドへ。判定の書き戻しではない（C-01） */
+  async putProject(
+    projectId: string,
+    input: { title: string; summary: string; search_terms?: string[] },
+  ): Promise<{ project_id: string; title: string; summary: string; search_terms?: string[] }> {
+    const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(`putProject failed: ${res.status}`);
+    return (await res.json()) as {
+      project_id: string;
+      title: string;
+      summary: string;
+      search_terms?: string[];
+    };
+  }
+
+  /** 自発調査。Queue 投入のみ（FR-17）。収集本体は worker consumer */
+  async startCollect(projectId: string): Promise<CollectAccepted> {
+    const res = await this.fetch(`/projects/${encodeURIComponent(projectId)}/collect`, {
+      method: 'POST',
+    });
+    if (res.status === 429) {
+      const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+      throw new Error(body?.detail?.trim() || '短時間に何度も調査を開始できない（約 60 秒待ってください）');
+    }
+    if (!res.ok) throw new Error(`startCollect failed: ${res.status}`);
+    return (await res.json()) as CollectAccepted;
   }
 }
 
@@ -138,4 +194,42 @@ export type BibliographyRecord = {
   venue: string | null;
   abstract: string | null;
   item_type: string;
+};
+
+export type SyncPaper = {
+  external_id: string;
+  source: string;
+  title: string;
+  authors: string | null;
+  abstract: string | null;
+  url: string | null;
+  published_at: string | null;
+  /** 掲載誌・会議名。候補の時点で揃う（書誌補完を呼ばないため） */
+  venue?: string | null;
+  item_type?: string | null;
+  /** OA の直 PDF。無ければ未取得（C-07）。取得はデスクトップ（ADR-0003） */
+  pdf_url?: string | null;
+  coarse_score: number | null;
+  problem_excerpt: string | null;
+};
+
+export type SyncRun = {
+  run_id: string;
+  run_date: string;
+  status: string;
+  failed_sources_json: string | null;
+  search_terms?: string[];
+  trend?: string | null;
+  themes?: string[];
+  created_at: string;
+  papers: SyncPaper[];
+};
+
+export type SyncRunsResponse = { project_id: string; runs: SyncRun[] };
+
+export type CollectAccepted = {
+  project_id: string;
+  run_id: string;
+  run_date: string;
+  enqueued: number;
 };

@@ -1,0 +1,17 @@
+# 収集段 Named Router（ADR-0005 §2–§3）。コンソールへの適用先。
+# 呼び出し: orcarouter/rs-collect
+#
+# 仕事は summary → 検索語の配列だけ。回数が出る段なので無料優先・最安。
+# トークン/論文を下げ、検索語の形が崩れて精度が落ちないよう受け皿は安価モデル。
+
+name: rs-collect
+enabled: true
+prefer_free: true
+strategy: cheapest
+allowed:
+  - openai/gpt-4o-mini
+  - google/gemini-2.5-flash
+  - anthropic/claude-haiku-4.5
+default: openai/gpt-4o-mini
+# 候補外・別ベンダーの安価 1 本（ADR-0005 §5）
+fallback: google/gemini-2.5-flash

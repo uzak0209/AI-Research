@@ -15,6 +15,7 @@ HTTP と cron を 1 つの Worker に同居させる。
 | `GET /runs`（同期 API・FR-02） | Bearer 必須。中身は **501** |
 | `POST /bff/trends`（FR-10, C1） | Bearer 必須。OpenAlex 公開論文を OrcaRouter（gpt-4o-mini → gemini-2.5-flash → haiku、`fail_open: false`）で要約 |
 | `POST /bff/bibliography`（C1） | Orca 安価モデルの構造化出力（ADR-0002）。OpenAlex は OA の直 PDF URL だけ。`worker/src/bibliography/`（domain / application / infrastructure） |
+| `POST /bff/keywords`（C1） | Bearer 必須。課題意識から検索キーワードを出す。利用者が設定で確認する |
 | `GET`/`POST` `/bff/{name}`（C2/C3） | Bearer 必須。同意・プレビュー未実装のため **501** |
 | cron → Queues 投入 | 動く |
 | Queue コンシューマ → D1 | 動く（ソースは OpenAlex 1 つ） |

@@ -5,28 +5,47 @@
 //   - レンダラに Node を渡さない。contextIsolation を切らない
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
+import { NotSignedInError } from '@ai-research/core';
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
-import { appendFileSync, readFileSync, type FSWatcher } from 'node:fs';
-import { basename, join } from 'node:path';
+import { appendFileSync, mkdirSync, readFileSync, type FSWatcher } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { EOL } from 'node:os';
 import { createBibliographyApp, type BibliographyApp } from '../bibliography/compose.js';
 import { watchReferences } from '../bibliography/watch-references.js';
+import { watchMypaper } from '../bibliography/watch-mypaper.js';
 import { hintFromReference } from '../bibliography/domain/record.js';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
   countUnscored,
+  countUnscoredMissingFulltext,
   createProject,
   getProject,
   listChunks,
   listProjects,
   listRanked,
+  listPapersForRun,
+  listSurveyReports,
+  getSurveyReport,
+  parseSearchTerms,
+  setLastSearchTerms,
+  reportsMissingTrend,
+  upsertSurveyReport,
   setManuscript,
   setProjectRoot,
   updateSummary,
   updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
-import { WorkspaceError, createProjectWorkspace } from '../shared/workspace.js';
+import { syncProjectFromCloud, cloudSummaryFromLocal, localSearchTerms } from '../shared/sync.js';
+import { copyIntoMypaper, listMypaperEntries, mypaperHasContent } from '../shared/mypaper.js';
+import { ensureCandidateFulltexts, fillMissingPaperAuthors } from '../shared/candidate-pdf.js';
+import {
+  WorkspaceError,
+  createProjectWorkspace,
+  pathUnderProjectsRoot,
+  ensureProjectsRoot,
+  ensureCandidatesDir,
+} from '../shared/workspace.js';
 import {
   addAttachment,
   addReference,
@@ -58,6 +77,7 @@ import {
   type HighlightInput,
   type InkInput,
 } from '../shared/annotations.js';
+import { describeApiError } from '../shared/api-error.js';
 import { cloudSignedIn, createCloud } from './cloud.js';
 import { runGoogleLogin } from './google-login.js';
 import type { ScoreEvent, ScoreRequest } from './score-worker.js';
@@ -70,6 +90,7 @@ let scorer: UtilityProcess | null = null;
 let cloud: ReturnType<typeof createCloud> | null = null;
 let biblio: BibliographyApp | null = null;
 let refWatch: FSWatcher | null = null;
+let mypaperWatch: FSWatcher | null = null;
 
 const dbPath = () => join(app.getPath('userData'), 'ai-research.db');
 const modelCacheDir = () => join(app.getPath('userData'), 'models');
@@ -140,6 +161,47 @@ function createWindow(): void {
 
 // --- 採点（utilityProcess） ---------------------------------------------------
 
+let scoringPrep: Promise<void> | null = null;
+
+async function prepareAndStartScoring(projectId: string, model: string): Promise<void> {
+  if (scorer || scoringPrep) return;
+
+  scoringPrep = (async () => {
+    const project = getProject(db, projectId);
+    if (project?.root_path && biblio) {
+      const pdfDeps = { gateway: biblio.gateway, pdfs: biblio.pdfs };
+      try {
+        await fillMissingPaperAuthors(db, projectId, project.root_path, pdfDeps);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        win?.webContents.send('score:event', {
+          type: 'error',
+          message: `著者の補完に失敗: ${message}`,
+        });
+      }
+      // mypaper が無くても OA 直リンクがあるものは取る（arXiv 優先）。
+      // 本文が要るのは mypaper 採点だが、読むための PDF は常に手元に置きたい
+      try {
+        await ensureCandidateFulltexts(db, projectId, project.root_path, pdfDeps, {
+          resolveMissing: mypaperHasContent(project.root_path),
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        win?.webContents.send('score:event', {
+          type: 'error',
+          message: `候補 PDF の取得に失敗: ${message}`,
+        });
+        // 取れた分だけで採点を続ける
+      }
+    }
+    startScoring(projectId, model);
+  })().finally(() => {
+    scoringPrep = null;
+  });
+
+  await scoringPrep;
+}
+
 function startScoring(projectId: string, model: string): void {
   if (scorer) return; // 二重起動させない
 
@@ -174,28 +236,97 @@ type WorkspaceFail = { ok: false; canceled?: true; error?: string };
 type WorkspaceResult = WorkspaceOk | WorkspaceFail;
 
 function currentProject() {
-  return (
-    listProjects(db)[0] ??
-    createProject(db, { title: '新しいプロジェクト', summary: '', embed_model: DEFAULT_MODEL })
-  );
+  return listProjects(db)[0] ?? null;
 }
 
 function notifyLibrary(): void {
   win?.webContents.send('library:changed');
 }
 
+function notifyMypaper(): void {
+  win?.webContents.send('mypaper:changed');
+}
+
 function restartRefWatch(): void {
   refWatch?.close();
+  mypaperWatch?.close();
   refWatch = null;
+  mypaperWatch = null;
   if (!biblio) return;
   const p = currentProject();
+  if (!p?.root_path) return;
+  try {
+    mkdirSync(join(p.root_path, 'references'), { recursive: true });
+    mkdirSync(join(p.root_path, 'mypaper'), { recursive: true });
+  } catch {
+    // 監視できなくても起動は続ける
+  }
   refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
+  mypaperWatch = watchMypaper(p.root_path, notifyMypaper);
+}
+
+/** 過去の収集でトレンドが無い報告を、手元の公開論文だけで埋める。原稿は送らない */
+async function fillMissingReportTrends(projectId: string): Promise<void> {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  const project = getProject(db, projectId);
+  if (!project) return;
+  const missing = reportsMissingTrend(db, projectId);
+  for (const r of missing) {
+    const papers = listPapersForRun(db, projectId, r.run_id);
+    if (papers.length === 0) continue;
+    try {
+      const res = await cloud.client.trends(
+        project.summary,
+        papers.slice(0, 12).map((p) => ({
+          title: p.title,
+          abstract: p.abstract,
+          url: p.url,
+          published_at: p.published_at,
+        })),
+      );
+      if (!res.ok) continue;
+      const body = (await res.json()) as { summary?: string | null; themes?: string[] };
+      upsertSurveyReport(db, {
+        run_id: r.run_id,
+        project_id: projectId,
+        run_date: r.run_date,
+        status: r.status,
+        search_terms: parseSearchTerms(r.search_terms),
+        trend: body.summary ?? null,
+        themes: Array.isArray(body.themes) ? body.themes : [],
+        created_at: r.created_at,
+      });
+    } catch {
+      // 論文は残す。トレンド欠けることは報告画面で見せる（C-07）
+    }
+  }
 }
 
 function attachWorkspace(root: string, title: string, action: 'create' | 'open'): WorkspaceOk {
-  const p = currentProject();
-  setProjectRoot(db, p.project_id, root);
-  updateTitle(db, p.project_id, title);
+  const existing =
+    action === 'open'
+      ? listProjects(db).find((p) => p.root_path === root)
+      : undefined;
+  const p =
+    existing ??
+    createProject(db, {
+      title,
+      summary: '',
+      embed_model: DEFAULT_MODEL,
+      root_path: root,
+    });
+  if (existing) {
+    setProjectRoot(db, p.project_id, root);
+    updateTitle(db, p.project_id, title);
+  } else if (action === 'create') {
+    // createProject で root を入れた。タイトルだけ揃える
+    updateTitle(db, p.project_id, title);
+  }
+  try {
+    ensureCandidatesDir(root);
+  } catch {
+    // 開けた作業フォルダで candidates が作れなくても落とさない
+  }
   restartRefWatch();
   return { ok: true, root, title, action };
 }
@@ -205,14 +336,19 @@ function failWorkspace(e: unknown): WorkspaceFail {
   return { ok: false, error };
 }
 
-/** ファイルメニュー／ダイアログから。名前は保存パネルで付ける（Mac の流儀） */
+/** ファイルメニュー／ダイアログから。規定の置き場は ~/Recycle。毎回新しいプロジェクト行を作る。 */
 async function createWorkspaceFromDialog(): Promise<WorkspaceResult> {
-  const p = currentProject();
+  let defaultPath: string;
+  try {
+    defaultPath = pathUnderProjectsRoot('新しいプロジェクト');
+  } catch (e) {
+    return failWorkspace(e);
+  }
   const picked = await dialog.showSaveDialog({
-    title: 'プロジェクトフォルダを作る',
-    defaultPath: p.title || '新しいプロジェクト',
+    title: 'プロジェクトを作る',
+    defaultPath,
     buttonLabel: '作る',
-    nameFieldLabel: 'フォルダ名',
+    nameFieldLabel: 'プロジェクト名',
     properties: ['createDirectory', 'showOverwriteConfirmation'],
   });
   if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
@@ -224,10 +360,17 @@ async function createWorkspaceFromDialog(): Promise<WorkspaceResult> {
   return attachWorkspace(picked.filePath, basename(picked.filePath), 'create');
 }
 
-/** 既存の作業フォルダを開く。空なら 3 ディレクトリを足す。中身のある未知のフォルダは拒否（C-08） */
+/** 既存プロジェクトを開く。規定の場所 ~/Recycle から選ぶ。 */
 async function openWorkspaceFromDialog(): Promise<WorkspaceResult> {
+  let defaultPath: string;
+  try {
+    defaultPath = ensureProjectsRoot();
+  } catch (e) {
+    return failWorkspace(e);
+  }
   const picked = await dialog.showOpenDialog({
-    title: 'プロジェクトフォルダを開く',
+    title: 'プロジェクトを開く',
+    defaultPath,
     buttonLabel: '開く',
     properties: ['openDirectory', 'createDirectory'],
   });
@@ -238,10 +381,20 @@ async function openWorkspaceFromDialog(): Promise<WorkspaceResult> {
   } catch (e) {
     return failWorkspace(e);
   }
-  const p = currentProject();
-  const title =
-    p.title && p.title !== '新しいプロジェクト' ? p.title : basename(root);
-  return attachWorkspace(root, title, 'open');
+  return attachWorkspace(root, basename(root), 'open');
+}
+
+/** ウェルカム用。ダイアログなしで ~/Recycle/<名前> に**新しい**プロジェクトを作る。 */
+function createProjectUnderRecycle(title: string): WorkspaceResult & { project_id?: string } {
+  try {
+    const root = pathUnderProjectsRoot(title);
+    createProjectWorkspace(root);
+    const attached = attachWorkspace(root, basename(root), 'create');
+    const p = listProjects(db).find((x) => x.root_path === root);
+    return { ...attached, project_id: p?.project_id };
+  } catch (e) {
+    return failWorkspace(e);
+  }
 }
 
 function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
@@ -250,7 +403,7 @@ function publishWorkspace(res: WorkspaceResult): WorkspaceResult {
     return res;
   }
   if (!res.canceled && res.error) {
-    void dialog.showMessageBox({ type: 'error', title: '作業フォルダ', message: res.error });
+    void dialog.showMessageBox({ type: 'error', title: 'プロジェクト', message: res.error });
     win?.webContents.send('workspace:error', res.error);
   }
   return res;
@@ -260,7 +413,46 @@ function publishAuth(): { signedIn: boolean } {
   if (!cloud) return { signedIn: false };
   const signedIn = cloudSignedIn(cloud.session);
   win?.webContents.send('auth:changed', { signedIn });
+  installAppMenu();
   return { signedIn };
+}
+
+function pushProjectToCloud(projectId: string): void {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  const p = getProject(db, projectId);
+  if (!p) return;
+  const summary = cloudSummaryFromLocal(p.summary, listChunks(db, projectId));
+  void cloud.client
+    .putProject(projectId, {
+      title: p.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    })
+    .catch((e) => {
+      const message = e instanceof Error ? e.message : String(e);
+      if (e instanceof NotSignedInError) win?.webContents.send('auth:error', message);
+      else win?.webContents.send('workspace:error', message);
+    });
+}
+
+async function syncAllProjectsFromCloud(): Promise<void> {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  for (const p of listProjects(db)) {
+    try {
+      const { inserted } = await syncProjectFromCloud(db, cloud.client, p.project_id);
+      if (inserted > 0 || countUnscored(db, p.project_id) > 0) {
+        void prepareAndStartScoring(p.project_id, DEFAULT_MODEL);
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (e instanceof NotSignedInError) {
+        win?.webContents.send('auth:error', message);
+        return;
+      }
+      win?.webContents.send('workspace:error', message);
+      logStartup('同期に失敗: ' + message);
+    }
+  }
 }
 
 async function loginFromMenu(): Promise<{ signedIn: boolean }> {
@@ -268,7 +460,9 @@ async function loginFromMenu(): Promise<{ signedIn: boolean }> {
   await runGoogleLogin(cloud.client, async (url) => {
     await shell.openExternal(url);
   });
-  return publishAuth();
+  const r = publishAuth();
+  await syncAllProjectsFromCloud();
+  return r;
 }
 
 function logoutCloud(): { signedIn: boolean } {
@@ -276,18 +470,23 @@ function logoutCloud(): { signedIn: boolean } {
   return publishAuth();
 }
 
+function openSettingsFromMenu(): void {
+  win?.webContents.send('settings:open');
+}
+
 function installAppMenu(): void {
   const isMac = process.platform === 'darwin';
+  const signedIn = cloud ? cloudSignedIn(cloud.session) : false;
   const fileSubmenu: MenuItemConstructorOptions[] = [
     {
-      label: 'フォルダを作る…',
+      label: 'プロジェクトを作る…',
       accelerator: 'CmdOrCtrl+Shift+N',
       click: () => {
         void createWorkspaceFromDialog().then(publishWorkspace);
       },
     },
     {
-      label: 'フォルダを開く…',
+      label: 'プロジェクトを開く…',
       accelerator: 'CmdOrCtrl+O',
       click: () => {
         void openWorkspaceFromDialog().then(publishWorkspace);
@@ -296,12 +495,16 @@ function installAppMenu(): void {
     { type: 'separator' },
     isMac ? { role: 'close' } : { role: 'quit' },
   ];
-  const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: 'appMenu' as const }] : []),
-    { label: 'ファイル', submenu: fileSubmenu },
-    {
-      label: 'アカウント',
-      submenu: [
+  const accountItems: MenuItemConstructorOptions[] = signedIn
+    ? [
+        {
+          label: 'ログアウト',
+          click: () => {
+            logoutCloud();
+          },
+        },
+      ]
+    : [
         {
           label: 'Google でログイン',
           click: () => {
@@ -311,13 +514,45 @@ function installAppMenu(): void {
             });
           },
         },
-        {
-          label: 'ログアウト',
-          click: () => {
-            logoutCloud();
-          },
-        },
-      ],
+      ];
+
+  const macAppMenu: MenuItemConstructorOptions = {
+    label: app.name,
+    submenu: [
+      { role: 'about' },
+      { type: 'separator' },
+      {
+        label: '設定…',
+        accelerator: 'Command+,',
+        click: () => openSettingsFromMenu(),
+      },
+      { type: 'separator' },
+      { role: 'services' },
+      { type: 'separator' },
+      { role: 'hide' },
+      { role: 'hideOthers' },
+      { role: 'unhide' },
+      { type: 'separator' },
+      { role: 'quit' },
+    ],
+  };
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac ? [macAppMenu] : []),
+    { label: 'ファイル', submenu: fileSubmenu },
+    {
+      label: isMac ? 'アカウント' : '設定',
+      submenu: isMac
+        ? accountItems
+        : [
+            {
+              label: '設定…',
+              accelerator: 'Ctrl+,',
+              click: () => openSettingsFromMenu(),
+            },
+            { type: 'separator' },
+            ...accountItems,
+          ],
     },
     { role: 'editMenu' },
     { role: 'viewMenu' },
@@ -335,12 +570,15 @@ function registerIpc(): void {
 
   ipcMain.handle('projects:list', () => listProjects(db));
 
-  ipcMain.handle('projects:create', (_e, title: string, summary: string) =>
-    createProject(db, { title, summary, embed_model: DEFAULT_MODEL }),
-  );
+  ipcMain.handle('projects:create', (_e, title: string, summary: string) => {
+    const p = createProject(db, { title, summary, embed_model: DEFAULT_MODEL });
+    pushProjectToCloud(p.project_id);
+    return p;
+  });
 
   ipcMain.handle('projects:updateSummary', (_e, projectId: string, summary: string) => {
     updateSummary(db, projectId, summary);
+    pushProjectToCloud(projectId);
   });
 
   ipcMain.handle('projects:updateTitle', (_e, projectId: string, title: string) => {
@@ -355,35 +593,209 @@ function registerIpc(): void {
 
   ipcMain.handle('projects:openWorkspace', () => openWorkspaceFromDialog());
 
+  ipcMain.handle('projects:createUnderRecycle', (_e, title: string) => {
+    const res = createProjectUnderRecycle(title);
+    if (res.ok) {
+      const p = currentProject();
+      if (p) pushProjectToCloud(p.project_id);
+    }
+    return res;
+  });
+
   ipcMain.handle('projects:revealWorkspace', async (_e, projectId: string) => {
     const p = getProject(db, projectId);
-    if (!p?.root_path) return { ok: false as const, error: '作業フォルダが未設定' };
+    if (!p?.root_path) return { ok: false as const, error: 'プロジェクトの場所が未設定' };
     const err = await shell.openPath(p.root_path);
     return err ? { ok: false as const, error: err } : { ok: true as const };
   });
 
+  ipcMain.handle('projects:sync', async (_e, projectId: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    const result = await syncProjectFromCloud(db, cloud.client, projectId);
+    await fillMissingReportTrends(projectId);
+    if (result.inserted > 0 || countUnscored(db, projectId) > 0) {
+      void prepareAndStartScoring(projectId, DEFAULT_MODEL);
+    }
+    return result;
+  });
+
+  ipcMain.handle('projects:startCollect', async (_e, projectId: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    if (!cloudSignedIn(cloud.session)) throw new NotSignedInError();
+
+    const project = getProject(db, projectId);
+    if (!project) throw new Error(`project not found: ${projectId}`);
+    if (!project.summary.trim()) throw new Error('研究の概要を設定してください');
+
+    const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
+    await cloud.client.putProject(projectId, {
+      title: project.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    });
+    const accepted = await cloud.client.startCollect(projectId);
+
+    let inserted = 0;
+    let pulled = 0;
+    let timedOut = true;
+    let statuses: string[] = [];
+    let searchTerms: string[] = [];
+    const deadline = Date.now() + 10 * 60_000; // NFR-01: 文献調査に時間をかけてよい
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const result = await syncProjectFromCloud(db, cloud.client, projectId);
+      inserted += result.inserted;
+      pulled += result.pulled;
+      if (result.statuses?.length) statuses = result.statuses;
+      if (result.searchTerms?.length) searchTerms = result.searchTerms;
+      const current = getProject(db, projectId);
+      if (current?.last_run_id === accepted.run_id || result.inserted > 0 || result.pulled > 0) {
+        timedOut = false;
+        break;
+      }
+    }
+
+    await fillMissingReportTrends(projectId);
+
+    if (inserted > 0 || countUnscored(db, projectId) > 0) {
+      void prepareAndStartScoring(projectId, DEFAULT_MODEL);
+    }
+
+    return {
+      run_id: accepted.run_id,
+      run_date: accepted.run_date,
+      enqueued: accepted.enqueued,
+      inserted,
+      pulled,
+      statuses,
+      searchTerms,
+      timedOut,
+    };
+  });
+
   ipcMain.handle('claims:list', (_e, projectId: string) => listChunks(db, projectId));
 
-  ipcMain.handle('claims:set', (_e, projectId: string, claims: string[]) =>
-    setManuscript(
+  ipcMain.handle('claims:set', (_e, projectId: string, claims: string[]) => {
+    const ids = setManuscript(
       db,
       projectId,
       claims.map((t) => ({ text: t })),
-    ),
-  );
+    );
+    setLastSearchTerms(db, projectId, claims);
+    pushProjectToCloud(projectId);
+    return ids;
+  });
 
-  ipcMain.handle('papers:ranked', (_e, projectId: string) => ({
-    ranked: listRanked(db, projectId),
-    // 「未採点 n 件」を実数で返す。推定しない（C-07）
-    unscored: countUnscored(db, projectId),
-  }));
+  ipcMain.handle('bff:keywords', async (_e, topic: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    if (!cloudSignedIn(cloud.session)) throw new NotSignedInError();
+    const summary = topic.trim();
+    if (!summary) throw new Error('課題意識が空です');
+    const res = await cloud.client.keywords(summary);
+    if (!res.ok) {
+      const body: unknown = await res.json().catch(() => null);
+      if (res.status === 401) throw new NotSignedInError();
+      if (res.status === 429) throw new Error('今日の利用上限に達した');
+      if (res.status === 404 || res.status === 501) {
+        throw new Error('キーワード推測がクラウド側でまだ開いていない');
+      }
+      if (res.status === 400) {
+        throw new Error(describeApiError(body, '入力が不正です'));
+      }
+      if (res.status === 502) {
+        throw new Error('キーワード推測のモデルが応答しなかった。少し待ってからもう一度試してください');
+      }
+      throw new Error(describeApiError(body, `キーワード推測に失敗しました（${res.status}）`));
+    }
+    const body = (await res.json()) as { terms?: string[] };
+    return { terms: Array.isArray(body.terms) ? body.terms.filter((t) => typeof t === 'string' && t.trim()) : [] };
+  });
+
+  ipcMain.handle('papers:ranked', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    const mode = mypaperHasContent(project?.root_path) ? 'mypaper' : 'blend';
+    return {
+      ranked: listRanked(db, projectId),
+      // 「未採点 n 件」を実数で返す。推定しない（C-07）
+      unscored: countUnscored(db, projectId),
+      unscoredMissingPdf: mode === 'mypaper' ? countUnscoredMissingFulltext(db, projectId) : 0,
+      scoreMode: mode as 'mypaper' | 'blend',
+      searchTerms: parseSearchTerms(project?.last_search_terms),
+    };
+  });
 
   ipcMain.handle('papers:import', (_e, projectId: string, papers: Parameters<typeof upsertPapers>[2]) =>
     upsertPapers(db, projectId, papers),
   );
 
+  ipcMain.handle('reports:list', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    const mode = mypaperHasContent(project?.root_path) ? 'mypaper' : 'blend';
+    return {
+      reports: listSurveyReports(db, projectId),
+      unscored: countUnscored(db, projectId),
+      unscoredMissingPdf: mode === 'mypaper' ? countUnscoredMissingFulltext(db, projectId) : 0,
+      scoreMode: mode as 'mypaper' | 'blend',
+      searchTerms: parseSearchTerms(project?.last_search_terms),
+    };
+  });
+
+  ipcMain.handle('reports:get', (_e, projectId: string, runId: string) => {
+    const report = getSurveyReport(db, runId);
+    if (!report || report.project_id !== projectId) return null;
+    return {
+      report,
+      papers: listPapersForRun(db, projectId, runId),
+      searchTerms: parseSearchTerms(report.search_terms),
+      themes: parseSearchTerms(report.themes_json),
+    };
+  });
+
+  ipcMain.handle('mypaper:list', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    return listMypaperEntries(project?.root_path);
+  });
+
+  ipcMain.handle('mypaper:import', async (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    if (!project?.root_path) throw new Error('プロジェクトの場所が未設定');
+    const picked = await dialog.showOpenDialog({
+      title: '自分の論文を配置',
+      filters: [
+        { name: '論文・原稿', extensions: ['pdf', 'md', 'tex', 'typ'] },
+        { name: 'PDF', extensions: ['pdf'] },
+        { name: '原稿', extensions: ['md', 'tex', 'typ'] },
+      ],
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (picked.canceled || picked.filePaths.length === 0) {
+      return { imported: [] as { path: string; existed: boolean }[], failed: [] as { path: string; error: string }[] };
+    }
+    const imported: { path: string; existed: boolean }[] = [];
+    const failed: { path: string; error: string }[] = [];
+    for (const src of picked.filePaths) {
+      try {
+        const got = copyIntoMypaper(project.root_path, src);
+        imported.push(got);
+      } catch (e) {
+        failed.push({ path: src, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    notifyMypaper();
+    return { imported, failed };
+  });
+
+  ipcMain.handle('mypaper:reveal', async (_e, projectId: string) => {
+    const p = getProject(db, projectId);
+    if (!p?.root_path) return { ok: false as const, error: 'プロジェクトの場所が未設定' };
+    const dir = join(p.root_path, 'mypaper');
+    mkdirSync(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return err ? { ok: false as const, error: err } : { ok: true as const };
+  });
+
   ipcMain.handle('score:start', (_e, projectId: string) => {
-    startScoring(projectId, DEFAULT_MODEL);
+    void prepareAndStartScoring(projectId, DEFAULT_MODEL);
   });
 
   ipcMain.handle('score:cancel', () => {
@@ -398,10 +810,22 @@ function registerIpc(): void {
   ipcMain.handle('lib:counts', (_e, projectId: string) => libraryCounts(db, projectId));
   ipcMain.handle('lib:tags', (_e, projectId: string) => listTags(db, projectId));
 
-  ipcMain.handle('lib:add', (_e, projectId: string, item: ReferenceInput) => {
-    const id = addReference(db, projectId, item);
-    void biblio?.follow(projectId, id).then(notifyLibrary);
-    return id;
+  ipcMain.handle('lib:add', async (_e, projectId: string, item: ReferenceInput) => {
+    const reference_id = addReference(db, projectId, item);
+    let pdf: 'ok' | 'exists' | 'not_pdf' | 'failed' | 'skipped' = 'skipped';
+    let citeConflict = false;
+    if (biblio) {
+      try {
+        const got = await biblio.follow(projectId, reference_id);
+        pdf = got.pdf;
+        citeConflict = got.cite === 'conflict';
+      } catch {
+        // 書誌／PDF 失敗でも文献行は残す（C-07）
+        pdf = 'failed';
+      }
+      notifyLibrary();
+    }
+    return { reference_id, pdf, citeConflict };
   });
 
   ipcMain.handle('lib:follow', async (_e, projectId: string, referenceId: string) => {
@@ -556,12 +980,14 @@ void app.whenReady().then(() => {
     db = openDb({ path: dbPath() });
     cloud = createCloud(db);
     biblio = createBibliographyApp(db, () => cloud?.client ?? null);
+    logStartup('クラウド API: ' + cloud.endpoint);
     logStartup('DB を開いた: ' + dbPath());
   } catch (e) {
     // ベクトル拡張が読めないまま起動すると検索が静かに壊れる。
     // 黙って縮退せず、理由を残して落とす（C-07）
     const detail = e instanceof VectorExtensionError ? e.message : String(e);
     logStartup('DB を開けなかった: ' + detail);
+    console.error('DB を開けなかった: ' + detail);
     app.exit(1);
     return;
   }
@@ -573,6 +999,9 @@ void app.whenReady().then(() => {
     installAppMenu();
     createWindow();
     logStartup('ウィンドウを作った');
+    if (cloudSignedIn(cloud.session)) {
+      void syncAllProjectsFromCloud();
+    }
   } catch (e) {
     logStartup('ウィンドウ作成に失敗: ' + (e instanceof Error ? (e.stack ?? e.message) : String(e)));
     app.exit(1);
@@ -595,5 +1024,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   scorer?.kill();
   refWatch?.close();
+  mypaperWatch?.close();
   db?.close();
 });

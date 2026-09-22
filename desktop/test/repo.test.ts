@@ -6,15 +6,19 @@ import {
   addToLibrary,
   blendScore,
   countUnscored,
+  countUnscoredMissingFulltext,
   createProject,
   listChunks,
   listLibrary,
   listRanked,
   listUnscored,
+  fillPaperAuthors,
   makeBibtexKey,
   saveScore,
+  getChunkEmbedding,
   setChunkEmbedding,
   setManuscript,
+  setPaperFulltext,
   setProjectRoot,
   getProject,
   updateSummary,
@@ -60,6 +64,7 @@ describe('スキーマと拡張', () => {
     expect(cols).not.toContain('judgment');
     expect(cols).toContain('relevance');
     expect(cols).toContain('scored_at');
+    expect(cols).toContain('authors');
   });
 
   it('次元の違うベクトルは黙って入らず落ちる', () => {
@@ -98,6 +103,27 @@ describe('論文の取り込み', () => {
     upsertPapers(db, PROJ, papers);
     expect(countUnscored(db, PROJ)).toBe(1);
     expect(listRanked(db, PROJ)).toHaveLength(1);
+  });
+
+  it('既にある論文の空の authors だけ後から埋める', () => {
+    upsertPapers(db, PROJ, [{ external_id: 'doi:1', source: 'openalex', title: 'GNN', abstract: 'a' }]);
+    expect(
+      upsertPapers(db, PROJ, [
+        { external_id: 'doi:1', source: 'openalex', title: 'GNN', abstract: 'a', authors: 'Ada Lovelace' },
+      ]),
+    ).toBe(0);
+    const row = db.prepare('SELECT authors FROM papers WHERE external_id = ?').get('doi:1') as { authors: string };
+    expect(row.authors).toBe('Ada Lovelace');
+  });
+
+  it('fillPaperAuthors は空のときだけ埋める', () => {
+    upsertPapers(db, PROJ, [{ external_id: 'doi:2', source: 'openalex', title: 'X', abstract: 'a' }]);
+    const id = (db.prepare('SELECT paper_id FROM papers WHERE external_id = ?').get('doi:2') as { paper_id: string })
+      .paper_id;
+    expect(fillPaperAuthors(db, id, 'Ada Lovelace')).toBe(true);
+    expect(fillPaperAuthors(db, id, 'Someone Else')).toBe(false);
+    const row = db.prepare('SELECT authors FROM papers WHERE paper_id = ?').get(id) as { authors: string };
+    expect(row.authors).toBe('Ada Lovelace');
   });
 });
 
@@ -170,6 +196,20 @@ describe('自分の主張とベクトル検索', () => {
     expect(after.n).toBe(1);
   });
 
+  it('同じチャンクのベクトルを上書きできる（sqlite-vec は INSERT OR REPLACE 不可）', () => {
+    const [id] = setManuscript(db, PROJ, [{ text: 'claim' }]);
+    setChunkEmbedding(db, id!, unit(0));
+    setChunkEmbedding(db, id!, unit(3));
+
+    const stored = getChunkEmbedding(db, id!);
+    expect(stored).not.toBeNull();
+    expect(cosine(stored!, unit(3))).toBeCloseTo(1, 5);
+    expect(cosine(stored!, unit(0))).toBeCloseTo(0, 5);
+
+    const n = db.prepare('SELECT COUNT(*) AS n FROM vec_chunks').get() as { n: number };
+    expect(n.n).toBe(1);
+  });
+
   it('sqlite-vec の KNN が最近傍を返す', () => {
     const ids = setManuscript(db, PROJ, [{ text: 'c0' }, { text: 'c1' }, { text: 'c2' }]);
     ids.forEach((id, i) => setChunkEmbedding(db, id, unit(i)));
@@ -207,8 +247,19 @@ describe('ライブラリ（FR-05 / FR-12）', () => {
 
     addToLibrary(db, PROJ, { paper_id: p!.paper_id, title: 'A', authors: 'Jane Smith', year: 2024 });
 
-    expect(listRanked(db, PROJ)[0]!.in_library).toBe(1);
+    expect(listRanked(db, PROJ)).toHaveLength(0);
     expect(listLibrary(db, PROJ)).toHaveLength(1);
+  });
+
+  it('本文が無い未採点を数える（mypaper 採点用）', () => {
+    upsertPapers(db, PROJ, [
+      { external_id: 'a', source: 's', title: 'A', abstract: null },
+      { external_id: 'b', source: 's', title: 'B', abstract: null },
+    ]);
+    const rows = listUnscored(db, PROJ);
+    setPaperFulltext(db, rows[0]!.paper_id, { path: 'x.pdf', text: 'body' });
+    expect(countUnscoredMissingFulltext(db, PROJ)).toBe(1);
+    expect(listUnscored(db, PROJ, 500, { requireFulltext: true })).toHaveLength(1);
   });
 
   it('同じ DOI は二重登録できない（ADR-0003）', () => {

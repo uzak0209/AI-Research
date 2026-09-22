@@ -1,4 +1,5 @@
-import { surveyTrend } from './application/survey';
+import { surveyTrend, surveyTrendFromPapers } from './application/survey';
+import type { FetchedPaper } from '../shared/papers/domain';
 import type { TrendDeps } from './application/ports';
 import { openAlexPaperSource, orcaTrendLlm } from './infrastructure/adapters';
 import type { OrcaClassPolicy } from '../shared/orca/policy';
@@ -11,6 +12,7 @@ export function createTrendApp(opts: {
   policy: OrcaClassPolicy;
 }): TrendDeps & {
   survey(topic: string): ReturnType<typeof surveyTrend>;
+  surveyPapers(topic: string, papers: FetchedPaper[]): ReturnType<typeof surveyTrendFromPapers>;
 } {
   const deps: TrendDeps = {
     papers: openAlexPaperSource(opts.openAlexKey),
@@ -19,5 +21,6 @@ export function createTrendApp(opts: {
   return {
     ...deps,
     survey: (topic) => surveyTrend(deps, topic),
+    surveyPapers: (topic, papers) => surveyTrendFromPapers(deps, topic, papers),
   };
 }

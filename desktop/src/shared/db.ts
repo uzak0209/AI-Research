@@ -92,6 +92,15 @@ function migrate(db: Db): void {
     ['annotations', 'stroke_width', 'REAL'],
     ['annotations', 'updated_at', 'TEXT'],
     ['projects', 'root_path', 'TEXT'],
+    ['papers', 'problem_excerpt', 'TEXT'],
+    ['papers', 'pdf_url', 'TEXT'],
+    ['papers', 'venue', 'TEXT'],
+    ['papers', 'item_type', 'TEXT'],
+    ['papers', 'fulltext_path', 'TEXT'],
+    ['papers', 'fulltext', 'TEXT'],
+    ['papers', 'authors', 'TEXT'],
+    ['projects', 'last_search_terms', 'TEXT'],
+    ['survey_reports', 'failed_sources', 'TEXT'],
   ];
 
   for (const [table, column, ddl] of added) {
@@ -102,6 +111,39 @@ function migrate(db: Db): void {
   }
 
   rebuildNotesIfLegacy(db);
+  backfillSurveyReports(db);
+  clearBrokenTrends(db);
+}
+
+/**
+ * 生の JSON が本文として入った報告を未着に戻す。
+ * モデル出力が長さ上限で切れて JSON が壊れ、`{"trend": "…` を保存していた。
+ * 壊れた本文を見せるより未着にして取り直させる（C-07）。
+ */
+function clearBrokenTrends(db: Db): void {
+  db.exec(`
+    UPDATE survey_reports
+       SET trend = NULL, themes_json = NULL
+     WHERE trend IS NOT NULL
+       AND trim(trend) LIKE '{%'
+       AND trim(trend) LIKE '%"trend"%'
+  `);
+}
+
+/** 報告表より前に取り込んだ papers.run_id を報告へ載せる。無いと既存候補が画面から消える */
+function backfillSurveyReports(db: Db): void {
+  // 親プロジェクトが無い行（seed の残骸など）は載せない。FK で起動を止めない
+  db.exec(`
+    INSERT OR IGNORE INTO survey_reports (run_id, project_id, run_date, status, created_at)
+    SELECT p.run_id, p.project_id,
+           COALESCE(MAX(substr(p.published_at, 1, 10)), date('now')),
+           'ok',
+           datetime('now')
+      FROM papers p
+      INNER JOIN projects pr ON pr.project_id = p.project_id
+     WHERE p.run_id IS NOT NULL AND trim(p.run_id) != ''
+     GROUP BY p.run_id, p.project_id
+  `);
 }
 
 /**

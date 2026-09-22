@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signAccessToken } from '../src/auth';
 import { handleFetch } from '../src/index';
 import { ORCA_CHAT_URL } from '../src/shared/orca/chat';
+import { TREND_MAX_TOKENS } from '../src/shared/orca/policy';
+import { dailyCallLimit } from '../src/usage';
 import { JEV_URL } from '../src/shared/jev/client';
 import { trendPrompt } from '../src/trend';
 import { utcDate } from '../src/shared/date';
@@ -189,13 +191,21 @@ describe('POST /bff/trends（C1）', () => {
     const sent = JSON.parse(String(orca?.init?.body)) as {
       model: string;
       temperature: number;
+      max_tokens?: number;
+      response_format?: { type: string };
       extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
-    // /bff/trends は 2 段目（レビュー）。受け皿は Named Router 側の設定なので extra_body は付けない
+    // Named Router + 受け皿（コンソール未解決時は次のモデルへ）
     expect(sent.model).toBe('orcarouter/rs-review');
     expect(sent.temperature).toBe(0);
-    expect(sent.extra_body).toBeUndefined();
+    // 本文 2〜6 文＋テーマ 5 件。700 だと日本語で切れて JSON が壊れる
+    expect(sent.max_tokens).toBe(TREND_MAX_TOKENS);
+    expect(sent.response_format).toEqual({ type: 'json_object' });
+    expect(sent.extra_body).toEqual({
+      route: 'fallback',
+      models: ['orcarouter/rs-review', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    });
     const user = sent.messages.find((m) => m.content.includes('Topic: DPDK'));
     expect(user?.content).toContain('DPDK architecture for 100Gbps');
     expect(user?.content).not.toContain('unpublished');
@@ -234,6 +244,33 @@ describe('POST /bff/trends（C1）', () => {
     expect(JSON.stringify(usage)).not.toContain('100Gbps 向け');
   });
 
+  it('収集済み論文を渡したら OpenAlex を呼ばず themes を返す', async () => {
+    const calls = mockUpstream({
+      papers: [{ id: 'https://openalex.org/W9', display_name: 'should not fetch' }],
+      orca: orcaBody(JSON.stringify({ trend: 'この集合では offload が増えている', themes: ['XDP offload', 'NIC'] })),
+    });
+    const res = await authed('/bff/trends', {
+      method: 'POST',
+      body: JSON.stringify({
+        topic: 'DPDK',
+        papers: [
+          {
+            title: 'User space I/O',
+            abstract: 'DPDK poll mode',
+            url: 'https://doi.org/10.1/a',
+            published_at: '2026-06-16',
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { summary: string; themes: string[]; papers: { title: string }[] };
+    expect(body.summary).toContain('offload');
+    expect(body.themes).toEqual(['XDP offload', 'NIC']);
+    expect(body.papers[0]?.title).toBe('User space I/O');
+    expect(calls.some((c) => c.url.includes('openalex.org'))).toBe(false);
+  });
+
   it('INTERACTIVE キーがあれば ORCAROUTER_API_KEY なしでも呼べる', async () => {
     const calls = mockUpstream({
       papers: [{ id: 'W1', display_name: 'x' }],
@@ -263,7 +300,7 @@ describe('POST /bff/trends（C1）', () => {
     const body = (await res.json()) as { model: string };
     expect(body.model).toBe('google/gemini-2.5-flash');
 
-    // 要求は rs-review、応答は gemini。宛先ごとに比べられるよう別列で残す
+    // 要求は rs-review、応答は fallback ヘッダの gemini。宛先ごとに比べられるよう別列で残す
     const usage = await env.DB.prepare(
       'SELECT model, resolved_model, fallback_calls FROM llm_usage WHERE user_id = ?',
     )
@@ -277,11 +314,12 @@ describe('POST /bff/trends（C1）', () => {
   });
 
   it('上限に達していたら Orca の前に 429（NFR-04）', async () => {
+    // 上限は env の var。値を変えてもこのテストが意味を失わないようにする
     await env.DB.prepare(
       `INSERT INTO llm_usage (user_id, usage_date, endpoint, classification, model, calls, tokens)
-       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', 20, 0)`,
+       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', ?, 0)`,
     )
-      .bind(PROJECT_USER, utcDate())
+      .bind(PROJECT_USER, utcDate(), dailyCallLimit(env.LLM_DAILY_CALL_LIMIT))
       .run();
 
     const calls = mockUpstream({
@@ -298,6 +336,63 @@ describe('POST /bff/trends（C1）', () => {
   it('C2 はまだ 501', async () => {
     const res = await authed('/bff/themes', { method: 'POST' });
     expect(res.status).toBe(501);
+  });
+});
+
+describe('POST /bff/keywords（C1）', () => {
+  it('Bearer 無しなら 401', async () => {
+    const res = await handleFetch(
+      new Request('https://api.test/bff/keywords', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ topic: 'DPDK ゼロコピー' }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('課題意識から terms を返し、原稿は載せない', async () => {
+    const terms = ['DPDK', 'RSS', 'XDP', 'eBPF', 'NIC', 'PMD', 'VFIO', 'SR-IOV', 'OVS', 'AF_XDP', 'VPP', 'NFV', 'QEMU', 'kTLS', 'VXLAN', 'GENEVE', 'CNI', 'UPF', 'IPv6', 'QoS'];
+    const calls = mockUpstream({
+      orca: orcaBody(JSON.stringify(terms)),
+    });
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '高スループット NIC でゼロコピーと DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { classification: string; terms: string[] };
+    expect(body.classification).toBe('C1');
+    expect(body.terms).toContain('DPDK');
+    expect(body.terms.length).toBeGreaterThanOrEqual(20);
+    const orca = calls.find((c) => c.url.includes('orcarouter.ai'));
+    expect(JSON.stringify(orca?.init?.body)).toContain('ゼロコピー');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('manuscript');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('unpublished');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('json_object');
+  });
+
+  it('Orca が落ちたら 502', async () => {
+    mockUpstream({ orcaStatus: 502 });
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '高スループット NIC でゼロコピーと DPDK' }),
+    });
+    expect(res.status).toBe(502);
+  });
+
+  it('検証失敗は { error, detail } の文字列で返す', async () => {
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '' }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: unknown; detail: unknown };
+    expect(typeof body.error).toBe('string');
+    expect(typeof body.detail).toBe('string');
+    expect(body.error).toBe('invalid_request');
+    expect(String(body.detail)).not.toContain('[object Object]');
   });
 });
 
@@ -412,6 +507,7 @@ describe('trendPrompt', () => {
       abstract: 'abs',
       url: `https://doi.org/${i}`,
       published_at: '2026-01-01',
+      authors: null,
     }));
     const prompt = trendPrompt('DPDK', papers);
     expect(prompt).toContain('Topic: DPDK');

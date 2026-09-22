@@ -13,6 +13,8 @@ export interface Projects {
   user_id: string;
   title: string;
   summary: string;
+  /** 利用者が確定した検索語 JSON。無ければ収集時に LLM で分解する */
+  search_terms_json: string | null;
   created_at: string;
 }
 
@@ -22,6 +24,9 @@ export interface Runs {
   run_date: string;
   status: string;
   failed_sources_json: string | null;
+  search_terms_json: string | null;
+  trend_summary: string | null;
+  themes_json: string | null;
   created_at: string;
 }
 
@@ -30,10 +35,18 @@ export interface RunPapers {
   external_id: string;
   source: string;
   title: string;
+  authors: string | null;
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** 掲載誌・会議名 */
+  venue: string | null;
+  /** 引用の種別（article / preprint / inproceedings …） */
+  item_type: string | null;
+  /** OA の直 PDF。取得はデスクトップ（ADR-0003） */
+  pdf_url: string | null;
   coarse_score: number | null;
+  problem_excerpt: string | null;
 }
 
 export interface LlmUsage {

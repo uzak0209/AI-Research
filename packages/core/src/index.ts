@@ -3,6 +3,10 @@ export {
   NotSignedInError,
   type BibliographyHint,
   type BibliographyRecord,
+  type CollectAccepted,
+  type SyncPaper,
+  type SyncRun,
+  type SyncRunsResponse,
 } from './cloud';
 export {
   createPkce,
