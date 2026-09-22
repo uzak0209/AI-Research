@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signAccessToken } from '../src/auth';
 import { handleFetch } from '../src/index';
 import { ORCA_CHAT_URL } from '../src/shared/orca/chat';
+import { TREND_MAX_TOKENS } from '../src/shared/orca/policy';
 import { JEV_URL } from '../src/shared/jev/client';
 import { trendPrompt } from '../src/trend';
 import { utcDate } from '../src/shared/date';
@@ -190,13 +191,16 @@ describe('POST /bff/trends（C1）', () => {
       model: string;
       temperature: number;
       max_tokens?: number;
+      response_format?: { type: string };
       extra_body?: { route: string; models: string[] };
       messages: { content: string }[];
     };
     // Named Router + 受け皿（コンソール未解決時は次のモデルへ）
     expect(sent.model).toBe('orcarouter/rs-review');
     expect(sent.temperature).toBe(0);
-    expect(sent.max_tokens).toBe(700);
+    // 本文 2〜6 文＋テーマ 5 件。700 だと日本語で切れて JSON が壊れる
+    expect(sent.max_tokens).toBe(TREND_MAX_TOKENS);
+    expect(sent.response_format).toEqual({ type: 'json_object' });
     expect(sent.extra_body).toEqual({
       route: 'fallback',
       models: ['orcarouter/rs-review', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],

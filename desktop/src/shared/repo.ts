@@ -641,13 +641,19 @@ export function listPapersForRun(db: Db, projectId: string, runId: string): Rank
     .all(projectId, runId) as unknown as RankedPaper[];
 }
 
+/**
+ * トレンドが無い報告。取り直しの対象。
+ * 生の JSON が入った行（出力が切れて壊れたもの）も未着として扱い、取り直させる。
+ */
 export function reportsMissingTrend(db: Db, projectId: string): SurveyReport[] {
   return db
     .prepare(
       `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
               (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
        FROM survey_reports r
-       WHERE r.project_id = ? AND (r.trend IS NULL OR trim(r.trend) = '')
+       WHERE r.project_id = ?
+         AND (r.trend IS NULL OR trim(r.trend) = ''
+              OR (trim(r.trend) LIKE '{%' AND trim(r.trend) LIKE '%"trend"%'))
          AND (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) > 0
        ORDER BY r.run_date DESC
        LIMIT 5`,

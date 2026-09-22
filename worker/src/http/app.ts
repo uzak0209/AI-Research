@@ -27,7 +27,7 @@ import { TREND_ENDPOINT, createTrendApp } from '../trend';
 import { parseThemesJson } from '../trend/domain';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
-import { ORCA_POLICY, collectPolicy, reviewPolicy } from '../shared/orca/policy';
+import { ORCA_POLICY, collectPolicy, trendPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
 import { enqueueManualCollect } from '../collect/application/schedule';
 import { inferKeywords, KEYWORDS_ENDPOINT, parseSearchTermsJson } from '../collect/application/search-terms';
@@ -514,7 +514,7 @@ app.openapi(
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const policy = reviewPolicy(c.env);
+    const policy = trendPolicy(c.env);
     const apiKey = orcaKey(c.env, policy.slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });

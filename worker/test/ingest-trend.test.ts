@@ -77,6 +77,27 @@ describe('parseTrendReport', () => {
   it('JSON でなければ本文だけ', () => {
     expect(parseTrendReport('ただの文章')).toEqual({ trend: 'ただの文章', themes: [] });
   });
+
+  it('長さ上限で切れた JSON は拾えるだけ拾う。生の波括弧を見せない', () => {
+    const got = parseTrendReport('{"trend": "提示された論文群は、クラウドの低レベ');
+    expect(got.trend).toBe('提示された論文群は、クラウドの低レベ');
+    expect(got.themes).toEqual([]);
+  });
+
+  it('切れた JSON でも themes が閉じていれば拾う', () => {
+    const got = parseTrendReport('{"themes": ["XDP offload", "eBPF"], "trend": "高速経路が増え');
+    expect(got.themes).toEqual(['XDP offload', 'eBPF']);
+    expect(got.trend).toBe('高速経路が増え');
+  });
+
+  it('切れた位置がエスケープの途中でも落ちない', () => {
+    expect(parseTrendReport('{"trend": "行が変わる\\').trend).toBe('行が変わる');
+    expect(parseTrendReport('{"trend": "記号 \\u30').trend).toBe('記号');
+  });
+
+  it('波括弧で始まっても trend/themes が無ければ地の文として扱う', () => {
+    expect(parseTrendReport('{これは JSON ではない').trend).toBe('{これは JSON ではない');
+  });
 });
 
 describe('ingestCollect のトレンド', () => {
