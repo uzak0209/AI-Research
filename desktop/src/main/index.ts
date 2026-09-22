@@ -77,6 +77,7 @@ import {
   type HighlightInput,
   type InkInput,
 } from '../shared/annotations.js';
+import { describeApiError } from '../shared/api-error.js';
 import { cloudSignedIn, createCloud } from './cloud.js';
 import { runGoogleLogin } from './google-login.js';
 import type { ScoreEvent, ScoreRequest } from './score-worker.js';
@@ -706,13 +707,19 @@ function registerIpc(): void {
     if (!summary) throw new Error('課題意識が空です');
     const res = await cloud.client.keywords(summary);
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { detail?: string; error?: string } | null;
+      const body: unknown = await res.json().catch(() => null);
       if (res.status === 401) throw new NotSignedInError();
-      if (res.status === 429) throw new Error(body?.detail?.trim() || '今日の利用上限に達した');
+      if (res.status === 429) throw new Error('今日の利用上限に達した');
       if (res.status === 404 || res.status === 501) {
-        throw new Error(body?.detail?.trim() || 'キーワード推測がクラウド側でまだ開いていない');
+        throw new Error('キーワード推測がクラウド側でまだ開いていない');
       }
-      throw new Error(body?.detail?.trim() || body?.error || `keywords failed: ${res.status}`);
+      if (res.status === 400) {
+        throw new Error(describeApiError(body, '入力が不正です'));
+      }
+      if (res.status === 502) {
+        throw new Error('キーワード推測のモデルが応答しなかった。少し待ってからもう一度試してください');
+      }
+      throw new Error(describeApiError(body, `キーワード推測に失敗しました（${res.status}）`));
     }
     const body = (await res.json()) as { terms?: string[] };
     return { terms: Array.isArray(body.terms) ? body.terms.filter((t) => typeof t === 'string' && t.trim()) : [] };

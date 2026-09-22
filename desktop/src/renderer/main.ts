@@ -7,6 +7,7 @@
 //   - 破壊的な操作（削除）は確認を取る
 
 import type { Api } from '../preload/index.js';
+import { errorMessage } from '../shared/api-error.js';
 import { PdfViewer } from './pdf-view.js';
 
 declare global {
@@ -62,6 +63,7 @@ interface SurveyReport {
   search_terms: string | null;
   trend: string | null;
   themes_json: string | null;
+  failed_sources?: string | null;
   created_at: string;
   paper_count: number;
 }
@@ -131,7 +133,7 @@ let selectedRef: string | null = null;
 let selectedPaper: string | null = null;
 let selectedRunId: string | null = null;
 let selectedMypaper: string | null = null;
-/** 読む順の採点式。一覧コールアウトと詳細ラベルで共有 */
+/** 採点式。手元に原稿があるときだけ類似度を出す判断に使う */
 let lastScoreMode: 'mypaper' | 'blend' = 'blend';
 let viewer: PdfViewer | null = null;
 /** 設定で確認するキーワード。関連技術・検索語になる */
@@ -167,16 +169,15 @@ function setStatus(text: string, tone: 'info' | 'error' | 'busy' = 'info') {
     welcomeErr.textContent = text;
     welcomeErr.setAttribute('data-tone', tone);
   }
-  const settings = document.getElementById('settings') as HTMLDialogElement | null;
+}
+
+/** 設定ダイアログ内だけ。起動時の案内をここに流し込まない */
+function setSettingsStatus(text: string, tone: 'info' | 'error' | 'busy' = 'info') {
   const settingsStatus = document.getElementById('settings-status');
-  if (settingsStatus) {
-    const show = Boolean(text) && Boolean(settings?.open);
-    settingsStatus.hidden = !show;
-    if (show) {
-      settingsStatus.textContent = text;
-      settingsStatus.setAttribute('data-tone', tone);
-    }
-  }
+  if (!settingsStatus) return;
+  settingsStatus.hidden = !text;
+  settingsStatus.textContent = text;
+  settingsStatus.setAttribute('data-tone', tone);
 }
 
 async function guard<T>(what: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -184,7 +185,7 @@ async function guard<T>(what: string, fn: () => Promise<T>): Promise<T | undefin
     return await fn();
   } catch (e) {
     // 失敗を黙って握りつぶさない（C-07）
-    setStatus(what + 'に失敗: ' + (e instanceof Error ? e.message : String(e)), 'error');
+    setStatus(what + 'に失敗: ' + errorMessage(e), 'error');
     return undefined;
   }
 }
@@ -214,7 +215,7 @@ async function createFromWelcome(): Promise<void> {
     setStatus(`「${res.title}」を ~/Recycle に作った`);
     await enterApp({ ...p, title: res.title, root_path: res.root }, { forceSettings: true });
   } catch (e) {
-    setStatus('プロジェクトの作成に失敗: ' + (e instanceof Error ? e.message : String(e)), 'error');
+    setStatus('プロジェクトの作成に失敗: ' + errorMessage(e), 'error');
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -260,11 +261,10 @@ function openSettings(): void {
   if ($('shell').hidden) return;
   const dlg = settingsDialog();
   const show = () => {
-    if (!dlg.open) dlg.showModal();
+    if (dlg.open) dlg.close();
+    dlg.showModal();
     ($('summary') as HTMLTextAreaElement).focus();
-    void maybeInferKeywords();
   };
-  // shell を出した直後だと dialog が描画されないことがある
   requestAnimationFrame(() => requestAnimationFrame(show));
 }
 
@@ -314,34 +314,55 @@ function addKeywordFromInput(): void {
   input.focus();
 }
 
+let inferringKeywords = false;
+
 async function inferKeywordsFromSummary(force = false): Promise<void> {
   const summary = ($('summary') as HTMLTextAreaElement | null)?.value.trim() ?? '';
   if (!summary) {
-    setStatus('先に課題意識を書いてください', 'error');
+    setSettingsStatus('先に研究の概要を書いてください', 'error');
     ($('summary') as HTMLTextAreaElement | null)?.focus();
     return;
   }
   if (!signedIn) {
-    setStatus('キーワードの推測にはログインが必要です', 'error');
+    setSettingsStatus('キーワードの推測にはログインが必要です', 'error');
     return;
   }
   if (!force && keywordTags.length > 0) return;
   if (!window.api.inferKeywords) {
-    setStatus('この版ではキーワード推測が使えません。アプリを開き直してください', 'error');
+    setSettingsStatus('この版ではキーワード推測が使えません。アプリを開き直してください', 'error');
+    return;
+  }
+  if (inferringKeywords) {
+    setSettingsStatus('概要からキーワードを推測しています…', 'busy');
     return;
   }
   const btn = $('keyword-infer') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  setStatus('課題意識からキーワードを推測しています…', 'busy');
-  const res = await guard('キーワードの推測', () => window.api.inferKeywords(summary));
-  if (btn) btn.disabled = false;
-  if (!res) return;
-  setKeywordTags(res.terms);
-  if (res.terms.length === 0) {
-    setStatus('キーワードを出せなかった。手で足してください', 'error');
-    return;
+  inferringKeywords = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '推測中…';
   }
-  setStatus(`${res.terms.length} 件を出した。合わないものは × で外してください`);
+  setSettingsStatus('概要からキーワードを推測しています…', 'busy');
+  try {
+    const res = await window.api.inferKeywords(summary);
+    setKeywordTags(res.terms);
+    if (res.terms.length === 0) {
+      setSettingsStatus('キーワードを出せなかった。手で足してください', 'error');
+      return;
+    }
+    setSettingsStatus(`${res.terms.length} 件を出した。合わないものは × で外してください`);
+  } catch (e) {
+    setSettingsStatus(
+      'キーワードの推測に失敗: ' + errorMessage(e),
+      'error',
+    );
+  } finally {
+    inferringKeywords = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '概要から推測';
+    }
+  }
 }
 
 async function maybeInferKeywords(): Promise<void> {
@@ -351,7 +372,7 @@ async function maybeInferKeywords(): Promise<void> {
   await inferKeywordsFromSummary(false);
 }
 
-/** 収集に必要な最低限（課題意識＋ログイン）が揃っていなければ未設定 */
+/** 収集に必要な最低限（概要＋ログイン）が揃っていなければ未設定 */
 function needsSettings(p: { summary: string }, loggedIn = signedIn): boolean {
   return !p.summary.trim() || !loggedIn;
 }
@@ -547,8 +568,8 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.side-item[data-fi
   });
 }
 
-$('lib-search').addEventListener('input', () => void refreshLibrary());
-$('lib-sort').addEventListener('change', () => void refreshLibrary());
+on('lib-search', 'input', () => void refreshLibrary());
+on('lib-sort', 'change', () => void refreshLibrary());
 
 // --- ライブラリ：詳細 ---------------------------------------------------------
 
@@ -833,7 +854,7 @@ async function openInViewer(attachmentId: string, title: string): Promise<void> 
 
 // --- ライブラリ：追加フォーム --------------------------------------------------
 
-$('lib-new').addEventListener('click', () => {
+on('lib-new', 'click', () => {
   const pane = $('lib-detail');
   pane.replaceChildren();
   pane.append(el('h2', { class: 'detail-title' }, '文献を追加'));
@@ -900,7 +921,7 @@ $('lib-new').addEventListener('click', () => {
 
 // --- PDF から取り込む ----------------------------------------------------------
 
-$('lib-import-pdf').addEventListener('click', async () => {
+on('lib-import-pdf', 'click', async () => {
   setStatus('PDF を読み込んでいます…', 'busy');
 
   const res = (await guard('PDF の取り込み', () => window.api.pdf.import(projectId))) as
@@ -990,6 +1011,30 @@ function runStatusLabel(status: string): string {
   }
 }
 
+function collectFailureReason(raw: string | null | undefined): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  let msg = t;
+  try {
+    const parsed: unknown = JSON.parse(t);
+    if (Array.isArray(parsed)) {
+      const parts: string[] = [];
+      for (const item of parsed) {
+        if (!item || typeof item !== 'object') continue;
+        const err = (item as { error?: unknown }).error;
+        if (typeof err === 'string' && err.trim()) parts.push(err.trim());
+      }
+      if (parts.length) msg = parts.join(' / ');
+    }
+  } catch {
+    /* 生の文字列のまま */
+  }
+  if (msg.includes('検索語を作れなかった')) {
+    return '検索キーワードをモデルが出せなかった。設定でキーワードを足してから「収集開始」し直してください。';
+  }
+  return msg;
+}
+
 function formatReportWhen(runDate: string, createdAt: string): string {
   const clock = createdAt.replace('T', ' ').replace('Z', '').slice(0, 16);
   return clock || runDate;
@@ -1009,20 +1054,6 @@ function feedEmptyState(
     return b;
   };
 
-  if (hasReports && unscored > 0) {
-    const detail =
-      scoreMode === 'mypaper' && missingPdf > 0
-        ? `うち PDF が無いため未採点 ${missingPdf} 件。上の「読む順をつける」で取れる分だけ順位が付きます。`
-        : scoreMode === 'blend'
-          ? 'mypaper が空のため、課題意識・関連技術で採点します。「読む順をつける」を押してください。'
-          : '上の「読む順をつける」を押すと、関連度順に並びます。';
-    return el(
-      'div',
-      { class: 'empty-state' },
-      el('p', { class: 'empty-title' }, `未採点 ${unscored} 件`),
-      el('p', { class: 'empty' }, detail),
-    );
-  }
   if (!signedIn) {
     return el(
       'div',
@@ -1033,7 +1064,7 @@ function feedEmptyState(
         { class: 'empty' },
         'メニューの設定（' +
           (window.api.platform === 'darwin' ? '⌘,' : 'Ctrl+,') +
-          '）で Google ログインと課題意識を保存してください。',
+          '）で Google ログインと研究の概要を保存してください。',
       ),
       goSettings(),
     );
@@ -1056,37 +1087,6 @@ function feedEmptyState(
       { class: 'empty' },
       '上の「調査する」で収集を始めます。日次の調査も、終わった分は「取り込む」でここに入ります。',
     ),
-  );
-}
-
-function unscoredCallout(
-  unscored: number,
-  scoreMode: 'mypaper' | 'blend',
-  missingPdf: number,
-): HTMLElement {
-  if (scoreMode === 'mypaper' && missingPdf > 0) {
-    return el(
-      'p',
-      { class: 'callout' },
-      el('strong', {}, `PDF が無いため未採点 ${missingPdf} 件`),
-      unscored > missingPdf
-        ? `（他に未採点 ${unscored - missingPdf} 件）。「読む順をつける」で本文がある分だけ順位が付きます`
-        : ' — 直リンクが無い・取得失敗。要旨で順位を捏造しません',
-    );
-  }
-  if (scoreMode === 'blend') {
-    return el(
-      'p',
-      { class: 'callout' },
-      el('strong', {}, `未採点 ${unscored} 件`),
-      ' — mypaper が空のため課題意識・関連技術で採点します。「読む順をつける」を押すまで順位は出ません',
-    );
-  }
-  return el(
-    'p',
-    { class: 'callout' },
-    el('strong', {}, `未採点 ${unscored} 件`),
-    ' — 「読む順をつける」を押すまで順位は出ません',
   );
 }
 
@@ -1116,10 +1116,6 @@ async function refreshFeed() {
     list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf, false));
     selectedRunId = null;
     return;
-  }
-
-  if (res.unscored > 0) {
-    list.append(unscoredCallout(res.unscored, scoreMode, missingPdf));
   }
 
   if (!selectedRunId || !res.reports.some((r) => r.run_id === selectedRunId)) {
@@ -1175,6 +1171,26 @@ async function renderReportDetail(runId: string) {
 
   const r = got.report;
   pane.replaceChildren();
+
+  // 論文を選んでいる間は、その論文だけを出す。
+  // 報告本文の下に積むと、概要までスクロールしないと読めない。
+  const picked = got.papers.find((p) => p.paper_id === selectedPaper);
+  if (picked) {
+    const back = el('button', { class: 'btn', 'data-variant': 'tertiary' }, '← 報告に戻る');
+    back.addEventListener('click', () => {
+      selectedPaper = null;
+      void renderReportDetail(runId);
+    });
+    pane.append(el('div', { class: 'detail-back' }, back));
+    const idx = got.papers.findIndex((p) => p.paper_id === picked.paper_id);
+    pane.append(
+      el('p', { class: 'detail-meta' }, `${r.run_date} の調査 / ${idx + 1} 件目 / 全 ${got.papers.length} 件`),
+    );
+    renderPaperDetailInto(pane, picked);
+    pane.scrollTop = 0;
+    return;
+  }
+
   pane.append(el('h2', { class: 'detail-title' }, `${r.run_date} の調査`));
   pane.append(
     el(
@@ -1185,6 +1201,17 @@ async function renderReportDetail(runId: string) {
         .join(' / '),
     ),
   );
+
+  if (r.status === 'failed') {
+    pane.append(
+      el(
+        'div',
+        { class: 'detail-section' },
+        el('h3', {}, '失敗した理由'),
+        el('p', { class: 'note-info' }, collectFailureReason(r.failed_sources) ?? '理由は記録されていない。'),
+      ),
+    );
+  }
 
   const keywords = keywordsStrip(got.searchTerms);
   if (keywords) pane.append(keywords);
@@ -1240,8 +1267,6 @@ async function renderReportDetail(runId: string) {
         'span',
         { class: 'row-meta' },
         el('span', {}, [p.authors ?? '著者不明', yearFromPublishedAt(p.published_at) ?? '年不明'].join(' / ')),
-        el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(3) ?? '-'}`),
-        el('span', { class: 'chip', 'data-tone': pdfTone(p) }, pdfLabel(p)),
       ),
     );
     row.addEventListener('click', () => {
@@ -1250,22 +1275,6 @@ async function renderReportDetail(runId: string) {
     });
     pane.append(row);
   });
-
-  const cur = got.papers.find((p) => p.paper_id === selectedPaper);
-  if (cur) renderPaperDetailInto(pane, cur);
-}
-
-/** PDF の状態。空ファイルや購読ページを「あり」と言わない（C-07） */
-function pdfLabel(p: RankedPaper): string {
-  if (p.fulltext_path) return 'PDF 取得済み';
-  if (p.pdf_url) return 'PDF あり';
-  return 'PDF 未取得';
-}
-
-function pdfTone(p: RankedPaper): string | undefined {
-  if (p.fulltext_path) return 'read';
-  if (p.pdf_url) return 'reading';
-  return undefined;
 }
 
 function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
@@ -1279,59 +1288,24 @@ function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
     ),
   );
 
-  pane.append(
-    el(
-      'div',
-      { class: 'actions' },
-      el('span', { class: 'chip', 'data-tone': 'score' }, `関連度（読む順） ${p.relevance?.toFixed(4) ?? '-'}`),
-      el(
-        'span',
-        { class: 'chip' },
-        lastScoreMode === 'mypaper'
-          ? `原稿全体の平均 ${p.sim_summary?.toFixed(3) ?? '-'}`
-          : `課題意識だけ ${p.sim_summary?.toFixed(3) ?? '-'}`,
-      ),
-      el('span', { class: 'chip', 'data-tone': pdfTone(p) }, pdfLabel(p)),
-    ),
-  );
-
-  if (!p.pdf_url && !p.fulltext_path) {
+  // 類似度は手元に原稿があるときだけ。無いときの数字は原稿と比べたものではない
+  if (lastScoreMode === 'mypaper' && p.sim_summary != null) {
     pane.append(
       el(
-        'p',
-        { class: 'note-info' },
-        '公開の直 PDF がありません（購読のみ・HTML のみ）。有料 PDF は取りに行きません。手元にあればライブラリで添付できます。',
+        'div',
+        { class: 'actions' },
+        el('span', { class: 'chip', 'data-tone': 'score' }, `類似度 ${p.sim_summary.toFixed(3)}`),
       ),
     );
   }
-
-  pane.append(
-    el(
-      'p',
-      { class: 'note-info' },
-      lastScoreMode === 'mypaper'
-        ? '関連度は原稿と PDF で一番近い箇所。原稿全体の平均は全段落を均したもので、順位には使いません。'
-        : 'mypaper が空のため、タイトルと要旨を課題意識・関連技術と比べています。手元の論文ファイルは使っていません。関連度＝課題意識×0.7＋一番近い関連技術×0.3。',
-    ),
-  );
-
-  pane.append(
-    el(
-      'p',
-      { class: 'callout' },
-      '順位だけを出しています。有効／除外の判定はしていません。',
-      el('strong', {}, '上位には競合論文が混ざります。'),
-    ),
-  );
 
   if (p.nearest_chunk_text) {
     pane.append(
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, `最も近い関連技術（${p.nearest_chunk_sim?.toFixed(3)}）`),
+        el('h3', {}, '最も近い関連技術'),
         el('p', { class: 'abstract' }, p.nearest_chunk_text),
-        el('p', { class: 'note-info' }, 'これは最も近いという事実で、競合しているという判定ではありません。'),
       ),
     );
   }
@@ -1428,23 +1402,18 @@ function collectOutcomeMessage(res: {
   const terms = Array.isArray(res.searchTerms) ? res.searchTerms.filter((t) => t.trim()) : [];
   const kw = terms.length ? ` キーワード: ${terms.join(' · ')}` : '';
   if (res.timedOut && inserted === 0 && pulled === 0) {
-    return '調査を投入した。まだ結果が無いので、しばらくして「取り込む」を押してください';
+    return '収集を投入した。まだ結果が無いので、しばらくして「収集結果を受け取る」を押してください';
   }
-  if (inserted > 0) return `上位 ${inserted} 件を取り込んだ。読む順を付けています…${kw}`;
+  if (statuses.includes('failed')) {
+    return '収集は失敗した。報告を開くと理由が出ます。キーワードを足してから「収集開始」し直してください';
+  }
+  if (inserted > 0) return `上位 ${inserted} 件を取り込んだ。解析しています…${kw}`;
   if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった${kw}`;
-  if (statuses.includes('failed')) return '調査は失敗した。しばらくして「調査する」をやり直してください';
-  if (statuses.includes('empty')) return `調査は終わったが、検索ヒットが 0 件だった${kw}`;
-  return `調査が終わったが、新しい候補は無かった${kw}`;
+  if (statuses.includes('empty')) return `収集は終わったが、検索ヒットが 0 件だった${kw}`;
+  return `収集が終わったが、新しい候補は無かった${kw}`;
 }
 
-$('feed-score').addEventListener('click', async () => {
-  ($('feed-score') as HTMLButtonElement).disabled = true;
-  ($('feed-cancel') as HTMLButtonElement).disabled = false;
-  setStatus('読む順を付けています…', 'busy');
-  await guard('読む順の付与', () => window.api.startScoring(projectId));
-});
-
-$('feed-collect').addEventListener('click', async () => {
+on('feed-collect', 'click', async () => {
   const btn = $('feed-collect') as HTMLButtonElement;
   btn.disabled = true;
   setStatus('調査を開始しています…', 'busy');
@@ -1459,7 +1428,7 @@ $('feed-collect').addEventListener('click', async () => {
     setStatus(text, tone);
     await refreshFeed();
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    const message = errorMessage(e);
     setStatus('調査の開始に失敗: ' + message, 'error');
     const cooldown = /wait\s+(\d+)s/i.exec(message);
     const lockMs = cooldown ? Number(cooldown[1]) * 1000 : /短時間|rate.?limit/i.test(message) ? 60_000 : 0;
@@ -1473,7 +1442,7 @@ $('feed-collect').addEventListener('click', async () => {
   }
 });
 
-$('feed-sync').addEventListener('click', async () => {
+on('feed-sync', 'click', async () => {
   const btn = $('feed-sync') as HTMLButtonElement;
   btn.disabled = true;
   setStatus('クラウドから取り込んでいます…', 'busy');
@@ -1483,13 +1452,12 @@ $('feed-sync').addEventListener('click', async () => {
   setStatus(res.inserted > 0 ? `${res.inserted} 件を取り込んだ` : '新しい候補はありません');
   await refreshFeed();
   if (res.inserted > 0) {
-    ($('feed-score') as HTMLButtonElement).disabled = true;
     ($('feed-cancel') as HTMLButtonElement).disabled = false;
-    await guard('読む順の付与', () => window.api.startScoring(projectId));
+    await guard('解析', () => window.api.startScoring(projectId));
   }
 });
 
-$('feed-cancel').addEventListener('click', () => {
+on('feed-cancel', 'click', () => {
   void window.api.cancelScoring();
   setStatus('中止を要求した。済んだ分は残ります。', 'busy');
 });
@@ -1501,16 +1469,15 @@ window.api.onScoreEvent((raw) => {
     | { type: 'error'; message: string };
 
   if (e.type === 'progress') {
-    setStatus(`読む順を付けています ${e.done} / ${e.total} 件`, 'busy');
+    setStatus(`解析しています ${e.done} / ${e.total} 件`, 'busy');
     if (e.done % 5 === 0) void refreshFeed();
     return;
   }
 
-  ($('feed-score') as HTMLButtonElement).disabled = false;
   ($('feed-cancel') as HTMLButtonElement).disabled = true;
 
-  if (e.type === 'done') setStatus(`読む順を付けた: ${e.scored} 件`);
-  else setStatus('読む順の付与に失敗: ' + e.message, 'error');
+  if (e.type === 'done') setStatus(`解析が終わった: ${e.scored} 件`);
+  else setStatus('解析に失敗: ' + e.message, 'error');
 
   void refreshFeed();
 });
@@ -1600,7 +1567,7 @@ function renderMypaperDetail(f: MypaperFile) {
       { class: 'note-info' },
       f.kind === 'pdf'
         ? '置いた PDF から書誌を作り、ライブラリにも載せます。原本は mypaper に残します。'
-        : '原稿は読む順の正本です。クラウドへは出しません。',
+        : '原稿はクラウドへは出しません。',
     ),
   );
   const open = el('button', { class: 'btn', 'data-variant': 'secondary' }, '外部で開く');
@@ -1611,7 +1578,7 @@ function renderMypaperDetail(f: MypaperFile) {
   pane.append(el('div', { class: 'detail-section actions', 'data-align': 'start' }, open));
 }
 
-$('mypaper-import')?.addEventListener('click', async () => {
+on('mypaper-import', 'click', async () => {
   const btn = $('mypaper-import') as HTMLButtonElement;
   btn.disabled = true;
   setStatus('自分の論文を配置しています…', 'busy');
@@ -1626,7 +1593,7 @@ $('mypaper-import')?.addEventListener('click', async () => {
   await refreshMypaper();
 });
 
-$('mypaper-reveal')?.addEventListener('click', async () => {
+on('mypaper-reveal', 'click', async () => {
   const res = await guard('Finder で表示', () => window.api.mypaper.reveal(projectId));
   if (res && 'ok' in res && !res.ok) setStatus(res.error, 'error');
 });
@@ -1665,8 +1632,16 @@ function showWorkspace(root: string | null): void {
   }
 }
 
-on('keyword-infer', 'click', () => {
+on('keyword-infer', 'click', (e) => {
+  e.preventDefault();
   void inferKeywordsFromSummary(true);
+});
+let summaryInferTimer: number | undefined;
+on('summary', 'input', () => {
+  window.clearTimeout(summaryInferTimer);
+  summaryInferTimer = window.setTimeout(() => {
+    void maybeInferKeywords();
+  }, 800);
 });
 on('keyword-add', 'keydown', (e) => {
   const ev = e as KeyboardEvent;
@@ -1676,9 +1651,9 @@ on('keyword-add', 'keydown', (e) => {
   }
 });
 
-$('proj-save').addEventListener('click', async () => {
+on('proj-save', 'click', async () => {
   if (!projectId) {
-    setStatus('先にプロジェクトを作ってください', 'error');
+    setSettingsStatus('先にプロジェクトを作ってください', 'error');
     return;
   }
   const title = ($('proj-title') as HTMLInputElement).value.trim();
@@ -1686,12 +1661,12 @@ $('proj-save').addEventListener('click', async () => {
   const claims = keywordTags;
 
   if (!summary) {
-    setStatus('課題意識を書いてから保存してください', 'error');
+    setSettingsStatus('研究の概要を書いてから保存してください', 'error');
     ($('summary') as HTMLTextAreaElement).focus();
     return;
   }
   if (!signedIn) {
-    setStatus('先に Google でログインしてください', 'error');
+    setSettingsStatus('先に Google でログインしてください', 'error');
     return;
   }
 
@@ -1704,9 +1679,12 @@ $('proj-save').addEventListener('click', async () => {
   if (ok) {
     markSettingsCompleted(projectId);
     showWorkspace(projectRoot);
+    setSettingsStatus('');
     setStatus('設定を保存した');
     closeSettings();
     void refreshFeed();
+  } else {
+    setSettingsStatus('保存に失敗しました', 'error');
   }
 });
 
@@ -1729,7 +1707,7 @@ function applyWorkspace(res: { root: string; title: string; action: 'create' | '
   })();
 }
 
-$('proj-mkdir').addEventListener('click', async () => {
+on('proj-mkdir', 'click', async () => {
   const res = (await window.api.createWorkspace()) as
     | { ok: true; root: string; title: string; action: 'create' | 'open' }
     | { ok: false; canceled?: boolean; error?: string };
@@ -1741,7 +1719,7 @@ $('proj-mkdir').addEventListener('click', async () => {
   applyWorkspace(res);
 });
 
-$('proj-open').addEventListener('click', async () => {
+on('proj-open', 'click', async () => {
   const res = (await window.api.openWorkspace()) as
     | { ok: true; root: string; title: string; action: 'create' | 'open' }
     | { ok: false; canceled?: boolean; error?: string };
@@ -1753,44 +1731,14 @@ $('proj-open').addEventListener('click', async () => {
   applyWorkspace(res);
 });
 
-$('proj-reveal').addEventListener('click', async () => {
-  const res = (await window.api.revealWorkspace(projectId)) as { ok: boolean; error?: string };
-  if (!res.ok) setStatus(res.error ?? 'プロジェクトを開けなかった', 'error');
-});
-
 window.api.onWorkspaceChanged((e) => applyWorkspace(e));
 window.api.onWorkspaceError((message) => setStatus(message, 'error'));
-$('settings-form').addEventListener('submit', (e) => {
-  const submitter = (e as SubmitEvent).submitter as HTMLElement | null;
-  if (submitter?.id !== 'settings-close') {
-    e.preventDefault();
-    return;
-  }
-  // 未設定のまま閉じさせない
-  if (needsSettings(currentSettingsSnapshot()) || !hasCompletedSettings(projectId)) {
-    e.preventDefault();
-    setStatus(
-      !signedIn
-        ? 'ログインと課題意識の保存が必要です'
-        : '課題意識を書いて保存してください',
-      'error',
-    );
-  }
-});
-
-settingsDialog().addEventListener('cancel', (e) => {
-  if (needsSettings(currentSettingsSnapshot()) || !hasCompletedSettings(projectId)) {
-    e.preventDefault();
-    setStatus(
-      !signedIn
-        ? 'ログインと課題意識の保存が必要です'
-        : '課題意識を書いて保存してください',
-      'error',
-    );
-  }
+on('settings-close', 'click', () => {
+  closeSettings();
 });
 
 window.api.onOpenSettings?.(() => openSettings());
+on('open-settings', 'click', () => openSettings());
 
 function showAuth(next: boolean): void {
   signedIn = next;
@@ -1805,20 +1753,17 @@ function showAuth(next: boolean): void {
   if (logout) logout.hidden = !next;
 }
 
-$('auth-login').addEventListener('click', async () => {
-  setStatus('ブラウザで Google にログインします…', 'busy');
+on('auth-login', 'click', async () => {
+  setSettingsStatus('ブラウザで Google にログインします…', 'busy');
   const res = await guard('ログイン', () => window.api.auth.login());
   if (res?.signedIn) {
     showAuth(true);
-    setStatus(
-      needsSettings(currentSettingsSnapshot(), true)
-        ? 'ログインした。課題意識を書いて保存してください'
-        : 'ログインした',
-    );
+    setSettingsStatus('');
+    void maybeInferKeywords();
   }
 });
 
-$('auth-logout').addEventListener('click', async () => {
+on('auth-logout', 'click', async () => {
   const res = await guard('ログアウト', () => window.api.auth.logout());
   showAuth(res?.signedIn ?? false);
   setStatus('ログアウトした');
@@ -1852,6 +1797,8 @@ function showWelcome(): void {
   $('proj-root').textContent = '';
   $('titlebar-title').textContent = 'AI-Research';
   document.title = 'AI-Research';
+  const settingsBtn = document.getElementById('open-settings');
+  if (settingsBtn) settingsBtn.hidden = true;
   ($('welcome-title') as HTMLInputElement).focus();
 }
 
@@ -1861,6 +1808,8 @@ async function enterApp(
 ): Promise<void> {
   $('welcome').hidden = true;
   $('shell').hidden = false;
+  const settingsBtn = document.getElementById('open-settings');
+  if (settingsBtn) settingsBtn.hidden = false;
 
   projectId = p.project_id;
   ($('proj-title') as HTMLInputElement).value = p.title ?? '';
@@ -1880,11 +1829,7 @@ async function enterApp(
     !hasCompletedSettings(p.project_id) ||
     needsSettings(p, auth.signedIn);
   if (mustSetup) {
-    setStatus(
-      !auth.signedIn
-        ? 'まず Google でログインし、課題意識を保存してください'
-        : '課題意識を書いて保存してください',
-    );
+    setStatus('');
     openSettings();
   } else {
     setStatus('');
@@ -1893,10 +1838,6 @@ async function enterApp(
 
 async function boot() {
   document.body.dataset.platform = window.api.platform;
-  const reveal = document.getElementById('proj-reveal');
-  if (reveal) {
-    reveal.textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
-  }
 
   // ウェルカム中でもログイン状態は分かるようにする
   const auth = await window.api.auth.status();
@@ -1911,4 +1852,4 @@ async function boot() {
   await enterApp(ready);
 }
 
-void boot().catch((e) => setStatus('起動に失敗: ' + String(e), 'error'));
+void boot().catch((e) => setStatus('起動に失敗: ' + errorMessage(e), 'error'));

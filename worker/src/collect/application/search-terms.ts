@@ -276,38 +276,60 @@ export async function buildSearchQuery(env: Env, summary: string): Promise<Searc
 }
 
 const KEYWORD_SYSTEM = [
-  'You decompose a research problem statement into search keywords.',
+  'You decompose a research problem statement into OpenAlex search keywords.',
   'Reply with ONLY a JSON object. No prose, no code fence.',
   'Format: {"core":["DPDK","packet I/O"],"related":["RSS","XDP","eBPF"]}',
   '"core": 1-4 keywords that pin down THIS topic. Put them first because the user reads them first.',
   `"related": at least ${MIN_INFERRED_ABBR} and at most ${MAX_INFERRED_ABBR} keywords used in the SAME subfield.`,
-  'Each item is a short keyword: an abbreviation (DPDK, XDP) or a short technical term (2-24 characters).',
-  'Never emit function or filler words (the, of, goal, reducing, operations, learning).',
-  'Japanese short nouns are OK when the topic is Japanese. No sentences. No URLs. No paper titles.',
-  'Do not jump to another field.',
+  'Every item MUST be English: an abbreviation (DPDK, XDP) or a short Latin technical term (2-24 characters).',
+  'If the problem is Japanese, translate into the English term researchers use (ゼロコピー → zero-copy, 自己注意 → self-attention).',
+  'Never emit Japanese script. Never emit function or filler words (the, of, goal, reducing, operations, learning).',
+  'No sentences. No URLs. No paper titles. Do not jump to another field.',
 ].join(' ');
 
+function parseJsonBlob(raw: string): unknown | undefined {
+  const trimmed = stripFence(raw);
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    /* 前後の散文を捨てて {…} / […] だけ拾う */
+  }
+  const objStart = trimmed.indexOf('{');
+  const objEnd = trimmed.lastIndexOf('}');
+  const arrStart = trimmed.indexOf('[');
+  const arrEnd = trimmed.lastIndexOf(']');
+  try {
+    if (objStart >= 0 && objEnd > objStart && (arrStart < 0 || objStart <= arrStart)) {
+      return JSON.parse(trimmed.slice(objStart, objEnd + 1));
+    }
+    if (arrStart >= 0 && arrEnd > arrStart) {
+      return JSON.parse(trimmed.slice(arrStart, arrEnd + 1));
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+const KEYWORD_LIST_KEYS = ['core', 'related', 'terms', 'keywords', 'tags'] as const;
+
+function keywordItems(parsed: unknown): unknown[] {
+  if (Array.isArray(parsed)) return parsed;
+  if (!parsed || typeof parsed !== 'object') return [];
+  const o = parsed as Record<string, unknown>;
+  const list: unknown[] = [];
+  for (const key of KEYWORD_LIST_KEYS) {
+    if (Array.isArray(o[key])) list.push(...o[key]);
+  }
+  return list;
+}
+
 /**
- * 設定画面の確認用。略語に限らず短いキーワードを残す。
- * `{"core":[…],"related":[…]}` でも素の配列でも読む（core が先）。
+ * 設定画面の確認用。OpenAlex 向けなのでラテン文字の短い語だけ残す。
+ * `{"core":[…],"related":[…]}` でも `{"terms":[…]}` でも素の配列でも読む（core が先）。
  */
 export function parseKeywordTags(raw: string): string[] {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripFence(raw));
-  } catch {
-    return [];
-  }
-  const list: unknown[] = Array.isArray(parsed)
-    ? parsed
-    : parsed && typeof parsed === 'object'
-      ? [
-          ...((parsed as { core?: unknown }).core instanceof Array ? (parsed as { core: unknown[] }).core : []),
-          ...((parsed as { related?: unknown }).related instanceof Array
-            ? (parsed as { related: unknown[] }).related
-            : []),
-        ]
-      : [];
+  const list = keywordItems(parseJsonBlob(raw));
 
   const seen = new Set<string>();
   const out: string[] = [];
@@ -317,7 +339,7 @@ export function parseKeywordTags(raw: string): string[] {
     if (!t || t.length > 24) continue;
     if (/https?:\/\//i.test(t) || t.includes('://')) continue;
     if ((t.match(/ /g) ?? []).length > 2) continue;
-    // 機能語・一般語は出さない。利用者が毎回 × で消す手間になる
+    if (/[\u3040-\u30ff\u3400-\u9fff]/.test(t)) continue;
     if (STOPWORDS.has(t.toLowerCase())) continue;
     const key = t.toLowerCase();
     if (seen.has(key)) continue;
@@ -343,6 +365,9 @@ export function mergeKeywordTags(base: string[], extra: string[]): string[] {
   return out;
 }
 
+/** 設定画面は待たせすぎない。json_object は無料モデルが止まることがあるので付けない */
+const KEYWORD_TIMEOUT_MS = 25_000;
+
 /**
  * 課題意識からキーワード。利用者が設定で確認する（C-07）。原稿は載せない。
  * 分解は LLM。取れなければ空で返し、文章から語を切り出して埋めたふりをしない。
@@ -359,7 +384,8 @@ export async function inferKeywords(
       { role: 'user', content: summary },
     ],
     { ...policy, maxTokens: Math.max(policy.maxTokens ?? 0, 600) },
-    true,
+    false,
+    KEYWORD_TIMEOUT_MS,
   );
   if (!result.ok) {
     return { terms: [], usage: null };

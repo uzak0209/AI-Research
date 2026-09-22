@@ -35,7 +35,25 @@ import { queueCollect, utcClock } from '../collect/infrastructure/adapters';
 
 export type AppEnv = { Bindings: Env };
 
-export const app = new OpenAPIHono<AppEnv>();
+/**
+ * 入力検証で落ちたときの形を、他のエラーと同じ { error, detail } に揃える。
+ * 既定のままだと error に ZodError オブジェクトが入り、
+ * 受け側で文字列化して "[object Object]" になって原因が消える（C-07）。
+ */
+export const app = new OpenAPIHono<AppEnv>({
+  defaultHook: (result, c) => {
+    if (result.success) return;
+    const issues = result.error.issues ?? [];
+    const detail =
+      issues
+        .map((i) => {
+          const path = i.path.join('.');
+          return path ? `${path}: ${i.message}` : i.message;
+        })
+        .join(' / ') || '入力が不正です';
+    return c.json({ error: 'invalid_request', detail }, 400);
+  },
+});
 
 const ACCESS_TTL_SEC = 15 * 60;
 
@@ -601,6 +619,7 @@ app.openapi(
         content: { 'application/json': { schema: KeywordsResponseSchema } },
       },
       ...unauthorized,
+      400: { description: '入力が不正', ...jsonError },
       429: { description: '利用者単位の上限（NFR-04）', ...jsonError },
       ...notImplemented,
       502: { description: 'OrcaRouter が欠けた', ...jsonError },
@@ -625,24 +644,25 @@ app.openapi(
 
     const { topic } = c.req.valid('json');
     const got = await inferKeywords(apiKey, { ...policy, slot: 'interactive' }, topic);
-    if (got.usage) {
-      await usage.record({
-        userId,
-        endpoint: KEYWORDS_ENDPOINT,
-        classification: 'C1',
-        requestedModel: got.usage.requestedModel,
-        resolvedModel: got.usage.model,
-        tokens: got.usage.tokens,
-        costUsd: got.usage.costUsd,
-        latencyMs: got.usage.latencyMs,
-        fallbackUsed: got.usage.fallbackUsed,
-      });
+    if (!got.usage) {
+      fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
     }
+    await usage.record({
+      userId,
+      endpoint: KEYWORDS_ENDPOINT,
+      classification: 'C1',
+      requestedModel: got.usage.requestedModel,
+      resolvedModel: got.usage.model,
+      tokens: got.usage.tokens,
+      costUsd: got.usage.costUsd,
+      latencyMs: got.usage.latencyMs,
+      fallbackUsed: got.usage.fallbackUsed,
+    });
 
     return c.json(
       {
         classification: 'C1' as const,
-        model: got.usage?.model ?? null,
+        model: got.usage.model,
         terms: got.terms,
       },
       200,
