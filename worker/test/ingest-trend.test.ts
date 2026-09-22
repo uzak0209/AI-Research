@@ -58,6 +58,11 @@ function deps(overrides: Partial<IngestDeps> = {}): IngestDeps & { saved: unknow
         usage: null,
       }),
     },
+    breaker: {
+      isOpen: async () => false,
+      recordFailure: async () => {},
+      recordSuccess: async () => {},
+    },
   };
   return { ...base, ...overrides, saved };
 }

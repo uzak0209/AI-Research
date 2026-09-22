@@ -45,6 +45,15 @@ function extractTerms(summary: string): Set<string> {
   return terms;
 }
 
+/**
+ * サーキットブレーカーの閾値（ADR-0005 §7）。連続失敗がこの回数に達すると
+ * その日はその project の呼び出しを止める。設定が壊れていたら 1 = 最初の失敗で止める（fail closed）
+ */
+export function circuitBreakerThreshold(raw: string | undefined): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
 export type ScoredPaper = {
   external_id: string;
   title: string;

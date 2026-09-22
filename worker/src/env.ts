@@ -7,6 +7,11 @@ export interface Env {
   CONSENT_VERSION: string;
   /** 利用者あたり 1 日の LLM 呼び出し上限（NFR-04）。文字列で来る */
   LLM_DAILY_CALL_LIMIT: string;
+  /**
+   * サーキットブレーカーの閾値（ADR-0005 §7）。project × 当日でこの回数だけ
+   * 連続失敗すると、当日はその project の Named Router 呼び出しを止める。文字列で来る
+   */
+  CIRCUIT_BREAKER_THRESHOLD: string;
   /** 未設定の間は JWT を発行・検証しない */
   JWT_SIGNING_KEY?: string;
   /** Google OAuth の client_id。公開してよい。未設定ならログインは 501 */
