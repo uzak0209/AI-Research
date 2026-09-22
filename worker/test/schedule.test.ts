@@ -15,6 +15,15 @@ describe('buildCollectBatch', () => {
     expect(msgs.length).toBeGreaterThanOrEqual(1);
     expect(msgs[0]!.body.run_id).toBe('p1:2026-09-21');
     expect(msgs[0]!.body.summary).toBe('DPDK');
+    expect(msgs[0]!.body.search_terms).toBeUndefined();
+  });
+
+  it('確定した検索語をメッセージに載せる', () => {
+    const msgs = buildCollectBatch(
+      [{ project_id: 'p1', summary: 'DPDK', user_id: 'u1', search_terms: ['DPDK', 'XDP'] }],
+      { runDate: '2026-09-21', runIdFor: (p) => `${p.project_id}:2026-09-21` },
+    );
+    expect(msgs[0]!.body.search_terms).toEqual(['DPDK', 'XDP']);
   });
 });
 
@@ -43,7 +52,7 @@ describe('scheduleCollect', () => {
     const deps: ScheduleDeps = {
       clock: { today: () => '2026-09-21' },
       idempotency: { get: async () => '1', put: async () => {} },
-      projects: { list: async () => [{ project_id: 'p1', summary: 'x', user_id: 'u1' }] },
+      projects: { list: async () => [{ project_id: 'p1', summary: 'x', user_id: 'u1', search_terms: [] }] },
       queue: { sendBatch: async (b: unknown[]) => void sent.push(...b) },
     };
     await scheduleCollect(deps);
@@ -56,7 +65,7 @@ describe('scheduleCollect', () => {
     const deps: ScheduleDeps = {
       clock: { today: () => '2026-09-21' },
       idempotency: { get: async () => null, put },
-      projects: { list: async () => [{ project_id: 'p1', summary: 'x', user_id: 'u1' }] },
+      projects: { list: async () => [{ project_id: 'p1', summary: 'x', user_id: 'u1', search_terms: ['DPDK'] }] },
       queue: { sendBatch: async (b) => void sent.push(...(b as { body: { run_id: string } }[])) },
     };
     await scheduleCollect(deps);

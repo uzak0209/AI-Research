@@ -6,7 +6,7 @@ import { db } from '../../db/kysely';
 import { fetchFromSource } from '../../shared/openalex/adapter';
 import { createUsage } from '../../usage';
 import { attachProblemExcerpts, REVIEW_ENDPOINT } from '../application/problem-excerpt';
-import { COLLECT_ENDPOINT, buildSearchQuery } from '../application/search-terms';
+import { COLLECT_ENDPOINT, buildSearchQuery, parseSearchTermsJson } from '../application/search-terms';
 import type { OrcaChatOk } from '../../shared/orca/chat';
 import { orcaKey } from '../../shared/orca/chat';
 import { trendPolicy } from '../../shared/orca/policy';
@@ -37,11 +37,23 @@ export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
 
 export function d1Projects(d1: D1Database): ProjectList {
   return {
-    list: () =>
-      execute<{ project_id: string; summary: string; user_id: string }>(
+    async list() {
+      const rows = await execute<{
+        project_id: string;
+        summary: string;
+        user_id: string;
+        search_terms_json: string | null;
+      }>(
         d1,
-        db.selectFrom('projects').select(['project_id', 'summary', 'user_id']).compile(),
-      ),
+        db.selectFrom('projects').select(['project_id', 'summary', 'user_id', 'search_terms_json']).compile(),
+      );
+      return rows.map((r) => ({
+        project_id: r.project_id,
+        summary: r.summary,
+        user_id: r.user_id,
+        search_terms: parseSearchTermsJson(r.search_terms_json),
+      }));
+    },
   };
 }
 
@@ -155,7 +167,7 @@ export function ingestDeps(env: Env): IngestDeps {
     papers: openAlexFetcher(env.OPENALEX_API_KEY),
     runs: d1Runs(env.DB),
     search: {
-      build: (summary) => buildSearchQuery(env, summary),
+      build: (summary, confirmed) => buildSearchQuery(env, summary, confirmed),
     },
     problemExcerpt: {
       attach: (papers) => attachProblemExcerpts(env, papers),

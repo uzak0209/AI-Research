@@ -4,8 +4,15 @@ import type { FetchedPaper } from '../../shared/papers/domain';
 import type { ScoredPaper } from '../domain';
 import type { SearchTerms } from './search-terms';
 
+export type ListedProject = {
+  project_id: string;
+  summary: string;
+  user_id: string;
+  search_terms: string[];
+};
+
 export type ProjectList = {
-  list(): Promise<{ project_id: string; summary: string; user_id: string }[]>;
+  list(): Promise<ListedProject[]>;
 };
 
 export type CollectIdempotency = {
@@ -56,7 +63,7 @@ export type RunStore = {
 };
 
 export type SearchQueryBuilder = {
-  build(summary: string): Promise<SearchTerms>;
+  build(summary: string, confirmed?: readonly string[]): Promise<SearchTerms>;
 };
 
 export type CollectUsage = {

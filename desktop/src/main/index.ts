@@ -36,7 +36,7 @@ import {
   updateTitle,
   upsertPapers,
 } from '../shared/repo.js';
-import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
+import { syncProjectFromCloud, cloudSummaryFromLocal, localSearchTerms } from '../shared/sync.js';
 import { copyIntoMypaper, listMypaperEntries, mypaperHasContent } from '../shared/mypaper.js';
 import { ensureCandidateFulltexts, fillMissingPaperAuthors } from '../shared/candidate-pdf.js';
 import {
@@ -262,29 +262,7 @@ function restartRefWatch(): void {
     // 監視できなくても起動は続ける
   }
   refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
-  mypaperWatch = watchMypaper(p.root_path, p.project_id, biblio, () => {
-    notifyMypaper();
-    notifyLibrary();
-  });
-  void ingestExistingMypaperPdfs(p.project_id, p.root_path);
-}
-
-async function ingestExistingMypaperPdfs(projectId: string, root: string): Promise<void> {
-  if (!biblio) return;
-  let added = false;
-  for (const f of listMypaperEntries(root).filter((e) => e.kind === 'pdf' && e.bytes > 0)) {
-    if (biblio.refs.findByPath(f.path)) continue;
-    try {
-      await biblio.ingestFile(projectId, f.path);
-      added = true;
-    } catch {
-      // 1 件失敗しても残りは続ける。欠けは一覧で分かる（C-07）
-    }
-  }
-  if (added) {
-    notifyMypaper();
-    notifyLibrary();
-  }
+  mypaperWatch = watchMypaper(p.root_path, notifyMypaper);
 }
 
 /** 過去の収集でトレンドが無い報告を、手元の公開論文だけで埋める。原稿は送らない */
@@ -445,7 +423,11 @@ function pushProjectToCloud(projectId: string): void {
   if (!p) return;
   const summary = cloudSummaryFromLocal(p.summary, listChunks(db, projectId));
   void cloud.client
-    .putProject(projectId, { title: p.title, summary })
+    .putProject(projectId, {
+      title: p.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    })
     .catch((e) => {
       const message = e instanceof Error ? e.message : String(e);
       if (e instanceof NotSignedInError) win?.webContents.send('auth:error', message);
@@ -646,7 +628,11 @@ function registerIpc(): void {
     if (!project.summary.trim()) throw new Error('研究の概要を設定してください');
 
     const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
-    await cloud.client.putProject(projectId, { title: project.title, summary });
+    await cloud.client.putProject(projectId, {
+      title: project.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    });
     const accepted = await cloud.client.startCollect(projectId);
 
     let inserted = 0;
@@ -791,15 +777,11 @@ function registerIpc(): void {
       try {
         const got = copyIntoMypaper(project.root_path, src);
         imported.push(got);
-        if (extname(got.path).toLowerCase() === '.pdf' && biblio) {
-          await biblio.ingestFile(projectId, got.path);
-        }
       } catch (e) {
         failed.push({ path: src, error: e instanceof Error ? e.message : String(e) });
       }
     }
     notifyMypaper();
-    notifyLibrary();
     return { imported, failed };
   });
 

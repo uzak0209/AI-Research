@@ -146,6 +146,33 @@ describe('HTTP', () => {
     expect(row?.summary).toBe('problem-aware graph learning');
   });
 
+  it('PUT /projects は search_terms を残す', async () => {
+    const { signAccessToken } = await import('../src/auth');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const res = await handleFetch(
+      new Request('https://api.test/projects/terms-proj', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: 'T',
+          summary: 'DPDK latency',
+          search_terms: ['DPDK', 'XDP'],
+        }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { search_terms: string[] };
+    expect(body.search_terms).toEqual(['DPDK', 'XDP']);
+    const row = await env.DB.prepare('SELECT search_terms_json FROM projects WHERE project_id = ?')
+      .bind('terms-proj')
+      .first<{ search_terms_json: string }>();
+    expect(JSON.parse(row?.search_terms_json ?? '[]')).toEqual(['DPDK', 'XDP']);
+  });
+
   it('refresh から新しい access を出せる', async () => {
     const { signRefreshToken, verifyToken } = await import('../src/auth');
     const refresh = await signRefreshToken(env.JWT_SIGNING_KEY!, 'sub-1');

@@ -12,6 +12,8 @@ export {
   preciseSearchQueries,
   andSearchQuery,
   parseSearchTermsJson,
+  queriesFromConfirmedTerms,
+  searchTermsFromConfirmed,
   openAlexQueryFromTerms,
   isDistinctiveSearchTerm,
   isQueryAxisTerm,

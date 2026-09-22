@@ -1,6 +1,5 @@
 // 作業フォルダ mypaper/ から読む順の正本を拾う（ADR-0001）。
-// 原稿（md/tex/typ）はクラウドへ出さない（C-01）。
-// PDF を置いたときは書誌を作り、採点材料にもする。
+// 原稿も自分の論文 PDF も同じ扱い。クラウドへ出さず、ライブラリにも入れない（C-01）。
 
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';

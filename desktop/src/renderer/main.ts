@@ -1566,8 +1566,8 @@ function renderMypaperDetail(f: MypaperFile) {
       'p',
       { class: 'note-info' },
       f.kind === 'pdf'
-        ? '置いた PDF から書誌を作り、ライブラリにも載せます。原本は mypaper に残します。'
-        : '原稿はクラウドへは出しません。',
+        ? '自分の研究として読む順に使います。ライブラリには載せません。原本は mypaper に残します。'
+        : '原稿はクラウドへは出しません。ライブラリにも入れません。',
     ),
   );
   const open = el('button', { class: 'btn', 'data-variant': 'secondary' }, '外部で開く');
@@ -1589,7 +1589,7 @@ on('mypaper-import', 'click', async () => {
   const fail = res.failed.length;
   if (fail > 0) setStatus(`配置 ${n} 件、失敗 ${fail} 件`, 'error');
   else if (n === 0) setStatus('配置をキャンセルした');
-  else setStatus(`${n} 件を mypaper に置いた。PDF は書誌を作っています`);
+  else setStatus(`${n} 件を mypaper に置いた`);
   await refreshMypaper();
 });
 

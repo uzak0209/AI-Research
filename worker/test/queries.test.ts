@@ -11,6 +11,8 @@ import {
   mergeKeywordTags,
   parseSearchTermsJson,
   preciseSearchQueries,
+  queriesFromConfirmedTerms,
+  searchTermsFromConfirmed,
 } from '../src/queries';
 import { mergeLatestPapers, pickTopPapers } from '../src/collect/application/ingest';
 import { COLLECT_DELIVER } from '../src/collect/application/search-terms';
@@ -223,6 +225,35 @@ describe('mergeLatestPapers', () => {
     );
     expect(got.map((p) => p.external_id)).toEqual(['b', 'a']);
     expect(got[1]?.title).toBe('old');
+  });
+});
+
+describe('queriesFromConfirmedTerms', () => {
+  it('先頭を軸に、残りは AND する', () => {
+    expect(queriesFromConfirmedTerms(['DPDK', 'XDP', 'RSS'])).toEqual([
+      'DPDK XDP RSS',
+      'DPDK',
+      'DPDK XDP',
+      'DPDK RSS',
+    ]);
+  });
+
+  it('空白入りの術語もクエリにする', () => {
+    expect(queriesFromConfirmedTerms(['zero-copy', 'DPDK'])).toEqual(['zero-copy DPDK', 'zero-copy']);
+  });
+});
+
+describe('searchTermsFromConfirmed', () => {
+  it('空なら null。LLM に落とす合図', () => {
+    expect(searchTermsFromConfirmed([])).toBeNull();
+    expect(searchTermsFromConfirmed(undefined)).toBeNull();
+  });
+
+  it('確定語があれば LLM を使った扱いにしない', () => {
+    const got = searchTermsFromConfirmed(['DPDK', 'XDP']);
+    expect(got?.generated).toBe(false);
+    expect(got?.usage).toBeNull();
+    expect(got?.combo).toEqual(['DPDK', 'XDP']);
   });
 });
 

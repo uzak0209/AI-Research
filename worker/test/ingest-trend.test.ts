@@ -62,6 +62,28 @@ function deps(overrides: Partial<IngestDeps> = {}): IngestDeps & { saved: unknow
   return { ...base, ...overrides, saved };
 }
 
+describe('ingestCollect の検索語', () => {
+  it('メッセージの確定語を search.build に渡す', async () => {
+    const seen: unknown[] = [];
+    const d = deps({
+      search: {
+        build: async (summary, confirmed) => {
+          seen.push({ summary, confirmed });
+          return {
+            query: 'DPDK',
+            queries: ['DPDK'],
+            generated: false,
+            usage: null,
+            combo: confirmed ? [...confirmed] : [],
+          };
+        },
+      },
+    });
+    await ingestCollect(d, { ...MSG, search_terms: ['DPDK', 'XDP'] });
+    expect(seen).toEqual([{ summary: 'DPDK latency', confirmed: ['DPDK', 'XDP'] }]);
+  });
+});
+
 describe('parseTrendReport', () => {
   it('JSON から trend と themes を取る', () => {
     expect(
