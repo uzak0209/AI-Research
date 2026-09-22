@@ -17,7 +17,7 @@
     <div class="welcome" id="welcome">
       <div class="welcome-card">
         <h1 class="welcome-title">AI-Research</h1>
-        <p class="welcome-lede">名前を付けると ~/Recycle にプロジェクトができます。</p>
+        <p class="welcome-lede">~/Recycle にプロジェクトを作成</p>
         <div class="field">
           <label for="welcome-title">プロジェクト名</label>
           <input
@@ -91,10 +91,6 @@
           </button>
         </nav>
 
-        <div class="nav-context" id="nav-feed">
-          <p class="hint" id="feed-score-hint">1 回の調査を 1 報告にまとめます。トレンドと次のテーマは、その回で集まった論文から出します。</p>
-        </div>
-
         <div class="nav-context" id="nav-library" hidden>
           <nav aria-label="ライブラリの絞り込み">
             <div class="side-group">
@@ -103,7 +99,7 @@
                 <span>すべての文献</span><span class="side-count" id="count-all">0</span>
               </button>
               <button class="side-item" data-filter="starred" aria-pressed="false">
-                <span>重要</span><span class="side-count" id="count-starred">0</span>
+                <span>ブックマーク</span><span class="side-count" id="count-starred">0</span>
               </button>
             </div>
 
@@ -127,17 +123,15 @@
           </nav>
         </div>
 
-        <div class="nav-context" id="nav-mypaper" hidden>
-          <p class="hint">自分の原稿と論文の置き場です。PDF を置くと書誌を作ります。md / tex / typ は読む順の正本で、クラウドへは出しません。</p>
-        </div>
+
       </aside>
 
       <div class="workbench">
         <div class="view" id="view-feed" role="tabpanel" aria-labelledby="tab-feed" data-active="true">
           <section class="list-pane" aria-label="調査の報告">
             <div class="pane-head">
-              <button class="btn" data-variant="primary" id="feed-collect">収集開始</button>
-              <button class="btn" data-variant="secondary" id="feed-sync">収集結果を受け取る</button>
+              <button class="btn" data-variant="primary" id="feed-collect">最新情報を調査</button>
+              <button class="btn" data-variant="secondary" id="feed-sync">調査結果を受け取る</button>
               <!-- <button class="btn" data-variant="secondary" id="feed-score">scoring</button> -->
               <button class="btn" data-variant="tertiary" id="feed-cancel" disabled>キャンセル</button>
             </div>
@@ -146,8 +140,8 @@
 
           <section class="detail-pane" id="feed-detail" aria-label="報告の詳細" aria-live="polite">
             <div class="empty-state">
-              <p class="empty-title">報告を選ぶ</p>
-              <p class="empty">左から選ぶと、その調査のトレンド・次のテーマ・見つけた論文がまとめて開きます。</p>
+              <p class="empty-title">論文を選択</p>
+              <p class="empty">調査結果から論文を選択してください。</p>
             </div>
           </section>
         </div>
@@ -193,7 +187,7 @@
           <section class="detail-pane" id="mypaper-detail" aria-label="自分の論文の詳細" aria-live="polite">
             <div class="empty-state">
               <p class="empty-title">ファイルを置く</p>
-              <p class="empty">配置するか、mypaper フォルダに PDF / 原稿を入れるとここに出ます。PDF は書誌を作ります。</p>
+              <p class="empty"> PDF / 原稿を選択して閲覧・編集できます。</p>
             </div>
           </section>
         </div>
