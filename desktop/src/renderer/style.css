@@ -112,6 +112,7 @@ html,
 body {
   height: 100%;
   margin: 0;
+  -webkit-app-region: no-drag;
 }
 
 body {
@@ -152,6 +153,15 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.titlebar-btn {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
 }
 
 body[data-platform='darwin'] .titlebar {
@@ -181,12 +191,24 @@ body[data-platform='linux'] .titlebar {
 .settings {
   width: min(32rem, calc(100vw - 48px));
   max-height: calc(100vh - 64px);
+  margin-top: 48px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--surface);
   color: var(--fg);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  -webkit-app-region: no-drag;
+}
+
+.settings *,
+.welcome,
+.welcome *,
+.shell,
+.shell *,
+.statusbar,
+.statusbar * {
+  -webkit-app-region: no-drag;
 }
 
 .settings::backdrop {
@@ -1037,6 +1059,10 @@ textarea::placeholder {
   width: 100%;
   text-align: left;
   margin-bottom: 4px;
+}
+
+.detail-back {
+  margin-bottom: var(--space-3);
 }
 
 .callout {

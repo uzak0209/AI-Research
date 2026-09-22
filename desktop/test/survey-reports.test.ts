@@ -61,6 +61,20 @@ describe('survey_reports', () => {
     expect(listPapersForRun(db, PROJ, 'run-1')[0]?.title).toBe('Paper one');
   });
 
+  it('失敗理由を保存して読む', () => {
+    upsertSurveyReport(db, {
+      run_id: 'run-fail',
+      project_id: PROJ,
+      run_date: '2026-09-22',
+      status: 'failed',
+      failed_sources: JSON.stringify([{ source: 'openalex', error: '検索語を作れなかった（LLM が全滅）' }]),
+      created_at: '2026-09-22T03:24:00Z',
+    });
+    const r = listSurveyReports(db, PROJ)[0];
+    expect(r?.status).toBe('failed');
+    expect(r?.failed_sources).toContain('検索語を作れなかった');
+  });
+
   it('trend が空で論文がある報告だけ missing に出す', () => {
     upsertPapers(db, PROJ, [
       {
