@@ -186,6 +186,7 @@ CREATE TABLE IF NOT EXISTS survey_reports (
   search_terms TEXT,
   trend        TEXT,
   themes_json  TEXT,
+  failed_sources TEXT,
   created_at   TEXT NOT NULL
 );
 

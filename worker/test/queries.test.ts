@@ -68,10 +68,10 @@ describe('parseInferredAbbreviations', () => {
 });
 
 describe('parseKeywordTags', () => {
-  it('略語と短い日本語を残し URL は捨てる', () => {
+  it('略語を残し、日本語と URL は捨てる', () => {
     expect(
       parseKeywordTags(JSON.stringify(['DPDK', 'ゼロコピー', 'https://example.com', 'RSS'])),
-    ).toEqual(['DPDK', 'ゼロコピー', 'RSS']);
+    ).toEqual(['DPDK', 'RSS']);
   });
 
   it('core を先に並べ、機能語は出さない', () => {
@@ -86,6 +86,10 @@ describe('parseKeywordTags', () => {
     expect(
       parseKeywordTags(JSON.stringify(['DPDK', 'dpdk', 'これは長すぎてキーワードとして採用しない説明の文章である'])),
     ).toEqual(['DPDK']);
+  });
+
+  it('terms キーと前後の散文でも読む', () => {
+    expect(parseKeywordTags('Here you go:\n{"terms":["DPDK","RSS"]}\n')).toEqual(['DPDK', 'RSS']);
   });
 });
 

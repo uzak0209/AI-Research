@@ -1,14 +1,14 @@
 # 指標レポート
 
 トークン/見つけた論文と点数（`coarse_score` 平均）。
-環境: `prod` / 収集 status: `ok` / 更新: 2026-09-22T02:24Z。
+環境: `dev` / 収集 status: `ok` / 更新: 2026-09-22T03:35Z。
 
 > 数値と SVG グラフは \`scripts/retro-metrics.mjs\` / \`render-charts-svg.mjs\`（決定的）。
 > 上のまとめ文は Claude（\`metrics-report\`）。無い改善は書いていない（`C-07`）。
 
 ## 今回なにをしたか
 
-PR [#61](https://github.com/uzak0209/AI-Research/pull/61): fix: 検索語の分解を LLM に任せ、機能語を軸にしない
+PR [#63](https://github.com/uzak0209/AI-Research/pull/63): fix: キーワードは英語にし、設定をいつでも開けるようにする
 
 ## 指標はどう動いたか
 

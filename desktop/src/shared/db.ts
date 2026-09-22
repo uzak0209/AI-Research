@@ -100,6 +100,7 @@ function migrate(db: Db): void {
     ['papers', 'fulltext', 'TEXT'],
     ['papers', 'authors', 'TEXT'],
     ['projects', 'last_search_terms', 'TEXT'],
+    ['survey_reports', 'failed_sources', 'TEXT'],
   ];
 
   for (const [table, column, ddl] of added) {

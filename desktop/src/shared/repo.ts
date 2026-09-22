@@ -574,8 +574,27 @@ export interface SurveyReport {
   search_terms: string | null;
   trend: string | null;
   themes_json: string | null;
+  failed_sources: string | null;
   created_at: string;
   paper_count: number;
+}
+
+export function failedSourcesText(raw: string | null | undefined): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  try {
+    const parsed: unknown = JSON.parse(t);
+    if (!Array.isArray(parsed)) return t;
+    const parts: string[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') continue;
+      const err = (item as { error?: unknown }).error;
+      if (typeof err === 'string' && err.trim()) parts.push(err.trim());
+    }
+    return parts.length ? parts.join(' / ') : t;
+  } catch {
+    return t;
+  }
 }
 
 export function upsertSurveyReport(
@@ -588,17 +607,19 @@ export function upsertSurveyReport(
     search_terms?: string[];
     trend?: string | null;
     themes?: string[];
+    failed_sources?: string | null;
     created_at: string;
   },
 ): void {
   db.prepare(
-    `INSERT INTO survey_reports (run_id, project_id, run_date, status, search_terms, trend, themes_json, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO survey_reports (run_id, project_id, run_date, status, search_terms, trend, themes_json, failed_sources, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (run_id) DO UPDATE SET
        status = excluded.status,
        search_terms = COALESCE(excluded.search_terms, survey_reports.search_terms),
        trend = COALESCE(excluded.trend, survey_reports.trend),
-       themes_json = COALESCE(excluded.themes_json, survey_reports.themes_json)`,
+       themes_json = COALESCE(excluded.themes_json, survey_reports.themes_json),
+       failed_sources = COALESCE(excluded.failed_sources, survey_reports.failed_sources)`,
   ).run(
     row.run_id,
     row.project_id,
@@ -607,6 +628,7 @@ export function upsertSurveyReport(
     row.search_terms?.length ? JSON.stringify(row.search_terms) : null,
     row.trend ?? null,
     row.themes?.length ? JSON.stringify(row.themes) : null,
+    row.failed_sources ?? null,
     row.created_at,
   );
 }
@@ -614,8 +636,8 @@ export function upsertSurveyReport(
 export function listSurveyReports(db: Db, projectId: string): SurveyReport[] {
   return db
     .prepare(
-      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
-              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.failed_sources, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id AND p.in_library = 0) AS paper_count
        FROM survey_reports r
        WHERE r.project_id = ?
        ORDER BY r.run_date DESC, r.created_at DESC`,
@@ -626,8 +648,8 @@ export function listSurveyReports(db: Db, projectId: string): SurveyReport[] {
 export function getSurveyReport(db: Db, runId: string): SurveyReport | undefined {
   return db
     .prepare(
-      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
-              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.failed_sources, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id AND p.in_library = 0) AS paper_count
        FROM survey_reports r
        WHERE r.run_id = ?`,
     )
@@ -643,7 +665,7 @@ export function listPapersForRun(db: Db, projectId: string, runId: string): Rank
               p.scored_at, p.in_library, p.problem_excerpt, p.venue, p.item_type, p.pdf_url, p.fulltext_path
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
-       WHERE p.project_id = ? AND p.run_id = ?
+       WHERE p.project_id = ? AND p.run_id = ? AND p.in_library = 0
        ORDER BY p.relevance DESC NULLS LAST, p.published_at DESC NULLS LAST, p.rowid`,
     )
     .all(projectId, runId) as unknown as RankedPaper[];
@@ -656,8 +678,8 @@ export function listPapersForRun(db: Db, projectId: string, runId: string): Rank
 export function reportsMissingTrend(db: Db, projectId: string): SurveyReport[] {
   return db
     .prepare(
-      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
-              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.failed_sources, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id AND p.in_library = 0) AS paper_count
        FROM survey_reports r
        WHERE r.project_id = ?
          AND (r.trend IS NULL OR trim(r.trend) = ''
