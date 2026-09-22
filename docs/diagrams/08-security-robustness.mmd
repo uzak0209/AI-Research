@@ -1,0 +1,42 @@
+flowchart TB
+    subgraph client["デスクトップ"]
+        ui["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='36' height='36' /><br/>レンダラ<br/>トークン無し・IPC のみ"]
+        main["<img src='https://cf-icons.pages.dev/ssl.svg' width='36' height='36' /><br/>メイン<br/>短命 JWT はメモリ"]
+        key["<img src='https://cf-icons.pages.dev/security-fingerprint-privacy.svg' width='36' height='36' /><br/>safeStorage<br/>更新トークン"]
+        hold["<img src='https://cf-icons.pages.dev/server-database.svg' width='36' height='36' /><br/>原稿 / PDF / 注釈 / 採点<br/>クラウドへ出さない"]
+    end
+
+    subgraph zone["Cloudflare ゾーン（Free）"]
+        dns["<img src='https://cf-icons.pages.dev/dns.svg' width='32' height='32' /><br/>独自ドメイン HTTPS"]
+        ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='32' height='32' /><br/>DDoS"]
+        waf["<img src='https://cf-icons.pages.dev/waf.svg' width='32' height='32' /><br/>WAF Free + カスタム 5"]
+        rl["<img src='https://cf-icons.pages.dev/rules.svg' width='32' height='32' /><br/>Rate Limit<br/>認証前・IP・10s ×1"]
+    end
+
+    subgraph worker["Workers"]
+        jwt["<img src='https://cf-icons.pages.dev/ssl.svg' width='32' height='32' /><br/>JWT 検証"]
+        gate["<img src='https://cf-icons.pages.dev/api.svg' width='32' height='32' /><br/>入力検証 → 利用者上限"]
+        sync["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>同期 GET /runs"]
+        bff["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>BFF C1/C3"]
+        cron["<img src='https://cf-icons.pages.dev/time-services.svg' width='32' height='32' /><br/>cron 投入のみ"]
+    end
+
+    subgraph store["公開面・堅牢性"]
+        d1["<img src='https://cf-icons.pages.dev/d1.svg' width='40' height='40' /><br/>D1 公開のみ<br/>判定の書き戻しなし"]
+        secrets["<img src='https://cf-icons.pages.dev/security-fingerprint-privacy.svg' width='32' height='32' /><br/>Workers Secrets"]
+        llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='32' height='32' /><br/>OrcaRouter → 上流<br/>本文は残さない"]
+        kv["<img src='https://cf-icons.pages.dev/kv.svg' width='32' height='32' /><br/>KV 冪等 run_id"]
+        q["<img src='https://cf-icons.pages.dev/queues.svg' width='32' height='32' /><br/>Queues<br/>at-least-once"]
+        obs["<img src='https://cf-icons.pages.dev/analytics.svg' width='32' height='32' /><br/>empty ≠ failed<br/>本文は残さない"]
+    end
+
+    ui --> main
+    main --> key
+    main -.-> hold
+    main -->|HTTPS Bearer| dns --> ddos --> waf --> rl --> jwt
+    jwt --> gate
+    gate --> sync --> d1
+    gate --> bff --> secrets --> llm
+    cron --> kv
+    cron --> q --> d1
+    worker -.-> obs
