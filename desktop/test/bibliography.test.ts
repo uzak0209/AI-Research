@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
@@ -10,14 +10,17 @@ import { doiFromExternalId } from '../src/bibliography/domain/doi.js';
 import {
   BIB_BEGIN,
   BIB_END,
+  hashInner,
+  planSplice,
   renderBibtex,
   renderHayagriva,
-  spliceManaged,
 } from '../src/bibliography/domain/cite-format.js';
 import { httpsPdfUrl } from '../src/bibliography/domain/oa-url.js';
 import { hintFromReference, isEmptyRecord, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
 import { candidatePdfPath } from '../src/shared/workspace.js';
-import { bffBibliographyGateway } from '../src/bibliography/infrastructure/adapters.js';
+import { bffBibliographyGateway, fsCiteFiles } from '../src/bibliography/infrastructure/adapters.js';
+import { openDb } from '../src/shared/db.js';
+import { createProject, setProjectRoot } from '../src/shared/repo.js';
 
 function client(res: Response | Error): CloudClient {
   return {
@@ -122,7 +125,7 @@ function deps(over: Partial<BibliographyDeps> & { refs?: ReferenceRepo } = {}): 
       rememberWrite() {},
       wasWritten: () => false,
     },
-    cites: { exportAll() {} },
+    cites: { exportAll: () => 'ok' },
     extract: {
       fromBytes: async () => ({
         title: 'From PDF',
@@ -188,13 +191,33 @@ describe('mergeRecord', () => {
   });
 });
 
-describe('cite markers', () => {
-  it('マーカーが無ければ末尾に足す。片方だけなら触らない（C-08）', () => {
-    expect(spliceManaged('hello', '@article{a,}', BIB_BEGIN, BIB_END)).toContain(BIB_BEGIN);
-    expect(spliceManaged(`${BIB_BEGIN}\nold\n${BIB_END}\n`, '@article{a,}', BIB_BEGIN, BIB_END)).toContain(
-      '@article{a,}',
-    );
-    expect(spliceManaged(BIB_BEGIN, 'x', BIB_BEGIN, BIB_END)).toBeNull();
+describe('cite markers (planSplice)', () => {
+  it('初回はマーカーが無ければ末尾に足す', () => {
+    const plan = planSplice('hello', '@article{a,}', BIB_BEGIN, BIB_END, null);
+    expect(plan.status).toBe('create');
+    if (plan.status === 'create' || plan.status === 'update') expect(plan.next).toContain(BIB_BEGIN);
+  });
+
+  it('マーカーが両方あり前回分と一致すれば再生成する', () => {
+    const lastHash = hashInner('old');
+    const plan = planSplice(`${BIB_BEGIN}\nold\n${BIB_END}\n`, '@article{a,}', BIB_BEGIN, BIB_END, lastHash);
+    expect(plan.status).toBe('update');
+    if (plan.status === 'create' || plan.status === 'update') expect(plan.next).toContain('@article{a,}');
+  });
+
+  it('片方だけなら触らない（C-08）', () => {
+    expect(planSplice(BIB_BEGIN, 'x', BIB_BEGIN, BIB_END, null).status).toBe('skip_broken');
+  });
+
+  it('マーカーが消され、前回書き出し記録があれば復元しない（C-08 却下事項）', () => {
+    const lastHash = hashInner('old');
+    expect(planSplice('hello（マーカーなし）', 'x', BIB_BEGIN, BIB_END, lastHash).status).toBe('skip_removed');
+  });
+
+  it('マーカー内が前回書き出し分と食い違えば手編集とみなし上書きしない（C-08）', () => {
+    const lastHash = hashInner('old');
+    const edited = `${BIB_BEGIN}\nold\n手で足した行\n${BIB_END}\n`;
+    expect(planSplice(edited, '@article{a,}', BIB_BEGIN, BIB_END, lastHash).status).toBe('skip_conflict');
   });
 
   it('BibTeX と Hayagriva を出す', () => {
@@ -210,6 +233,87 @@ describe('cite markers', () => {
     };
     expect(renderBibtex([item])).toContain('@article{ada2024,');
     expect(renderHayagriva([item])).toContain('ada2024:');
+  });
+});
+
+describe('fsCiteFiles.exportAll (C-08)', () => {
+  const item = {
+    bibtex_key: 'ada2024',
+    title: 'GNN',
+    authors: 'Ada Lovelace',
+    year: 2024,
+    doi: '10.1234/foo',
+    url: null,
+    venue: 'SIGCOMM',
+    item_type: 'article',
+  };
+
+  function setup() {
+    const dir = mkdtempSync(join(tmpdir(), 'biblio-cite-'));
+    mkdirSync(join(dir, 'mypaper'), { recursive: true });
+    const bibPath = join(dir, 'mypaper', 'refs.bib');
+    writeFileSync(bibPath, '');
+    const db = openDb({ path: ':memory:' });
+    const project = createProject(db, { title: 't', summary: 's', embed_model: 'm' });
+    setProjectRoot(db, project.project_id, dir);
+    return { dir, bibPath, db, projectId: project.project_id };
+  }
+
+  it('初回は新規にマーカーを作る', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      expect(readFileSync(bibPath, 'utf8')).toContain('@article{ada2024,');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('マーカーごと消された後は復元しない（ADR-0003 却下事項）', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      // 利用者がマーカーを含めて丸ごと消した
+      writeFileSync(bibPath, '% 自分のメモだけ残す\n');
+      expect(cites.exportAll(projectId, [item])).toBe('skipped');
+      expect(readFileSync(bibPath, 'utf8')).toBe('% 自分のメモだけ残す\n');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('マーカー内の手編集は上書きしない（ADR-0003 C-08）', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      const generated = readFileSync(bibPath, 'utf8');
+      // マーカー内に手で行を足す
+      writeFileSync(bibPath, generated.replace('@article{ada2024,', '% 手編集\n@article{ada2024,'));
+      const edited = readFileSync(bibPath, 'utf8');
+      expect(cites.exportAll(projectId, [{ ...item, year: 2025 }])).toBe('conflict');
+      expect(readFileSync(bibPath, 'utf8')).toBe(edited);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('手編集が無ければ内容の更新で再生成できる', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const cites = fsCiteFiles(db);
+      expect(cites.exportAll(projectId, [item])).toBe('ok');
+      expect(cites.exportAll(projectId, [{ ...item, year: 2025 }])).toBe('ok');
+      expect(readFileSync(bibPath, 'utf8')).toContain('year = {2025}');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -350,6 +454,7 @@ describe('followReference', () => {
         cites: {
           exportAll(_id, items) {
             cites.push(items.map((i) => i.bibtex_key));
+            return 'ok';
           },
         },
       }),

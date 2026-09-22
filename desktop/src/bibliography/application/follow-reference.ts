@@ -1,16 +1,16 @@
 import { copyFileSync, existsSync } from 'node:fs';
 import { hintFromReference, mergeRecord, type ReferenceSnapshot } from '../domain/record.js';
 import { httpsPdfUrl } from '../domain/oa-url.js';
-import type { BibliographyDeps, PdfDownload } from './ports.js';
+import type { BibliographyDeps, CiteExportResult, PdfDownload } from './ports.js';
 import { candidatePdfPath } from '../../shared/workspace.js';
 
 export async function followReference(
   deps: BibliographyDeps,
   projectId: string,
   referenceId: string,
-): Promise<{ pdf: PdfDownload | 'skipped' }> {
+): Promise<{ pdf: PdfDownload | 'skipped'; cite: CiteExportResult }> {
   const row = deps.refs.get(referenceId);
-  if (!row) return { pdf: 'skipped' };
+  if (!row) return { pdf: 'skipped', cite: 'skipped' };
 
   const initialPage = await firstPage(deps, projectId, referenceId);
   let pdfUrl: string | null = null;
@@ -50,8 +50,8 @@ export async function followReference(
     }
   }
 
-  deps.cites.exportAll(projectId, deps.refs.citeItems(projectId));
-  return { pdf };
+  const cite = deps.cites.exportAll(projectId, deps.refs.citeItems(projectId));
+  return { pdf, cite };
 }
 
 async function completeFrom(
