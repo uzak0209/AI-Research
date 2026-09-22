@@ -84,18 +84,25 @@ export async function chatCompletion(
   messages: { role: 'system' | 'user'; content: string }[],
   policy: OrcaClassPolicy = ORCA_POLICY.C1,
   json = false,
+  timeoutMs?: number,
 ): Promise<OrcaChatResult> {
   // 宛先ごとに比べるため、往復の実時間を測る。上流の応答時間とネットワークを含む
   const startedAt = Date.now();
-  const res = await fetch(ORCA_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-      'x-orcarouter-include-cost': 'true',
-    },
-    body: JSON.stringify(chatBody(policy, messages, json)),
-  });
+  let res: Response;
+  try {
+    res = await fetch(ORCA_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+        'x-orcarouter-include-cost': 'true',
+      },
+      body: JSON.stringify(chatBody(policy, messages, json)),
+      signal: timeoutMs != null ? AbortSignal.timeout(timeoutMs) : undefined,
+    });
+  } catch {
+    return { ok: false, status: 504 };
+  }
 
   if (!res.ok) {
     return { ok: false, status: res.status };

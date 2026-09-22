@@ -12,6 +12,9 @@
   <body>
     <header class="titlebar" aria-hidden="false">
       <p class="titlebar-title" id="titlebar-title">AI-Research</p>
+      <button type="button" class="btn titlebar-btn" data-variant="tertiary" id="open-settings" hidden>
+        設定
+      </button>
     </header>
 
     <div class="welcome" id="welcome">
@@ -138,7 +141,6 @@
             <div class="pane-head">
               <button class="btn" data-variant="primary" id="feed-collect">収集開始</button>
               <button class="btn" data-variant="secondary" id="feed-sync">収集結果を受け取る</button>
-              <!-- <button class="btn" data-variant="secondary" id="feed-score">scoring</button> -->
               <button class="btn" data-variant="tertiary" id="feed-cancel" disabled>キャンセル</button>
             </div>
             <div class="scroll" id="feed-list"></div>
@@ -201,10 +203,10 @@
     </div>
 
     <dialog class="settings" id="settings" aria-labelledby="settings-title">
-      <form method="dialog" class="settings-form" id="settings-form">
+      <div class="settings-form" id="settings-form">
         <header class="settings-head">
           <h2 class="settings-title" id="settings-title">設定</h2>
-          <button type="submit" class="btn" data-variant="tertiary" value="cancel" id="settings-close">
+          <button type="button" class="btn" data-variant="tertiary" id="settings-close">
             閉じる
           </button>
         </header>
@@ -241,11 +243,11 @@
 
           <div class="field">
             <label>キーワード</label>
-            <p class="hint">トレンド調査や競合論文を探すためのキーワードを設定してください。</p>
+            <p class="hint">OpenAlex 検索用。英語の専門語・略語にしてください。推測は日本語の概要を英訳します。</p>
             <div class="keyword-tags" id="keyword-tags"></div>
             <div class="keyword-add-row">
               <label class="visually-hidden" for="keyword-add">キーワードを足す</label>
-              <input id="keyword-add" type="text" autocomplete="off" placeholder="追加（Enter）" />
+              <input id="keyword-add" type="text" autocomplete="off" placeholder="英語で追加（Enter）" />
               <button type="button" class="btn" data-variant="secondary" id="keyword-infer">
                概要から推測
               </button>
@@ -266,11 +268,6 @@
             </div>
             <div id="proj-tree" hidden>
               <p class="statusbar-path" id="settings-root-path"></p>
-              <div class="actions" data-align="start">
-                <button type="button" class="btn" data-variant="secondary" id="proj-reveal">
-                  Finder で表示
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -278,7 +275,7 @@
         <footer class="settings-foot">
           <button type="button" class="btn" data-variant="primary" id="proj-save">保存</button>
         </footer>
-      </form>
+      </div>
     </dialog>
 
     <footer class="statusbar">

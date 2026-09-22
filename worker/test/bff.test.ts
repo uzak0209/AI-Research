@@ -370,6 +370,29 @@ describe('POST /bff/keywords（C1）', () => {
     expect(JSON.stringify(orca?.init?.body)).toContain('ゼロコピー');
     expect(JSON.stringify(orca?.init?.body)).not.toContain('manuscript');
     expect(JSON.stringify(orca?.init?.body)).not.toContain('unpublished');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('json_object');
+  });
+
+  it('Orca が落ちたら 502', async () => {
+    mockUpstream({ orcaStatus: 502 });
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '高スループット NIC でゼロコピーと DPDK' }),
+    });
+    expect(res.status).toBe(502);
+  });
+
+  it('検証失敗は { error, detail } の文字列で返す', async () => {
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '' }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: unknown; detail: unknown };
+    expect(typeof body.error).toBe('string');
+    expect(typeof body.detail).toBe('string');
+    expect(body.error).toBe('invalid_request');
+    expect(String(body.detail)).not.toContain('[object Object]');
   });
 });
 

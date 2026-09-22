@@ -72,6 +72,7 @@ export async function syncProjectFromCloud(
       search_terms: run.search_terms,
       trend: run.trend,
       themes: run.themes,
+      failed_sources: run.failed_sources_json,
       created_at: run.created_at,
     });
   }

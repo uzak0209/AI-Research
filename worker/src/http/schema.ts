@@ -87,7 +87,8 @@ export const TrendResponseSchema = z
 
 export const KeywordsBodySchema = z
   .object({
-    topic: z.string().trim().min(1).max(2000),
+    // 設定の「研究の概要」は論文抜粋になりうる。2000 だと Zod が落ちて原因が消えていた
+    topic: z.string().trim().min(1).max(12000),
   })
   .openapi('KeywordsBody');
 
