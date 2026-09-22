@@ -292,7 +292,7 @@ function renderKeywordTags(): void {
   if (!box) return;
   box.replaceChildren();
   if (keywordTags.length === 0) {
-    box.append(el('p', { class: 'note-info' }, 'まだありません。「課題意識から推測」を押すか、下で足します。'));
+    box.append(el('p', { class: 'note-info' }, 'キーワード未設定'));
     return;
   }
   for (const t of keywordTags) {
