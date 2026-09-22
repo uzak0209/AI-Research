@@ -1,5 +1,5 @@
-import { REFRESH_KEY, type SettingsStore } from './settings';
-import type { SecretBox } from './secret-box';
+import { REFRESH_KEY, type SettingsStore } from './settings.js';
+import type { SecretBox } from './secret-box.js';
 
 /**
  * メインプロセス / CLI が持つ。レンダラに渡さない（ADR-0001）。
