@@ -199,6 +199,9 @@ export type SyncPaper = {
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** 掲載誌・会議名。候補の時点で揃う（書誌補完を呼ばないため） */
+  venue?: string | null;
+  item_type?: string | null;
   /** OA の直 PDF。無ければ未取得（C-07）。取得はデスクトップ（ADR-0003） */
   pdf_url?: string | null;
   coarse_score: number | null;

@@ -16,7 +16,13 @@ import {
   renderHayagriva,
 } from '../src/bibliography/domain/cite-format.js';
 import { httpsPdfUrl } from '../src/bibliography/domain/oa-url.js';
-import { hintFromReference, isEmptyRecord, mergeRecord, type ReferenceSnapshot } from '../src/bibliography/domain/record.js';
+import {
+  hintFromReference,
+  isEmptyRecord,
+  mergeRecord,
+  needsCompletion,
+  type ReferenceSnapshot,
+} from '../src/bibliography/domain/record.js';
 import { candidatePdfPath } from '../src/shared/workspace.js';
 import { bffBibliographyGateway, fsCiteFiles } from '../src/bibliography/infrastructure/adapters.js';
 import { openDb } from '../src/shared/db.js';
@@ -58,7 +64,10 @@ function snapshot(over: Partial<ReferenceSnapshot> = {}): ReferenceSnapshot {
   };
 }
 
-function memoryRepo(initial: ReferenceSnapshot[] = []): ReferenceRepo & { rows: Map<string, ReferenceSnapshot> } {
+function memoryRepo(
+  initial: ReferenceSnapshot[] = [],
+  opts: { paperPdfUrl?: string | null } = {},
+): ReferenceRepo & { rows: Map<string, ReferenceSnapshot> } {
   const rows = new Map(initial.map((r) => [r.reference_id, r]));
   const attachments = new Map<string, { path: string }[]>();
   const byPath = new Map<string, string>();
@@ -100,6 +109,7 @@ function memoryRepo(initial: ReferenceSnapshot[] = []): ReferenceRepo & { rows: 
     },
     projectRoot: () => '/proj',
     paperId: () => null,
+    paperPdfUrl: () => opts.paperPdfUrl ?? null,
     citeItems: () =>
       [...rows.values()].map((r) => ({
         bibtex_key: r.bibtex_key,
@@ -160,6 +170,62 @@ describe('hintFromReference', () => {
         abstract: null,
       }),
     ).toEqual({ title: 'GNN', year: 2024, doi: '10.1234/foo' });
+  });
+});
+
+describe('needsCompletion', () => {
+  it('引用が書ける行は補完しない（著者・年・掲載誌か DOI）', () => {
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: 'SIGCOMM' }))).toBe(false);
+    // preprint は掲載誌が無く DOI で足りる
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: null, doi: '10.1/a' }))).toBe(false);
+  });
+
+  it('欠けていれば補完する', () => {
+    expect(needsCompletion(snapshot({ authors: null, year: 2024, venue: 'SIGCOMM' }))).toBe(true);
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: null, venue: 'SIGCOMM' }))).toBe(true);
+    expect(needsCompletion(snapshot({ authors: 'Ada', year: 2024, venue: null, doi: null }))).toBe(true);
+    expect(needsCompletion(snapshot({ title: '  ', authors: 'Ada', year: 2024, venue: 'X' }))).toBe(true);
+  });
+});
+
+describe('followReference の補完省略', () => {
+  const complete = snapshot({ authors: 'Ada Lovelace', year: 2024, venue: 'SIGCOMM' });
+
+  it('書誌が揃っていれば LLM を呼ばない', async () => {
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({ refs: memoryRepo([complete]), gateway });
+
+    await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).not.toHaveBeenCalled();
+  });
+
+  it('補完を飛ばしても候補の直リンクから PDF を取る', async () => {
+    const download = vi.fn(async () => 'ok' as const);
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({
+      refs: memoryRepo([complete], { paperPdfUrl: 'https://arxiv.org/pdf/2409.00001.pdf' }),
+      gateway,
+      pdfs: { download, rememberWrite() {}, wasWritten: () => false },
+    });
+
+    const got = await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).not.toHaveBeenCalled();
+    expect(download).toHaveBeenCalledWith(
+      'https://arxiv.org/pdf/2409.00001.pdf',
+      '/proj/references/gnn2024.pdf',
+    );
+    expect(got.pdf).toBe('ok');
+  });
+
+  it('欠けている行はこれまでどおり補完する', async () => {
+    const gateway = { complete: vi.fn(async () => ({ record, pdf_url: null })) };
+    const d = deps({ refs: memoryRepo([snapshot({ authors: null })]), gateway });
+
+    await followReference(d, 'p1', 'r1');
+
+    expect(gateway.complete).toHaveBeenCalled();
   });
 });
 

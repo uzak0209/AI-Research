@@ -276,6 +276,8 @@ app.openapi(
             abstract: string | null;
             url: string | null;
             published_at: string | null;
+            venue: string | null;
+            item_type: string | null;
             pdf_url: string | null;
             coarse_score: number | null;
             problem_excerpt: string | null;
@@ -292,6 +294,8 @@ app.openapi(
                 'abstract',
                 'url',
                 'published_at',
+                'venue',
+                'item_type',
                 'pdf_url',
                 'coarse_score',
                 'problem_excerpt',
@@ -327,6 +331,8 @@ app.openapi(
             abstract: p.abstract,
             url: p.url,
             published_at: p.published_at,
+            venue: p.venue,
+            item_type: p.item_type,
             pdf_url: p.pdf_url,
             coarse_score: p.coarse_score,
             problem_excerpt: p.problem_excerpt,

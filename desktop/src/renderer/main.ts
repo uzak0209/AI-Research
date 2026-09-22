@@ -48,6 +48,8 @@ interface RankedPaper {
   nearest_chunk_sim: number | null;
   in_library: number;
   problem_excerpt: string | null;
+  venue?: string | null;
+  item_type?: string | null;
   pdf_url?: string | null;
   fulltext_path?: string | null;
 }
@@ -1368,6 +1370,8 @@ function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
         year: yearFromPublishedAt(p.published_at),
         abstract: p.abstract,
         url: p.url,
+        venue: p.venue ?? null,
+        item_type: p.item_type ?? undefined,
         doi: p.external_id && /^10\.\d{4,}/.test(p.external_id) ? p.external_id : null,
         paper_id: p.paper_id,
       }),

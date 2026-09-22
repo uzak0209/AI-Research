@@ -78,6 +78,8 @@ describe('syncProjectFromCloud', () => {
                 abstract: 'ab',
                 url: null,
                 published_at: null,
+                venue: 'SIGCOMM',
+                item_type: 'article',
                 pdf_url: 'https://arxiv.org/pdf/2409.00001.pdf',
                 coarse_score: 0.5,
                 problem_excerpt: 'problem here',
@@ -119,12 +121,21 @@ describe('syncProjectFromCloud', () => {
     expect(reports.find((r) => r.run_id === 'run-2')?.paper_count).toBe(0);
 
     const row = db
-      .prepare('SELECT problem_excerpt, authors, pdf_url FROM papers WHERE project_id = ?')
-      .get(PROJ) as { problem_excerpt: string; authors: string; pdf_url: string };
+      .prepare('SELECT problem_excerpt, authors, pdf_url, venue, item_type FROM papers WHERE project_id = ?')
+      .get(PROJ) as {
+      problem_excerpt: string;
+      authors: string;
+      pdf_url: string;
+      venue: string;
+      item_type: string;
+    };
     expect(row.problem_excerpt).toBe('problem here');
     expect(row.authors).toBe('Ada Lovelace');
     // 収集時に取れた直 PDF はそのまま手元へ。取得はデスクトップ（ADR-0003）
     expect(row.pdf_url).toBe('https://arxiv.org/pdf/2409.00001.pdf');
+    // 掲載誌と種別も届く。保存時に書誌補完を呼ばないため
+    expect(row.venue).toBe('SIGCOMM');
+    expect(row.item_type).toBe('article');
   });
 
   it('after は last_run_id を渡す', async () => {

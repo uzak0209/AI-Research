@@ -144,6 +144,9 @@ export const RunPaperSchema = z
     abstract: z.string().nullable(),
     url: z.string().nullable(),
     published_at: z.string().nullable(),
+    /** 掲載誌・会議名。引用に要るので候補の時点で載せる */
+    venue: z.string().nullable(),
+    item_type: z.string().nullable(),
     /** OA の直 PDF。無ければ null = 未取得（C-07）。取得はデスクトップ */
     pdf_url: z.string().nullable(),
     coarse_score: z.number().nullable(),

@@ -56,6 +56,8 @@ export async function syncProjectFromCloud(
         abstract: p.abstract,
         url: p.url,
         published_at: p.published_at,
+        venue: p.venue ?? null,
+        item_type: p.item_type ?? null,
         pdf_url: p.pdf_url ?? null,
         coarse_score: p.coarse_score,
         problem_excerpt: p.problem_excerpt,

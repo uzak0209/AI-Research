@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS papers (
   abstract          TEXT,
   url               TEXT,
   published_at      TEXT,
+  venue             TEXT,                   -- 掲載誌・会議名。ライブラリへ渡す（FR-05）
+  item_type         TEXT,                   -- 引用の種別（article / preprint …）
   coarse_score      REAL,                   -- クラウドの粗選別
   problem_excerpt   TEXT,                   -- クラウドの課題意識抜粋（FR-15）
   pdf_url           TEXT,                   -- OA 直リンク（取得済み／解決済み）

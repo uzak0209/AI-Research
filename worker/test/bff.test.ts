@@ -4,6 +4,7 @@ import { signAccessToken } from '../src/auth';
 import { handleFetch } from '../src/index';
 import { ORCA_CHAT_URL } from '../src/shared/orca/chat';
 import { TREND_MAX_TOKENS } from '../src/shared/orca/policy';
+import { dailyCallLimit } from '../src/usage';
 import { JEV_URL } from '../src/shared/jev/client';
 import { trendPrompt } from '../src/trend';
 import { utcDate } from '../src/shared/date';
@@ -313,11 +314,12 @@ describe('POST /bff/trends（C1）', () => {
   });
 
   it('上限に達していたら Orca の前に 429（NFR-04）', async () => {
+    // 上限は env の var。値を変えてもこのテストが意味を失わないようにする
     await env.DB.prepare(
       `INSERT INTO llm_usage (user_id, usage_date, endpoint, classification, model, calls, tokens)
-       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', 20, 0)`,
+       VALUES (?, ?, '/bff/trends', 'C1', 'openai/gpt-4o-mini', ?, 0)`,
     )
-      .bind(PROJECT_USER, utcDate())
+      .bind(PROJECT_USER, utcDate(), dailyCallLimit(env.LLM_DAILY_CALL_LIMIT))
       .run();
 
     const calls = mockUpstream({

@@ -105,6 +105,14 @@ export function sqliteReferenceRepo(db: Db): ReferenceRepo {
     paperId(referenceId) {
       return getReference(db, referenceId)?.paper_id ?? null;
     },
+    paperPdfUrl(referenceId) {
+      const paperId = getReference(db, referenceId)?.paper_id;
+      if (!paperId) return null;
+      const row = db
+        .prepare('SELECT pdf_url FROM papers WHERE paper_id = ?')
+        .get(paperId) as { pdf_url: string | null } | undefined;
+      return row?.pdf_url ?? null;
+    },
     citeItems(projectId): CiteItem[] {
       return listReferences(db, projectId).map((r) => ({
         bibtex_key: r.bibtex_key,

@@ -26,7 +26,7 @@ import type { ScoredPaper } from '../domain';
 /** D1 の 1 文あたりのバインド変数の上限 */
 const D1_MAX_BIND_PARAMS = 100;
 /** run_papers に 1 行あたり入れる列数 */
-const RUN_PAPER_COLUMNS = 11;
+const RUN_PAPER_COLUMNS = 13;
 
 export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
   return {
@@ -123,6 +123,8 @@ export function d1Runs(d1: D1Database): RunStore {
                   abstract: p.abstract,
                   url: p.url,
                   published_at: p.published_at,
+                  venue: p.venue ?? null,
+                  item_type: p.item_type ?? null,
                   pdf_url: p.pdf_url ?? null,
                   coarse_score: p.coarse_score,
                   problem_excerpt: p.problem_excerpt,
