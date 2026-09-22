@@ -239,6 +239,33 @@ describe('POST /bff/trends（C1）', () => {
     expect(JSON.stringify(usage)).not.toContain('100Gbps 向け');
   });
 
+  it('収集済み論文を渡したら OpenAlex を呼ばず themes を返す', async () => {
+    const calls = mockUpstream({
+      papers: [{ id: 'https://openalex.org/W9', display_name: 'should not fetch' }],
+      orca: orcaBody(JSON.stringify({ trend: 'この集合では offload が増えている', themes: ['XDP offload', 'NIC'] })),
+    });
+    const res = await authed('/bff/trends', {
+      method: 'POST',
+      body: JSON.stringify({
+        topic: 'DPDK',
+        papers: [
+          {
+            title: 'User space I/O',
+            abstract: 'DPDK poll mode',
+            url: 'https://doi.org/10.1/a',
+            published_at: '2026-06-16',
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { summary: string; themes: string[]; papers: { title: string }[] };
+    expect(body.summary).toContain('offload');
+    expect(body.themes).toEqual(['XDP offload', 'NIC']);
+    expect(body.papers[0]?.title).toBe('User space I/O');
+    expect(calls.some((c) => c.url.includes('openalex.org'))).toBe(false);
+  });
+
   it('INTERACTIVE キーがあれば ORCAROUTER_API_KEY なしでも呼べる', async () => {
     const calls = mockUpstream({
       papers: [{ id: 'W1', display_name: 'x' }],
@@ -303,6 +330,40 @@ describe('POST /bff/trends（C1）', () => {
   it('C2 はまだ 501', async () => {
     const res = await authed('/bff/themes', { method: 'POST' });
     expect(res.status).toBe(501);
+  });
+});
+
+describe('POST /bff/keywords（C1）', () => {
+  it('Bearer 無しなら 401', async () => {
+    const res = await handleFetch(
+      new Request('https://api.test/bff/keywords', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ topic: 'DPDK ゼロコピー' }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it('課題意識から terms を返し、原稿は載せない', async () => {
+    const terms = ['DPDK', 'RSS', 'XDP', 'eBPF', 'NIC', 'PMD', 'VFIO', 'SR-IOV', 'OVS', 'AF_XDP', 'VPP', 'NFV', 'QEMU', 'kTLS', 'VXLAN', 'GENEVE', 'CNI', 'UPF', 'IPv6', 'QoS'];
+    const calls = mockUpstream({
+      orca: orcaBody(JSON.stringify(terms)),
+    });
+    const res = await authed('/bff/keywords', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '高スループット NIC でゼロコピーと DPDK' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { classification: string; terms: string[] };
+    expect(body.classification).toBe('C1');
+    expect(body.terms).toContain('DPDK');
+    expect(body.terms.length).toBeGreaterThanOrEqual(20);
+    const orca = calls.find((c) => c.url.includes('orcarouter.ai'));
+    expect(JSON.stringify(orca?.init?.body)).toContain('ゼロコピー');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('manuscript');
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('unpublished');
   });
 });
 

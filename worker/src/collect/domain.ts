@@ -51,6 +51,8 @@ export type ScoredPaper = {
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** OA の直 PDF。無ければ null = 未取得（C-07） */
+  pdf_url?: string | null;
   coarse_score: number;
   problem_excerpt: string | null;
 };

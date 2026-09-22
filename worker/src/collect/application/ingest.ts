@@ -20,12 +20,17 @@ export function mergeLatestPapers(papers: FetchedPaper[], take: number): Fetched
     .slice(0, take);
 }
 
-/** 粗い一致を優先し、同点なら新しい順。利用者に渡す上位だけ残す */
+/**
+ * 粗い一致を優先し、同点なら全文が読めるもの（OA 直 PDF あり）、その次に新しい順。
+ * 読めない候補を上位に置いても読む順として役に立たない（ADR-0003）。
+ */
 export function pickTopPapers(papers: ScoredPaper[], take: number): ScoredPaper[] {
   return [...papers]
     .sort((a, b) => {
       const score = (b.coarse_score ?? 0) - (a.coarse_score ?? 0);
       if (score !== 0) return score;
+      const pdf = (b.pdf_url ? 1 : 0) - (a.pdf_url ? 1 : 0);
+      if (pdf !== 0) return pdf;
       return (b.published_at ?? '').localeCompare(a.published_at ?? '');
     })
     .slice(0, take);
@@ -77,6 +82,17 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
     failure = e instanceof Error ? e.message : String(e);
   }
 
-  await deps.runs.save(msg, papers, failure, search.combo);
+  let report = { trend: null as string | null, themes: [] as string[] };
+  if (!failure && papers.length > 0) {
+    try {
+      const analyzed = await deps.trend.analyze(msg.summary, papers);
+      report = analyzed.report;
+      if (analyzed.usage) await deps.usage.recordTrend?.(msg, analyzed.usage);
+    } catch {
+      // 論文は残す。トレンドが欠けたことは報告で見せる（C-07）
+    }
+  }
+
+  await deps.runs.save(msg, papers, failure, search.combo, report);
   if (failure) throw new Error(failure);
 }

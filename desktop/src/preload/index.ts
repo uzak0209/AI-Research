@@ -67,6 +67,8 @@ const api = {
   listClaims: (projectId: string) => ipcRenderer.invoke('claims:list', projectId),
   setClaims: (projectId: string, claims: string[]) =>
     ipcRenderer.invoke('claims:set', projectId, claims),
+  inferKeywords: (topic: string) =>
+    ipcRenderer.invoke('bff:keywords', topic) as Promise<{ terms: string[] }>,
 
   // --- 新着候補 ---
   ranked: (projectId: string) => ipcRenderer.invoke('papers:ranked', projectId),
@@ -79,6 +81,34 @@ const api = {
     const h = (_: unknown, e: unknown) => cb(e);
     ipcRenderer.on('score:event', h);
     return () => ipcRenderer.off('score:event', h);
+  },
+
+  reports: {
+    list: (projectId: string) =>
+      ipcRenderer.invoke('reports:list', projectId) as Promise<{
+        reports: unknown[];
+        unscored: number;
+        unscoredMissingPdf: number;
+        scoreMode: 'mypaper' | 'blend';
+        searchTerms: string[];
+      }>,
+    get: (projectId: string, runId: string) => ipcRenderer.invoke('reports:get', projectId, runId),
+  },
+
+  mypaper: {
+    list: (projectId: string) => ipcRenderer.invoke('mypaper:list', projectId),
+    import: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:import', projectId) as Promise<{
+        imported: { path: string; existed: boolean }[];
+        failed: { path: string; error: string }[];
+      }>,
+    reveal: (projectId: string) =>
+      ipcRenderer.invoke('mypaper:reveal', projectId) as Promise<{ ok: true } | { ok: false; error: string }>,
+    onChanged: (cb: () => void) => {
+      const h = () => cb();
+      ipcRenderer.on('mypaper:changed', h);
+      return () => ipcRenderer.off('mypaper:changed', h);
+    },
   },
 
   // --- ライブラリ（FR-05 / FR-14） ---

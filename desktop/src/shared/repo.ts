@@ -26,6 +26,8 @@ export interface PaperInput {
   abstract: string | null;
   url?: string | null;
   published_at?: string | null;
+  /** 収集時に取れた OA 直 PDF。後から引き直さない */
+  pdf_url?: string | null;
   coarse_score?: number | null;
   problem_excerpt?: string | null;
   run_id?: string | null;
@@ -47,6 +49,10 @@ export interface RankedPaper {
   scored_at: string | null;
   in_library: number;
   problem_excerpt: string | null;
+  /** OA 直 PDF の有無。無ければ「未取得」と出す（C-07） */
+  pdf_url?: string | null;
+  /** 手元に落ちている PDF のパス。無ければ null */
+  fulltext_path?: string | null;
 }
 
 /** published_at（YYYY-MM-DD）から年だけ。形が崩れていたら null（C-07） */
@@ -249,8 +255,8 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
   try {
     const ins = db.prepare(
       `INSERT INTO papers
-         (paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at, coarse_score, problem_excerpt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         (paper_id, project_id, run_id, external_id, source, title, authors, abstract, url, published_at, pdf_url, coarse_score, problem_excerpt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (project_id, source, external_id) DO NOTHING`,
     );
     const fillAuthors = db.prepare(
@@ -258,6 +264,12 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         WHERE project_id = ? AND source = ? AND external_id = ?
           AND (authors IS NULL OR trim(authors) = '')
           AND ? IS NOT NULL`,
+    );
+    // 既存行にも後から来た OA 直 PDF を入れる。既にあるものは触らない
+    const fillPdfUrl = db.prepare(
+      `UPDATE papers SET pdf_url = ?
+        WHERE project_id = ? AND source = ? AND external_id = ?
+          AND (pdf_url IS NULL OR trim(pdf_url) = '')`,
     );
     for (const p of papers) {
       const r = ins.run(
@@ -271,12 +283,16 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         p.abstract ?? null,
         p.url ?? null,
         p.published_at ?? null,
+        p.pdf_url ?? null,
         p.coarse_score ?? null,
         p.problem_excerpt ?? null,
       );
       inserted += Number(r.changes);
       if (p.authors?.trim()) {
         fillAuthors.run(p.authors.trim(), projectId, p.source, p.external_id, p.authors.trim());
+      }
+      if (p.pdf_url?.trim()) {
+        fillPdfUrl.run(p.pdf_url.trim(), projectId, p.source, p.external_id);
       }
     }
     db.exec('COMMIT');
@@ -446,7 +462,7 @@ export function listRanked(db: Db, projectId: string, limit = 100): RankedPaper[
       `SELECT p.paper_id, p.external_id, p.title, p.authors, p.abstract, p.url, p.published_at,
               p.relevance, p.sim_summary,
               p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
-              p.scored_at, p.in_library, p.problem_excerpt
+              p.scored_at, p.in_library, p.problem_excerpt, p.pdf_url, p.fulltext_path
        FROM papers p
        LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
        WHERE p.project_id = ? AND p.scored_at IS NOT NULL AND p.in_library = 0
@@ -540,4 +556,101 @@ export function listLibrary(db: Db, projectId: string) {
     bibtex_key: string;
     added_at: string;
   }[];
+}
+
+export interface SurveyReport {
+  run_id: string;
+  project_id: string;
+  run_date: string;
+  status: string;
+  search_terms: string | null;
+  trend: string | null;
+  themes_json: string | null;
+  created_at: string;
+  paper_count: number;
+}
+
+export function upsertSurveyReport(
+  db: Db,
+  row: {
+    run_id: string;
+    project_id: string;
+    run_date: string;
+    status: string;
+    search_terms?: string[];
+    trend?: string | null;
+    themes?: string[];
+    created_at: string;
+  },
+): void {
+  db.prepare(
+    `INSERT INTO survey_reports (run_id, project_id, run_date, status, search_terms, trend, themes_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (run_id) DO UPDATE SET
+       status = excluded.status,
+       search_terms = COALESCE(excluded.search_terms, survey_reports.search_terms),
+       trend = COALESCE(excluded.trend, survey_reports.trend),
+       themes_json = COALESCE(excluded.themes_json, survey_reports.themes_json)`,
+  ).run(
+    row.run_id,
+    row.project_id,
+    row.run_date,
+    row.status,
+    row.search_terms?.length ? JSON.stringify(row.search_terms) : null,
+    row.trend ?? null,
+    row.themes?.length ? JSON.stringify(row.themes) : null,
+    row.created_at,
+  );
+}
+
+export function listSurveyReports(db: Db, projectId: string): SurveyReport[] {
+  return db
+    .prepare(
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+       FROM survey_reports r
+       WHERE r.project_id = ?
+       ORDER BY r.run_date DESC, r.created_at DESC`,
+    )
+    .all(projectId) as unknown as SurveyReport[];
+}
+
+export function getSurveyReport(db: Db, runId: string): SurveyReport | undefined {
+  return db
+    .prepare(
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+       FROM survey_reports r
+       WHERE r.run_id = ?`,
+    )
+    .get(runId) as SurveyReport | undefined;
+}
+
+export function listPapersForRun(db: Db, projectId: string, runId: string): RankedPaper[] {
+  return db
+    .prepare(
+      `SELECT p.paper_id, p.external_id, p.title, p.authors, p.abstract, p.url, p.published_at,
+              p.relevance, p.sim_summary,
+              p.nearest_chunk_id, p.nearest_chunk_sim, c.text AS nearest_chunk_text,
+              p.scored_at, p.in_library, p.problem_excerpt, p.pdf_url, p.fulltext_path
+       FROM papers p
+       LEFT JOIN chunks c ON c.chunk_id = p.nearest_chunk_id
+       WHERE p.project_id = ? AND p.run_id = ?
+       ORDER BY p.relevance DESC NULLS LAST, p.published_at DESC NULLS LAST, p.rowid`,
+    )
+    .all(projectId, runId) as unknown as RankedPaper[];
+}
+
+export function reportsMissingTrend(db: Db, projectId: string): SurveyReport[] {
+  return db
+    .prepare(
+      `SELECT r.run_id, r.project_id, r.run_date, r.status, r.search_terms, r.trend, r.themes_json, r.created_at,
+              (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) AS paper_count
+       FROM survey_reports r
+       WHERE r.project_id = ? AND (r.trend IS NULL OR trim(r.trend) = '')
+         AND (SELECT COUNT(*) FROM papers p WHERE p.project_id = r.project_id AND p.run_id = r.run_id) > 0
+       ORDER BY r.run_date DESC
+       LIMIT 5`,
+    )
+    .all(projectId) as unknown as SurveyReport[];
 }

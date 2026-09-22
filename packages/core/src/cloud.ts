@@ -56,12 +56,24 @@ export class CloudClient {
     return res;
   }
 
-  /** C1 トレンド。本文に手元論文や原稿を載せない（C-09） */
-  trends(topic: string): Promise<Response> {
-    return this.fetch('/bff/trends', {
+  /** C1 キーワード。課題意識だけを渡す。原稿は載せない */
+  keywords(topic: string): Promise<Response> {
+    return this.fetch('/bff/keywords', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ topic }),
+    });
+  }
+
+  /** C1 トレンド。本文に手元原稿は載せない。収集済みの公開論文があればそれを材料にする（C-09） */
+  trends(
+    topic: string,
+    papers?: { title: string; abstract?: string | null; url?: string | null; published_at?: string | null }[],
+  ): Promise<Response> {
+    return this.fetch('/bff/trends', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(papers?.length ? { topic, papers } : { topic }),
     });
   }
 
@@ -187,6 +199,8 @@ export type SyncPaper = {
   abstract: string | null;
   url: string | null;
   published_at: string | null;
+  /** OA の直 PDF。無ければ未取得（C-07）。取得はデスクトップ（ADR-0003） */
+  pdf_url?: string | null;
   coarse_score: number | null;
   problem_excerpt: string | null;
 };
@@ -197,6 +211,8 @@ export type SyncRun = {
   status: string;
   failed_sources_json: string | null;
   search_terms?: string[];
+  trend?: string | null;
+  themes?: string[];
   created_at: string;
   papers: SyncPaper[];
 };

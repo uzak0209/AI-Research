@@ -7,11 +7,12 @@
 
 import { NotSignedInError } from '@ai-research/core';
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
-import { appendFileSync, readFileSync, type FSWatcher } from 'node:fs';
-import { basename, join } from 'node:path';
+import { appendFileSync, mkdirSync, readFileSync, type FSWatcher } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { EOL } from 'node:os';
 import { createBibliographyApp, type BibliographyApp } from '../bibliography/compose.js';
 import { watchReferences } from '../bibliography/watch-references.js';
+import { watchMypaper } from '../bibliography/watch-mypaper.js';
 import { hintFromReference } from '../bibliography/domain/record.js';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
@@ -22,7 +23,13 @@ import {
   listChunks,
   listProjects,
   listRanked,
+  listPapersForRun,
+  listSurveyReports,
+  getSurveyReport,
   parseSearchTerms,
+  setLastSearchTerms,
+  reportsMissingTrend,
+  upsertSurveyReport,
   setManuscript,
   setProjectRoot,
   updateSummary,
@@ -30,7 +37,7 @@ import {
   upsertPapers,
 } from '../shared/repo.js';
 import { syncProjectFromCloud, cloudSummaryFromLocal } from '../shared/sync.js';
-import { mypaperHasContent } from '../shared/mypaper.js';
+import { copyIntoMypaper, listMypaperEntries, mypaperHasContent } from '../shared/mypaper.js';
 import { ensureCandidateFulltexts, fillMissingPaperAuthors } from '../shared/candidate-pdf.js';
 import {
   WorkspaceError,
@@ -82,6 +89,7 @@ let scorer: UtilityProcess | null = null;
 let cloud: ReturnType<typeof createCloud> | null = null;
 let biblio: BibliographyApp | null = null;
 let refWatch: FSWatcher | null = null;
+let mypaperWatch: FSWatcher | null = null;
 
 const dbPath = () => join(app.getPath('userData'), 'ai-research.db');
 const modelCacheDir = () => join(app.getPath('userData'), 'models');
@@ -170,17 +178,19 @@ async function prepareAndStartScoring(projectId: string, model: string): Promise
           message: `著者の補完に失敗: ${message}`,
         });
       }
-      if (mypaperHasContent(project.root_path)) {
-        try {
-          await ensureCandidateFulltexts(db, projectId, project.root_path, pdfDeps);
-        } catch (e) {
-          const message = e instanceof Error ? e.message : String(e);
-          win?.webContents.send('score:event', {
-            type: 'error',
-            message: `候補 PDF の取得に失敗: ${message}`,
-          });
-          // 取れた分だけで採点を続ける
-        }
+      // mypaper が無くても OA 直リンクがあるものは取る（arXiv 優先）。
+      // 本文が要るのは mypaper 採点だが、読むための PDF は常に手元に置きたい
+      try {
+        await ensureCandidateFulltexts(db, projectId, project.root_path, pdfDeps, {
+          resolveMissing: mypaperHasContent(project.root_path),
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        win?.webContents.send('score:event', {
+          type: 'error',
+          message: `候補 PDF の取得に失敗: ${message}`,
+        });
+        // 取れた分だけで採点を続ける
       }
     }
     startScoring(projectId, model);
@@ -232,13 +242,85 @@ function notifyLibrary(): void {
   win?.webContents.send('library:changed');
 }
 
+function notifyMypaper(): void {
+  win?.webContents.send('mypaper:changed');
+}
+
 function restartRefWatch(): void {
   refWatch?.close();
+  mypaperWatch?.close();
   refWatch = null;
+  mypaperWatch = null;
   if (!biblio) return;
   const p = currentProject();
   if (!p?.root_path) return;
+  try {
+    mkdirSync(join(p.root_path, 'references'), { recursive: true });
+    mkdirSync(join(p.root_path, 'mypaper'), { recursive: true });
+  } catch {
+    // 監視できなくても起動は続ける
+  }
   refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
+  mypaperWatch = watchMypaper(p.root_path, p.project_id, biblio, () => {
+    notifyMypaper();
+    notifyLibrary();
+  });
+  void ingestExistingMypaperPdfs(p.project_id, p.root_path);
+}
+
+async function ingestExistingMypaperPdfs(projectId: string, root: string): Promise<void> {
+  if (!biblio) return;
+  let added = false;
+  for (const f of listMypaperEntries(root).filter((e) => e.kind === 'pdf' && e.bytes > 0)) {
+    if (biblio.refs.findByPath(f.path)) continue;
+    try {
+      await biblio.ingestFile(projectId, f.path);
+      added = true;
+    } catch {
+      // 1 件失敗しても残りは続ける。欠けは一覧で分かる（C-07）
+    }
+  }
+  if (added) {
+    notifyMypaper();
+    notifyLibrary();
+  }
+}
+
+/** 過去の収集でトレンドが無い報告を、手元の公開論文だけで埋める。原稿は送らない */
+async function fillMissingReportTrends(projectId: string): Promise<void> {
+  if (!cloud || !cloudSignedIn(cloud.session)) return;
+  const project = getProject(db, projectId);
+  if (!project) return;
+  const missing = reportsMissingTrend(db, projectId);
+  for (const r of missing) {
+    const papers = listPapersForRun(db, projectId, r.run_id);
+    if (papers.length === 0) continue;
+    try {
+      const res = await cloud.client.trends(
+        project.summary,
+        papers.slice(0, 12).map((p) => ({
+          title: p.title,
+          abstract: p.abstract,
+          url: p.url,
+          published_at: p.published_at,
+        })),
+      );
+      if (!res.ok) continue;
+      const body = (await res.json()) as { summary?: string | null; themes?: string[] };
+      upsertSurveyReport(db, {
+        run_id: r.run_id,
+        project_id: projectId,
+        run_date: r.run_date,
+        status: r.status,
+        search_terms: parseSearchTerms(r.search_terms),
+        trend: body.summary ?? null,
+        themes: Array.isArray(body.themes) ? body.themes : [],
+        created_at: r.created_at,
+      });
+    } catch {
+      // 論文は残す。トレンド欠けることは報告画面で見せる（C-07）
+    }
+  }
 }
 
 function attachWorkspace(root: string, title: string, action: 'create' | 'open'): WorkspaceOk {
@@ -547,6 +629,7 @@ function registerIpc(): void {
   ipcMain.handle('projects:sync', async (_e, projectId: string) => {
     if (!cloud) throw new Error('クラウドクライアントが無い');
     const result = await syncProjectFromCloud(db, cloud.client, projectId);
+    await fillMissingReportTrends(projectId);
     if (result.inserted > 0 || countUnscored(db, projectId) > 0) {
       void prepareAndStartScoring(projectId, DEFAULT_MODEL);
     }
@@ -585,6 +668,8 @@ function registerIpc(): void {
       }
     }
 
+    await fillMissingReportTrends(projectId);
+
     if (inserted > 0 || countUnscored(db, projectId) > 0) {
       void prepareAndStartScoring(projectId, DEFAULT_MODEL);
     }
@@ -609,8 +694,28 @@ function registerIpc(): void {
       projectId,
       claims.map((t) => ({ text: t })),
     );
+    setLastSearchTerms(db, projectId, claims);
     pushProjectToCloud(projectId);
     return ids;
+  });
+
+  ipcMain.handle('bff:keywords', async (_e, topic: string) => {
+    if (!cloud) throw new Error('クラウドクライアントが無い');
+    if (!cloudSignedIn(cloud.session)) throw new NotSignedInError();
+    const summary = topic.trim();
+    if (!summary) throw new Error('課題意識が空です');
+    const res = await cloud.client.keywords(summary);
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { detail?: string; error?: string } | null;
+      if (res.status === 401) throw new NotSignedInError();
+      if (res.status === 429) throw new Error(body?.detail?.trim() || '今日の利用上限に達した');
+      if (res.status === 404 || res.status === 501) {
+        throw new Error(body?.detail?.trim() || 'キーワード推測がクラウド側でまだ開いていない');
+      }
+      throw new Error(body?.detail?.trim() || body?.error || `keywords failed: ${res.status}`);
+    }
+    const body = (await res.json()) as { terms?: string[] };
+    return { terms: Array.isArray(body.terms) ? body.terms.filter((t) => typeof t === 'string' && t.trim()) : [] };
   });
 
   ipcMain.handle('papers:ranked', (_e, projectId: string) => {
@@ -629,6 +734,76 @@ function registerIpc(): void {
   ipcMain.handle('papers:import', (_e, projectId: string, papers: Parameters<typeof upsertPapers>[2]) =>
     upsertPapers(db, projectId, papers),
   );
+
+  ipcMain.handle('reports:list', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    const mode = mypaperHasContent(project?.root_path) ? 'mypaper' : 'blend';
+    return {
+      reports: listSurveyReports(db, projectId),
+      unscored: countUnscored(db, projectId),
+      unscoredMissingPdf: mode === 'mypaper' ? countUnscoredMissingFulltext(db, projectId) : 0,
+      scoreMode: mode as 'mypaper' | 'blend',
+      searchTerms: parseSearchTerms(project?.last_search_terms),
+    };
+  });
+
+  ipcMain.handle('reports:get', (_e, projectId: string, runId: string) => {
+    const report = getSurveyReport(db, runId);
+    if (!report || report.project_id !== projectId) return null;
+    return {
+      report,
+      papers: listPapersForRun(db, projectId, runId),
+      searchTerms: parseSearchTerms(report.search_terms),
+      themes: parseSearchTerms(report.themes_json),
+    };
+  });
+
+  ipcMain.handle('mypaper:list', (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    return listMypaperEntries(project?.root_path);
+  });
+
+  ipcMain.handle('mypaper:import', async (_e, projectId: string) => {
+    const project = getProject(db, projectId);
+    if (!project?.root_path) throw new Error('プロジェクトの場所が未設定');
+    const picked = await dialog.showOpenDialog({
+      title: '自分の論文を配置',
+      filters: [
+        { name: '論文・原稿', extensions: ['pdf', 'md', 'tex', 'typ'] },
+        { name: 'PDF', extensions: ['pdf'] },
+        { name: '原稿', extensions: ['md', 'tex', 'typ'] },
+      ],
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (picked.canceled || picked.filePaths.length === 0) {
+      return { imported: [] as { path: string; existed: boolean }[], failed: [] as { path: string; error: string }[] };
+    }
+    const imported: { path: string; existed: boolean }[] = [];
+    const failed: { path: string; error: string }[] = [];
+    for (const src of picked.filePaths) {
+      try {
+        const got = copyIntoMypaper(project.root_path, src);
+        imported.push(got);
+        if (extname(got.path).toLowerCase() === '.pdf' && biblio) {
+          await biblio.ingestFile(projectId, got.path);
+        }
+      } catch (e) {
+        failed.push({ path: src, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    notifyMypaper();
+    notifyLibrary();
+    return { imported, failed };
+  });
+
+  ipcMain.handle('mypaper:reveal', async (_e, projectId: string) => {
+    const p = getProject(db, projectId);
+    if (!p?.root_path) return { ok: false as const, error: 'プロジェクトの場所が未設定' };
+    const dir = join(p.root_path, 'mypaper');
+    mkdirSync(dir, { recursive: true });
+    const err = await shell.openPath(dir);
+    return err ? { ok: false as const, error: err } : { ok: true as const };
+  });
 
   ipcMain.handle('score:start', (_e, projectId: string) => {
     void prepareAndStartScoring(projectId, DEFAULT_MODEL);
@@ -821,6 +996,7 @@ void app.whenReady().then(() => {
     // 黙って縮退せず、理由を残して落とす（C-07）
     const detail = e instanceof VectorExtensionError ? e.message : String(e);
     logStartup('DB を開けなかった: ' + detail);
+    console.error('DB を開けなかった: ' + detail);
     app.exit(1);
     return;
   }
@@ -857,5 +1033,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   scorer?.kill();
   refWatch?.close();
+  mypaperWatch?.close();
   db?.close();
 });

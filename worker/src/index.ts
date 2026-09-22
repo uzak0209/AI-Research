@@ -3,7 +3,7 @@
 // **設計フェーズのデプロイ土台。** 未決の部分は実装したふりをせず 501 を返す（C-07）。
 //   - GET /runs・PUT /projects/{id} は課題意識の同期（FR-15 / summary）
 //   - Google OAuth は POST /auth/google。JWT 署名鍵の入れ替え手順は未決
-//   - BFF は C1（POST /bff/trends・POST /bff/bibliography）。C2/C3 は同意・プレビュー未決のため 501
+//   - BFF は C1（POST /bff/trends・POST /bff/bibliography・POST /bff/keywords）。C2/C3 は同意・プレビュー未決のため 501
 //
 // Worker は Bearer JWT を検証するだけ。トークンの置き場はクライアント（ADR-0001）。
 

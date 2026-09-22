@@ -78,6 +78,56 @@ describe('ensureCandidateFulltexts', () => {
     expect(download).toHaveBeenCalled();
     expect(result.downloaded).toBe(1);
   });
+
+  it('収集時の pdf_url を使う。arXiv などの直リンクを引き直さない', async () => {
+    upsertPapers(db, 'p1', [
+      {
+        external_id: '10.1234/a',
+        source: 's',
+        title: 'Paper',
+        abstract: null,
+        url: 'https://doi.org/10.1234/a',
+        pdf_url: 'https://arxiv.org/pdf/2409.00001.pdf',
+      },
+    ]);
+
+    const seen: string[] = [];
+    const download = vi.fn(async (url: string, dest: string) => {
+      seen.push(url);
+      writeFileSync(dest, '%PDF-1.4\n');
+      return 'ok' as const;
+    });
+    const complete = vi.fn(async () => null);
+
+    await ensureCandidateFulltexts(db, 'p1', root, {
+      gateway: { complete },
+      pdfs: { download, rememberWrite() {}, wasWritten: () => false },
+    });
+
+    expect(seen).toEqual(['https://arxiv.org/pdf/2409.00001.pdf']);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
+  it('resolveMissing=false なら直リンクが無い候補に LLM を使わない（C-07 の未取得のまま）', async () => {
+    upsertPapers(db, 'p1', [
+      { external_id: '10.1234/b', source: 's', title: 'Paper', abstract: null, url: 'https://doi.org/10.1234/b' },
+    ]);
+
+    const download = vi.fn(async () => 'ok' as const);
+    const complete = vi.fn(async () => null);
+
+    const result = await ensureCandidateFulltexts(
+      db,
+      'p1',
+      root,
+      { gateway: { complete }, pdfs: { download, rememberWrite() {}, wasWritten: () => false } },
+      { resolveMissing: false },
+    );
+
+    expect(complete).not.toHaveBeenCalled();
+    expect(download).not.toHaveBeenCalled();
+    expect(result.failed).toBe(1);
+  });
 });
 
 describe('fillMissingPaperAuthors', () => {

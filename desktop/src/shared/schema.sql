@@ -79,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_papers_rank ON papers(project_id, relevance DESC)
 -- 未採点の行を拾うだけで再開できる。採点キュー表は作らない
 CREATE INDEX IF NOT EXISTS idx_papers_unscored ON papers(project_id, scored_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_papers_external ON papers(project_id, source, external_id);
+CREATE INDEX IF NOT EXISTS idx_papers_run ON papers(project_id, run_id);
 
 -- アプリ内参考文献ライブラリの本体（FR-05）。
 -- `references` は SQLite の予約語なので reference_items
@@ -173,6 +174,20 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_annotations_attachment ON annotations(attachment_id, page);
+
+-- 収集 1 回の報告（いつ・トレンド・次テーマ）。論文行は papers.run_id で辿る
+CREATE TABLE IF NOT EXISTS survey_reports (
+  run_id       TEXT PRIMARY KEY,
+  project_id   TEXT NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+  run_date     TEXT NOT NULL,
+  status       TEXT NOT NULL,
+  search_terms TEXT,
+  trend        TEXT,
+  themes_json  TEXT,
+  created_at   TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_survey_reports_project ON survey_reports(project_id, run_date DESC, created_at DESC);
 
 -- 文献ごとの自由記述。未公開の思考なので外に出さない（C-01）。
 -- 1 文献 1 本にする。複数あると「どれが本文か」が曖昧になる

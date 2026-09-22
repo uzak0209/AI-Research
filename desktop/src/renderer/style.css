@@ -226,6 +226,22 @@ body[data-platform='linux'] .titlebar {
   margin: 0;
 }
 
+.settings-status {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+.settings-status[data-tone='error'] {
+  color: var(--error);
+  font-weight: 700;
+}
+
+.settings-status[data-tone='busy'] {
+  color: var(--warning-fg);
+}
+
 .settings-foot {
   display: flex;
   justify-content: flex-end;
@@ -620,13 +636,36 @@ body[data-platform='linux'] .titlebar {
   color: var(--primary);
 }
 
-.chip button {
-  all: unset;
-  cursor: pointer;
-  padding: 0 2px;
-  min-width: 18px;
-  min-height: 18px;
-  text-align: center;
+.chip button:hover {
+  color: var(--error);
+}
+
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 2rem;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+}
+
+.keyword-tags .chip {
+  font-size: 12px;
+  padding: 4px 4px 4px 10px;
+}
+
+.keyword-add-row {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.keyword-add-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
 }
 
 /* --- ボタン（3 階層） ------------------------------------------------------ */
@@ -895,6 +934,17 @@ textarea::placeholder {
   min-height: 2.5rem;
 }
 
+.welcome-error {
+  margin: 0;
+  color: var(--error);
+  font-size: var(--font-ui);
+  line-height: 1.45;
+}
+
+.welcome-error[data-tone='busy'] {
+  color: var(--fg-muted);
+}
+
 .empty-state {
   max-width: 28rem;
   margin: 48px auto;
@@ -967,6 +1017,26 @@ textarea::placeholder {
   font-weight: 600;
   color: var(--fg);
   margin-right: 4px;
+}
+
+.theme-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--fg);
+  font-size: var(--font-ui);
+  line-height: 1.6;
+}
+
+.report-papers-head {
+  margin: var(--space-4) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row.report-paper {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 4px;
 }
 
 .callout {

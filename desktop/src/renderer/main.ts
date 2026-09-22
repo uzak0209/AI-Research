@@ -48,6 +48,29 @@ interface RankedPaper {
   nearest_chunk_sim: number | null;
   in_library: number;
   problem_excerpt: string | null;
+  pdf_url?: string | null;
+  fulltext_path?: string | null;
+}
+
+interface SurveyReport {
+  run_id: string;
+  project_id: string;
+  run_date: string;
+  status: string;
+  search_terms: string | null;
+  trend: string | null;
+  themes_json: string | null;
+  created_at: string;
+  paper_count: number;
+}
+
+interface MypaperFile {
+  path: string;
+  name: string;
+  ext: string;
+  kind: 'manuscript' | 'pdf';
+  bytes: number;
+  mtime: string;
 }
 
 interface Attachment {
@@ -64,6 +87,9 @@ function yearFromPublishedAt(raw: string | null | undefined): number | null {
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+function on(id: string, type: string, fn: EventListenerOrEventListenerObject): void {
+  document.getElementById(id)?.addEventListener(type, fn);
+}
 /**
  * 要素を作る小さなヘルパ。
  * `class` / `style` / `data-*` / `aria-*` は属性として、それ以外はプロパティとして設定する。
@@ -101,9 +127,13 @@ let libFilter: 'all' | 'starred' | ReadStatus = 'all';
 let libTag: string | null = null;
 let selectedRef: string | null = null;
 let selectedPaper: string | null = null;
+let selectedRunId: string | null = null;
+let selectedMypaper: string | null = null;
 /** 読む順の採点式。一覧コールアウトと詳細ラベルで共有 */
 let lastScoreMode: 'mypaper' | 'blend' = 'blend';
 let viewer: PdfViewer | null = null;
+/** 設定で確認するキーワード。関連技術・検索語になる */
+let keywordTags: string[] = [];
 
 /** PDF ビューアの入出力。レンダラに fs を持たせず、すべて preload 経由にする */
 const viewerHost = {
@@ -123,9 +153,28 @@ const viewerHost = {
 // --- 状態表示 ----------------------------------------------------------------
 
 function setStatus(text: string, tone: 'info' | 'error' | 'busy' = 'info') {
-  const s = $('status');
-  s.textContent = text;
-  s.setAttribute('data-tone', tone);
+  const s = document.getElementById('status');
+  if (s) {
+    s.textContent = text;
+    s.setAttribute('data-tone', tone);
+  }
+  const welcome = document.getElementById('welcome');
+  const welcomeErr = document.getElementById('welcome-error');
+  if (welcomeErr && welcome && !welcome.hidden) {
+    welcomeErr.hidden = !text;
+    welcomeErr.textContent = text;
+    welcomeErr.setAttribute('data-tone', tone);
+  }
+  const settings = document.getElementById('settings') as HTMLDialogElement | null;
+  const settingsStatus = document.getElementById('settings-status');
+  if (settingsStatus) {
+    const show = Boolean(text) && Boolean(settings?.open);
+    settingsStatus.hidden = !show;
+    if (show) {
+      settingsStatus.textContent = text;
+      settingsStatus.setAttribute('data-tone', tone);
+    }
+  }
 }
 
 async function guard<T>(what: string, fn: () => Promise<T>): Promise<T | undefined> {
@@ -138,23 +187,67 @@ async function guard<T>(what: string, fn: () => Promise<T>): Promise<T | undefin
   }
 }
 
+async function createFromWelcome(): Promise<void> {
+  const title = ($('welcome-title') as HTMLInputElement | null)?.value.trim() ?? '';
+  const btn = $('welcome-create') as HTMLButtonElement | null;
+  if (!title) {
+    setStatus('プロジェクト名を入れてください', 'error');
+    ($('welcome-title') as HTMLInputElement | null)?.focus();
+    return;
+  }
+  if (btn) btn.disabled = true;
+  setStatus('プロジェクトを作っています…', 'busy');
+  try {
+    const res = await window.api.createUnderRecycle(title);
+    if (!res.ok) {
+      setStatus(res.error ?? 'プロジェクトを作れなかった', 'error');
+      return;
+    }
+    const projects = ((await window.api.listProjects()) ?? []) as ProjectRow[];
+    const p = projects.find((x) => x.root_path === res.root) ?? projects[0];
+    if (!p) {
+      setStatus('プロジェクトを作れなかった', 'error');
+      return;
+    }
+    setStatus(`「${res.title}」を ~/Recycle に作った`);
+    await enterApp({ ...p, title: res.title, root_path: res.root }, { forceSettings: true });
+  } catch (e) {
+    setStatus('プロジェクトの作成に失敗: ' + (e instanceof Error ? e.message : String(e)), 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+on('welcome-create', 'click', () => {
+  void createFromWelcome();
+});
+on('welcome-title', 'keydown', (e) => {
+  const ev = e as KeyboardEvent;
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    void createFromWelcome();
+  }
+});
+
 // --- タブ --------------------------------------------------------------------
 
-for (const id of ['feed', 'library'] as const) {
-  $(`tab-${id}`).addEventListener('click', () => {
+for (const id of ['feed', 'library', 'mypaper'] as const) {
+  on(`tab-${id}`, 'click', () => {
     showTab(id);
   });
 }
 
-function showTab(id: 'feed' | 'library'): void {
-  for (const other of ['feed', 'library'] as const) {
+function showTab(id: 'feed' | 'library' | 'mypaper'): void {
+  for (const other of ['feed', 'library', 'mypaper'] as const) {
     const active = other === id;
-    $(`tab-${other}`).setAttribute('aria-selected', String(active));
-    $(`view-${other}`).setAttribute('data-active', String(active));
-    $(`nav-${other}`).hidden = !active;
+    document.getElementById(`tab-${other}`)?.setAttribute('aria-selected', String(active));
+    document.getElementById(`view-${other}`)?.setAttribute('data-active', String(active));
+    const nav = document.getElementById(`nav-${other}`);
+    if (nav) nav.hidden = !active;
   }
   if (id === 'library') void refreshLibrary();
   if (id === 'feed') void refreshFeed();
+  if (id === 'mypaper') void refreshMypaper();
 }
 
 function settingsDialog(): HTMLDialogElement {
@@ -167,6 +260,7 @@ function openSettings(): void {
   const show = () => {
     if (!dlg.open) dlg.showModal();
     ($('summary') as HTMLTextAreaElement).focus();
+    void maybeInferKeywords();
   };
   // shell を出した直後だと dialog が描画されないことがある
   requestAnimationFrame(() => requestAnimationFrame(show));
@@ -175,6 +269,84 @@ function openSettings(): void {
 function closeSettings(): void {
   const dlg = settingsDialog();
   if (dlg.open) dlg.close();
+}
+
+function setKeywordTags(next: string[]): void {
+  const seen = new Set<string>();
+  keywordTags = [];
+  for (const raw of next) {
+    const t = raw.trim().replace(/\s+/g, ' ');
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keywordTags.push(t);
+  }
+  renderKeywordTags();
+}
+
+function renderKeywordTags(): void {
+  const box = document.getElementById('keyword-tags');
+  if (!box) return;
+  box.replaceChildren();
+  if (keywordTags.length === 0) {
+    box.append(el('p', { class: 'note-info' }, 'まだありません。「課題意識から推測」を押すか、下で足します。'));
+    return;
+  }
+  for (const t of keywordTags) {
+    const remove = el('button', { type: 'button', 'aria-label': `${t} を外す` }, '×');
+    remove.addEventListener('click', () => {
+      setKeywordTags(keywordTags.filter((x) => x.toLowerCase() !== t.toLowerCase()));
+    });
+    box.append(el('span', { class: 'chip', 'data-tone': 'tag' }, t, remove));
+  }
+}
+
+function addKeywordFromInput(): void {
+  const input = $('keyword-add') as HTMLInputElement | null;
+  if (!input) return;
+  const t = input.value.trim();
+  if (!t) return;
+  setKeywordTags([...keywordTags, t]);
+  input.value = '';
+  input.focus();
+}
+
+async function inferKeywordsFromSummary(force = false): Promise<void> {
+  const summary = ($('summary') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+  if (!summary) {
+    setStatus('先に課題意識を書いてください', 'error');
+    ($('summary') as HTMLTextAreaElement | null)?.focus();
+    return;
+  }
+  if (!signedIn) {
+    setStatus('キーワードの推測にはログインが必要です', 'error');
+    return;
+  }
+  if (!force && keywordTags.length > 0) return;
+  if (!window.api.inferKeywords) {
+    setStatus('この版ではキーワード推測が使えません。アプリを開き直してください', 'error');
+    return;
+  }
+  const btn = $('keyword-infer') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  setStatus('課題意識からキーワードを推測しています…', 'busy');
+  const res = await guard('キーワードの推測', () => window.api.inferKeywords(summary));
+  if (btn) btn.disabled = false;
+  if (!res) return;
+  setKeywordTags(res.terms);
+  if (res.terms.length === 0) {
+    setStatus('キーワードを出せなかった。手で足してください', 'error');
+    return;
+  }
+  setStatus(`${res.terms.length} 件を出した。合わないものは × で外してください`);
+}
+
+async function maybeInferKeywords(): Promise<void> {
+  if (keywordTags.length > 0) return;
+  const summary = ($('summary') as HTMLTextAreaElement | null)?.value.trim() ?? '';
+  if (!summary || !signedIn) return;
+  await inferKeywordsFromSummary(false);
 }
 
 /** 収集に必要な最低限（課題意識＋ログイン）が揃っていなければ未設定 */
@@ -271,7 +443,7 @@ async function refreshLibrary() {
           'p',
           { class: 'empty' },
           none
-            ? '新着から入れるか、右上の PDF / 追加で入れます。'
+            ? '報告から入れるか、右上の PDF / 追加で入れます。'
             : '絞り込みや検索を変えてみてください。',
         ),
       ),
@@ -799,13 +971,34 @@ $('lib-import-pdf').addEventListener('click', async () => {
   );
 });
 
-// --- 新着候補 ----------------------------------------------------------------
+// --- 調査報告 ----------------------------------------------------------------
+
+function runStatusLabel(status: string): string {
+  switch (status) {
+    case 'ok':
+      return '完了';
+    case 'empty':
+      return 'ヒットなし';
+    case 'failed':
+      return '失敗';
+    case 'partial':
+      return '一部失敗';
+    default:
+      return status;
+  }
+}
+
+function formatReportWhen(runDate: string, createdAt: string): string {
+  const clock = createdAt.replace('T', ' ').replace('Z', '').slice(0, 16);
+  return clock || runDate;
+}
 
 function feedEmptyState(
   unscored: number,
   summary: string,
   scoreMode: 'mypaper' | 'blend',
   missingPdf: number,
+  hasReports: boolean,
 ): HTMLElement {
   const goSettings = () => {
     const b = el('button', { class: 'btn', type: 'button' }, '設定を開く');
@@ -814,7 +1007,7 @@ function feedEmptyState(
     return b;
   };
 
-  if (unscored > 0) {
+  if (hasReports && unscored > 0) {
     const detail =
       scoreMode === 'mypaper' && missingPdf > 0
         ? `うち PDF が無いため未採点 ${missingPdf} 件。上の「読む順をつける」で取れる分だけ順位が付きます。`
@@ -855,11 +1048,11 @@ function feedEmptyState(
   return el(
     'div',
     { class: 'empty-state' },
-    el('p', { class: 'empty-title' }, '候補はまだありません'),
+    el('p', { class: 'empty-title' }, '報告はまだありません'),
     el(
       'p',
       { class: 'empty' },
-      '上の「調査する」で収集を始めます。溜まっている分だけ取るときは「取り込む」。',
+      '上の「調査する」で収集を始めます。日次の調査も、終わった分は「取り込む」でここに入ります。',
     ),
   );
 }
@@ -896,9 +1089,9 @@ function unscoredCallout(
 }
 
 async function refreshFeed() {
-  const res = (await guard('候補の取得', () => window.api.ranked(projectId))) as
+  const res = (await guard('報告の取得', () => window.api.reports.list(projectId))) as
     | {
-        ranked: RankedPaper[];
+        reports: SurveyReport[];
         unscored: number;
         unscoredMissingPdf?: number;
         scoreMode?: 'mypaper' | 'blend';
@@ -914,19 +1107,17 @@ async function refreshFeed() {
   if (hint) {
     hint.textContent =
       scoreMode === 'mypaper'
-        ? '関連度は原稿（mypaper）と候補 PDF 本文で一番近い箇所。読む順であり、有効／除外の判定ではありません。'
-        : 'mypaper が空なので、関連度は課題意識 70%＋関連技術 30%。クラウドから取ったタイトルと要旨だけを使い、手元の PDF は不要です。';
+        ? '1 回の調査が 1 報告です。関連度は原稿（mypaper）と候補 PDF 本文。読む順であり、有効／除外の判定ではありません。'
+        : '1 回の調査が 1 報告です。mypaper が空なので、関連度は課題意識 70%＋関連技術 30%。';
   }
 
   const list = $('feed-list');
   list.replaceChildren();
 
-  const keywords = keywordsStrip(res.searchTerms ?? []);
-  if (keywords) list.append(keywords);
-
-  if (res.ranked.length === 0) {
+  if (res.reports.length === 0) {
     const summary = ($('summary') as HTMLTextAreaElement).value.trim();
-    list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf));
+    list.append(feedEmptyState(res.unscored, summary, scoreMode, missingPdf, false));
+    selectedRunId = null;
     return;
   }
 
@@ -934,33 +1125,153 @@ async function refreshFeed() {
     list.append(unscoredCallout(res.unscored, scoreMode, missingPdf));
   }
 
-  res.ranked.forEach((p, i) => {
+  if (!selectedRunId || !res.reports.some((r) => r.run_id === selectedRunId)) {
+    selectedRunId = res.reports[0]!.run_id;
+  }
+
+  for (const r of res.reports) {
     const row = el(
       'button',
-      { class: 'row', 'aria-current': String(selectedPaper === p.paper_id) },
+      { class: 'row', 'aria-current': String(selectedRunId === r.run_id) },
+      el('span', { class: 'row-title' }, `${r.run_date} の調査`),
+      el(
+        'span',
+        { class: 'row-meta' },
+        el('span', { class: 'chip', 'data-tone': r.status === 'ok' ? 'score' : r.status === 'failed' ? 'reading' : undefined }, runStatusLabel(r.status)),
+        el('span', {}, `論文 ${r.paper_count} 件`),
+        el('span', {}, r.trend ? 'トレンドあり' : r.paper_count > 0 ? 'トレンド未着' : ''),
+      ),
+    );
+    row.addEventListener('click', () => {
+      selectedRunId = r.run_id;
+      selectedPaper = null;
+      void refreshFeed();
+    });
+    list.append(row);
+  }
+
+  if (selectedRunId) await renderReportDetail(selectedRunId);
+}
+
+async function renderReportDetail(runId: string) {
+  const got = (await guard('報告の詳細', () => window.api.reports.get(projectId, runId))) as
+    | {
+        report: SurveyReport;
+        papers: RankedPaper[];
+        searchTerms: string[];
+        themes: string[];
+      }
+    | null
+    | undefined;
+  const pane = $('feed-detail');
+  if (!got) {
+    pane.replaceChildren(
+      el(
+        'div',
+        { class: 'empty-state' },
+        el('p', { class: 'empty-title' }, '報告を取れなかった'),
+        el('p', { class: 'empty' }, '取り込みをやり直すか、調査するを押してください。'),
+      ),
+    );
+    return;
+  }
+
+  const r = got.report;
+  pane.replaceChildren();
+  pane.append(el('h2', { class: 'detail-title' }, `${r.run_date} の調査`));
+  pane.append(
+    el(
+      'p',
+      { class: 'detail-meta' },
+      [formatReportWhen(r.run_date, r.created_at), runStatusLabel(r.status), `論文 ${got.papers.length} 件`]
+        .filter(Boolean)
+        .join(' / '),
+    ),
+  );
+
+  const keywords = keywordsStrip(got.searchTerms);
+  if (keywords) pane.append(keywords);
+
+  pane.append(
+    el(
+      'div',
+      { class: 'detail-section' },
+      el('h3', {}, '今のトレンド'),
+      r.trend
+        ? el('p', { class: 'abstract' }, r.trend)
+        : el(
+            'p',
+            { class: 'note-info' },
+            got.papers.length === 0
+              ? 'この回では論文が無かったので、トレンドは出していません。'
+              : 'トレンドはまだ無い。調査直後なら少し待って「取り込む」。欠けたままなら黙って埋めません。',
+          ),
+    ),
+  );
+
+  pane.append(
+    el(
+      'div',
+      { class: 'detail-section' },
+      el('h3', {}, '次にやる研究の候補'),
+      got.themes.length > 0
+        ? el(
+            'ul',
+            { class: 'theme-list' },
+            ...got.themes.map((t) => el('li', {}, t)),
+          )
+        : el(
+            'p',
+            { class: 'note-info' },
+            'この回の論文から次テーマを出せていません。論文が残っていれば「取り込む」で埋めます。',
+          ),
+    ),
+  );
+
+  pane.append(el('h3', { class: 'report-papers-head' }, `見つけた論文（${got.papers.length}）`));
+  if (got.papers.length === 0) {
+    pane.append(el('p', { class: 'note-info' }, 'この調査では新しい論文は残っていません。'));
+    return;
+  }
+
+  got.papers.forEach((p, i) => {
+    const row = el(
+      'button',
+      { class: 'row report-paper', 'aria-current': String(selectedPaper === p.paper_id) },
       el('span', { class: 'row-title' }, `${i + 1}. ${p.title}`),
       el(
         'span',
         { class: 'row-meta' },
         el('span', {}, [p.authors ?? '著者不明', yearFromPublishedAt(p.published_at) ?? '年不明'].join(' / ')),
         el('span', { class: 'chip', 'data-tone': 'score' }, `関連度 ${p.relevance?.toFixed(3) ?? '-'}`),
+        el('span', { class: 'chip', 'data-tone': pdfTone(p) }, pdfLabel(p)),
       ),
     );
     row.addEventListener('click', () => {
       selectedPaper = p.paper_id;
-      void refreshFeed();
-      renderPaperDetail(p);
+      void renderReportDetail(runId);
     });
-    list.append(row);
+    pane.append(row);
   });
 
-  const cur = res.ranked.find((p) => p.paper_id === selectedPaper);
-  if (cur) renderPaperDetail(cur);
+  const cur = got.papers.find((p) => p.paper_id === selectedPaper);
+  if (cur) renderPaperDetailInto(pane, cur);
 }
 
-function renderPaperDetail(p: RankedPaper) {
-  const pane = $('feed-detail');
-  pane.replaceChildren();
+/** PDF の状態。空ファイルや購読ページを「あり」と言わない（C-07） */
+function pdfLabel(p: RankedPaper): string {
+  if (p.fulltext_path) return 'PDF 取得済み';
+  if (p.pdf_url) return 'PDF あり';
+  return 'PDF 未取得';
+}
+
+function pdfTone(p: RankedPaper): string | undefined {
+  if (p.fulltext_path) return 'read';
+  if (p.pdf_url) return 'reading';
+  return undefined;
+}
+
+function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
   pane.append(el('h2', { class: 'detail-title' }, p.title));
   const year = yearFromPublishedAt(p.published_at);
   pane.append(
@@ -983,8 +1294,19 @@ function renderPaperDetail(p: RankedPaper) {
           ? `原稿全体の平均 ${p.sim_summary?.toFixed(3) ?? '-'}`
           : `課題意識だけ ${p.sim_summary?.toFixed(3) ?? '-'}`,
       ),
+      el('span', { class: 'chip', 'data-tone': pdfTone(p) }, pdfLabel(p)),
     ),
   );
+
+  if (!p.pdf_url && !p.fulltext_path) {
+    pane.append(
+      el(
+        'p',
+        { class: 'note-info' },
+        '公開の直 PDF がありません（購読のみ・HTML のみ）。有料 PDF は取りに行きません。手元にあればライブラリで添付できます。',
+      ),
+    );
+  }
 
   pane.append(
     el(
@@ -996,7 +1318,6 @@ function renderPaperDetail(p: RankedPaper) {
     ),
   );
 
-  // 断定しないことを画面に書く
   pane.append(
     el(
       'p',
@@ -1123,6 +1444,7 @@ $('feed-collect').addEventListener('click', async () => {
   try {
     const res = await window.api.startCollect(projectId);
     btn.disabled = false;
+    if (res.run_id) selectedRunId = res.run_id;
     const text = collectOutcomeMessage(res);
     const inserted = res.inserted ?? 0;
     const statuses = Array.isArray(res.statuses) ? res.statuses : [];
@@ -1186,6 +1508,130 @@ window.api.onScoreEvent((raw) => {
   void refreshFeed();
 });
 
+// --- My paper ----------------------------------------------------------------
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function refreshMypaper() {
+  if (!window.api.mypaper) return;
+  const list = document.getElementById('mypaper-list');
+  if (!list) return;
+  const files = ((await guard('My paper の取得', () => window.api.mypaper.list(projectId))) ?? []) as MypaperFile[];
+  list.replaceChildren();
+
+  if (files.length === 0) {
+    list.append(
+      el(
+        'div',
+        { class: 'empty-state' },
+        el('p', { class: 'empty-title' }, 'まだ置いていません'),
+        el('p', { class: 'empty' }, '「配置」か、mypaper フォルダに PDF / 原稿を入れてください。PDF は書誌を作ります。'),
+      ),
+    );
+    selectedMypaper = null;
+    showMypaperEmpty();
+    return;
+  }
+
+  if (!selectedMypaper || !files.some((f) => f.path === selectedMypaper)) {
+    selectedMypaper = files[0]!.path;
+  }
+
+  for (const f of files) {
+    const row = el(
+      'button',
+      { class: 'row', 'aria-current': String(selectedMypaper === f.path) },
+      el('span', { class: 'row-title' }, f.name),
+      el(
+        'span',
+        { class: 'row-meta' },
+        el('span', { class: 'chip' }, f.kind === 'pdf' ? 'PDF' : '原稿'),
+        el('span', {}, formatBytes(f.bytes)),
+      ),
+    );
+    row.addEventListener('click', () => {
+      selectedMypaper = f.path;
+      void refreshMypaper();
+    });
+    list.append(row);
+  }
+
+  const cur = files.find((f) => f.path === selectedMypaper);
+  if (cur) renderMypaperDetail(cur);
+}
+
+function showMypaperEmpty(): void {
+  const pane = $('mypaper-detail');
+  pane.replaceChildren(
+    el(
+      'div',
+      { class: 'empty-state' },
+      el('p', { class: 'empty-title' }, 'ファイルを置く'),
+      el('p', { class: 'empty' }, '配置するか、mypaper フォルダに PDF / 原稿を入れるとここに出ます。PDF は書誌を作ります。'),
+    ),
+  );
+}
+
+function renderMypaperDetail(f: MypaperFile) {
+  const pane = $('mypaper-detail');
+  pane.replaceChildren();
+  pane.append(el('h2', { class: 'detail-title' }, f.name));
+  pane.append(
+    el(
+      'p',
+      { class: 'detail-meta' },
+      [f.kind === 'pdf' ? 'PDF' : '原稿', formatBytes(f.bytes), f.mtime.replace('T', ' ').slice(0, 16)].join(' / '),
+    ),
+  );
+  pane.append(
+    el(
+      'p',
+      { class: 'note-info' },
+      f.kind === 'pdf'
+        ? '置いた PDF から書誌を作り、ライブラリにも載せます。原本は mypaper に残します。'
+        : '原稿は読む順の正本です。クラウドへは出しません。',
+    ),
+  );
+  const open = el('button', { class: 'btn', 'data-variant': 'secondary' }, '外部で開く');
+  open.addEventListener('click', async () => {
+    const err = await window.api.lib.openExternally(f.path);
+    if (err) setStatus('開けなかった: ' + err, 'error');
+  });
+  pane.append(el('div', { class: 'detail-section actions', 'data-align': 'start' }, open));
+}
+
+$('mypaper-import')?.addEventListener('click', async () => {
+  const btn = $('mypaper-import') as HTMLButtonElement;
+  btn.disabled = true;
+  setStatus('自分の論文を配置しています…', 'busy');
+  const res = await guard('My paper への配置', () => window.api.mypaper.import(projectId));
+  btn.disabled = false;
+  if (!res) return;
+  const n = res.imported.length;
+  const fail = res.failed.length;
+  if (fail > 0) setStatus(`配置 ${n} 件、失敗 ${fail} 件`, 'error');
+  else if (n === 0) setStatus('配置をキャンセルした');
+  else setStatus(`${n} 件を mypaper に置いた。PDF は書誌を作っています`);
+  await refreshMypaper();
+});
+
+$('mypaper-reveal')?.addEventListener('click', async () => {
+  const res = await guard('Finder で表示', () => window.api.mypaper.reveal(projectId));
+  if (res && 'ok' in res && !res.ok) setStatus(res.error, 'error');
+});
+
+try {
+  window.api.mypaper.onChanged(() => {
+    void refreshMypaper();
+  });
+} catch {
+  // preload が古いと mypaper が無い。ウェルカムの作成は止めない
+}
+
 // --- プロジェクト -------------------------------------------------------------
 
 function showWorkspace(root: string | null): void {
@@ -1212,6 +1658,17 @@ function showWorkspace(root: string | null): void {
   }
 }
 
+on('keyword-infer', 'click', () => {
+  void inferKeywordsFromSummary(true);
+});
+on('keyword-add', 'keydown', (e) => {
+  const ev = e as KeyboardEvent;
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    addKeywordFromInput();
+  }
+});
+
 $('proj-save').addEventListener('click', async () => {
   if (!projectId) {
     setStatus('先にプロジェクトを作ってください', 'error');
@@ -1219,10 +1676,7 @@ $('proj-save').addEventListener('click', async () => {
   }
   const title = ($('proj-title') as HTMLInputElement).value.trim();
   const summary = ($('summary') as HTMLTextAreaElement).value.trim();
-  const claims = ($('claims') as HTMLTextAreaElement).value
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const claims = keywordTags;
 
   if (!summary) {
     setStatus('課題意識を書いてから保存してください', 'error');
@@ -1338,7 +1792,7 @@ function showAuth(next: boolean): void {
   const login = $('auth-login') as HTMLButtonElement | null;
   const logout = $('auth-logout') as HTMLButtonElement | null;
   if (label) {
-    label.textContent = next ? 'ログイン済み' : '未ログイン — 新着の取り込みに必要です';
+    label.textContent = next ? 'ログイン済み' : '未ログイン — 調査の取り込みに必要です';
   }
   if (login) login.hidden = next;
   if (logout) logout.hidden = !next;
@@ -1407,7 +1861,7 @@ async function enterApp(
   showWorkspace(p.root_path ?? null);
 
   const claims = (await window.api.listClaims(projectId)) as { text: string }[];
-  ($('claims') as HTMLTextAreaElement).value = claims.map((c) => c.text).join('\n');
+  setKeywordTags(claims.map((c) => c.text));
 
   const auth = await window.api.auth.status();
   showAuth(auth.signedIn);
@@ -1430,43 +1884,12 @@ async function enterApp(
   }
 }
 
-$('welcome-create').addEventListener('click', () => void createFromWelcome());
-$('welcome-title').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    void createFromWelcome();
-  }
-});
-
-async function createFromWelcome(): Promise<void> {
-  const title = ($('welcome-title') as HTMLInputElement).value.trim();
-  if (!title) {
-    setStatus('プロジェクト名を入れてください', 'error');
-    ($('welcome-title') as HTMLInputElement).focus();
-    return;
-  }
-
-  const res = await guard('プロジェクトの作成', () => window.api.createUnderRecycle(title));
-  if (!res) return;
-  if (!res.ok) {
-    setStatus(res.error ?? 'プロジェクトを作れなかった', 'error');
-    return;
-  }
-
-  const projects = ((await window.api.listProjects()) ?? []) as ProjectRow[];
-  const p = projects.find((x) => x.root_path === res.root) ?? projects[0];
-  if (!p) {
-    setStatus('プロジェクトを作れなかった', 'error');
-    return;
-  }
-
-  setStatus(`「${res.title}」を ~/Recycle に作った`);
-  await enterApp({ ...p, title: res.title, root_path: res.root }, { forceSettings: true });
-}
-
 async function boot() {
   document.body.dataset.platform = window.api.platform;
-  $('proj-reveal').textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
+  const reveal = document.getElementById('proj-reveal');
+  if (reveal) {
+    reveal.textContent = window.api.platform === 'darwin' ? 'Finder で表示' : 'エクスプローラーで表示';
+  }
 
   // ウェルカム中でもログイン状態は分かるようにする
   const auth = await window.api.auth.status();

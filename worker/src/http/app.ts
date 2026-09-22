@@ -12,6 +12,8 @@ import {
   GoogleLoginBodySchema,
   TrendBodySchema,
   TrendResponseSchema,
+  KeywordsBodySchema,
+  KeywordsResponseSchema,
   BibliographyBodySchema,
   BibliographyResponseSchema,
   RunsResponseSchema,
@@ -22,12 +24,13 @@ import {
 import { db } from '../db/kysely';
 import { execute } from '../db/execute';
 import { TREND_ENDPOINT, createTrendApp } from '../trend';
+import { parseThemesJson } from '../trend/domain';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
-import { ORCA_POLICY, reviewPolicy } from '../shared/orca/policy';
+import { ORCA_POLICY, collectPolicy, reviewPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
 import { enqueueManualCollect } from '../collect/application/schedule';
-import { parseSearchTermsJson } from '../collect/application/search-terms';
+import { inferKeywords, KEYWORDS_ENDPOINT, parseSearchTermsJson } from '../collect/application/search-terms';
 import { queueCollect, utcClock } from '../collect/infrastructure/adapters';
 
 export type AppEnv = { Bindings: Env };
@@ -240,7 +243,7 @@ app.openapi(
 
     let runQuery = db
       .selectFrom('runs')
-      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'search_terms_json', 'created_at'])
+      .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'search_terms_json', 'trend_summary', 'themes_json', 'created_at'])
       .where('project_id', '=', project_id)
       .orderBy('created_at', 'asc')
       .limit(50);
@@ -255,6 +258,8 @@ app.openapi(
       status: string;
       failed_sources_json: string | null;
       search_terms_json: string | null;
+      trend_summary: string | null;
+      themes_json: string | null;
       created_at: string;
     }>(c.env.DB, runQuery.compile());
 
@@ -271,6 +276,7 @@ app.openapi(
             abstract: string | null;
             url: string | null;
             published_at: string | null;
+            pdf_url: string | null;
             coarse_score: number | null;
             problem_excerpt: string | null;
           }>(
@@ -286,6 +292,7 @@ app.openapi(
                 'abstract',
                 'url',
                 'published_at',
+                'pdf_url',
                 'coarse_score',
                 'problem_excerpt',
               ])
@@ -309,6 +316,8 @@ app.openapi(
           status: r.status as 'ok' | 'empty' | 'failed' | 'partial',
           failed_sources_json: r.failed_sources_json,
           search_terms: parseSearchTermsJson(r.search_terms_json),
+          trend: r.trend_summary,
+          themes: parseThemesJson(r.themes_json),
           created_at: r.created_at,
           papers: (papersByRun.get(r.run_id) ?? []).map((p) => ({
             external_id: p.external_id,
@@ -318,6 +327,7 @@ app.openapi(
             abstract: p.abstract,
             url: p.url,
             published_at: p.published_at,
+            pdf_url: p.pdf_url,
             coarse_score: p.coarse_score,
             problem_excerpt: p.problem_excerpt,
           })),
@@ -517,12 +527,26 @@ app.openapi(
       fail(429, { error: 'rate_limited', detail: 'daily LLM call limit' });
     }
 
-    const { topic } = c.req.valid('json');
-    const got = await createTrendApp({
+    const { topic, papers: given } = c.req.valid('json');
+    const app = createTrendApp({
       orcaKey: apiKey,
       openAlexKey: c.env.OPENALEX_API_KEY,
       policy,
-    }).survey(topic);
+    });
+    const got =
+      given && given.length > 0
+        ? await app.surveyPapers(
+            topic,
+            given.map((p) => ({
+              external_id: p.title,
+              title: p.title,
+              authors: null,
+              abstract: p.abstract ?? null,
+              url: p.url ?? null,
+              published_at: p.published_at ?? null,
+            })),
+          )
+        : await app.survey(topic);
     if (!got.ok) {
       if (got.detail === 'orcarouter') fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
       fail(502, { error: 'source_failed', detail: got.detail });
@@ -547,7 +571,73 @@ app.openapi(
         classification: 'C1' as const,
         model: got.model,
         summary: got.summary,
+        themes: got.themes,
         papers: got.papers,
+      },
+      200,
+    );
+  },
+);
+
+app.openapi(
+  createRoute({
+    method: 'post',
+    path: '/bff/keywords',
+    request: {
+      body: {
+        content: { 'application/json': { schema: KeywordsBodySchema } },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: 'C1 キーワード。課題意識から出す。利用者が確認する（C-07）',
+        content: { 'application/json': { schema: KeywordsResponseSchema } },
+      },
+      ...unauthorized,
+      429: { description: '利用者単位の上限（NFR-04）', ...jsonError },
+      ...notImplemented,
+      502: { description: 'OrcaRouter が欠けた', ...jsonError },
+    },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+
+    const policy = collectPolicy(c.env);
+    const apiKey = orcaKey(c.env, 'interactive') ?? orcaKey(c.env, policy.slot);
+    if (!apiKey) {
+      fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
+    }
+
+    const usage = createUsage(c.env);
+    const userId = await usage.ensureUser(auth.payload.sub!);
+    const used = await usage.dailyCallCount(userId);
+    if (used >= usage.limit) {
+      fail(429, { error: 'rate_limited', detail: 'daily LLM call limit' });
+    }
+
+    const { topic } = c.req.valid('json');
+    const got = await inferKeywords(apiKey, { ...policy, slot: 'interactive' }, topic);
+    if (got.usage) {
+      await usage.record({
+        userId,
+        endpoint: KEYWORDS_ENDPOINT,
+        classification: 'C1',
+        requestedModel: got.usage.requestedModel,
+        resolvedModel: got.usage.model,
+        tokens: got.usage.tokens,
+        costUsd: got.usage.costUsd,
+        latencyMs: got.usage.latencyMs,
+        fallbackUsed: got.usage.fallbackUsed,
+      });
+    }
+
+    return c.json(
+      {
+        classification: 'C1' as const,
+        model: got.usage?.model ?? null,
+        terms: got.terms,
       },
       200,
     );

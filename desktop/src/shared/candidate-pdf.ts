@@ -34,17 +34,21 @@ const DOI_RE = /^10\.\d{4,9}\//;
 /**
  * 未採点かつ本文が無い候補について、OA 直リンクがあれば PDF を取り本文を抽出する。
  * 失敗は未採点のまま残す（C-07）。
+ *
+ * `resolveMissing` が false のときは、収集時に取れた直リンクだけを使う。
+ * 1 件ずつ書誌 LLM に引き直すのは mypaper 採点で本文が要るときに限る。
  */
 export async function ensureCandidateFulltexts(
   db: Db,
   projectId: string,
   root: string,
   deps: CandidatePdfDeps,
-  opts: { limit?: number; signal?: AbortSignal } = {},
+  opts: { limit?: number; signal?: AbortSignal; resolveMissing?: boolean } = {},
 ): Promise<CandidatePdfResult> {
   ensureCandidatesDir(root);
   const papers = listPapersNeedingFulltext(db, projectId, opts.limit ?? 200);
   const result: CandidatePdfResult = { attempted: 0, extracted: 0, downloaded: 0, failed: 0 };
+  const resolveMissing = opts.resolveMissing !== false;
 
   for (const p of papers) {
     if (opts.signal?.aborted) break;
@@ -55,7 +59,9 @@ export async function ensureCandidateFulltexts(
     if (!path && existsSync(dest)) path = dest;
 
     if (!path) {
-      const url = await resolvePdfUrl(db, p, deps);
+      const url = resolveMissing
+        ? await resolvePdfUrl(db, p, deps)
+        : knownPdfUrl(p);
       if (!url) {
         result.failed++;
         continue;
@@ -168,15 +174,21 @@ async function firstPageFromFile(path: string): Promise<{ page: string | null; a
   }
 }
 
+/** 収集時に来た直リンクだけ。LLM にも OpenAlex にも引き直さない */
+function knownPdfUrl(p: { url: string | null; pdf_url: string | null }): string | null {
+  const cached = httpsPdfUrl(p.pdf_url);
+  if (cached) return cached;
+  const fromUrl = httpsPdfUrl(p.url);
+  return fromUrl && /\.pdf(?:[?#]|$)/i.test(fromUrl) ? fromUrl : null;
+}
+
 async function resolvePdfUrl(
   db: Db,
   p: { paper_id: string; title: string; url: string | null; external_id: string | null; pdf_url: string | null },
   deps: CandidatePdfDeps,
 ): Promise<string | null> {
-  const cached = httpsPdfUrl(p.pdf_url);
-  if (cached) return cached;
-  const fromUrl = httpsPdfUrl(p.url);
-  if (fromUrl && /\.pdf(?:[?#]|$)/i.test(fromUrl)) return fromUrl;
+  const known = knownPdfUrl(p);
+  if (known) return known;
 
   const doi = p.external_id && DOI_RE.test(p.external_id) ? p.external_id : null;
   if (!doi && !p.title.trim()) return null;

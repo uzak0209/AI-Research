@@ -1,9 +1,13 @@
 export {
   COLLECT_ENDPOINT,
+  KEYWORDS_ENDPOINT,
   MIN_INFERRED_ABBR,
   MAX_INFERRED_ABBR,
   MAX_TERMS,
   parseInferredAbbreviations,
+  parseKeywordTags,
+  mergeKeywordTags,
+  inferKeywords,
   preciseSearchQueries,
   andSearchQuery,
   parseSearchTermsJson,

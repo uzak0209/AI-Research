@@ -7,6 +7,8 @@ import {
   openAlexQueryFromSummary,
   openAlexQueryFromTerms,
   parseInferredAbbreviations,
+  parseKeywordTags,
+  mergeKeywordTags,
   parseSearchTermsJson,
   preciseSearchQueries,
 } from '../src/queries';
@@ -62,6 +64,26 @@ describe('parseInferredAbbreviations', () => {
   it('JSON 配列でなければ捨てる', () => {
     expect(parseInferredAbbreviations('DPDK, RSS')).toEqual([]);
     expect(parseInferredAbbreviations('{"abbr":"DPDK"}')).toEqual([]);
+  });
+});
+
+describe('parseKeywordTags', () => {
+  it('略語と短い日本語を残し URL は捨てる', () => {
+    expect(
+      parseKeywordTags(JSON.stringify(['DPDK', 'ゼロコピー', 'https://example.com', 'RSS'])),
+    ).toEqual(['DPDK', 'ゼロコピー', 'RSS']);
+  });
+
+  it('重複と長文は捨てる', () => {
+    expect(
+      parseKeywordTags(JSON.stringify(['DPDK', 'dpdk', 'これは長すぎてキーワードとして採用しない説明の文章である'])),
+    ).toEqual(['DPDK']);
+  });
+});
+
+describe('mergeKeywordTags', () => {
+  it('種語を先に残す', () => {
+    expect(mergeKeywordTags(['DPDK'], ['RSS', 'DPDK'])).toEqual(['DPDK', 'RSS']);
   });
 });
 

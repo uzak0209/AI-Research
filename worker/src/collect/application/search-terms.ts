@@ -16,10 +16,11 @@
  * LLM 失敗時は種語だけ。日本語全文は OpenAlex に投げない（C-07）。
  */
 import { chatCompletion, type OrcaChatOk } from '../../shared/orca/chat';
-import { collectPolicy } from '../../shared/orca/policy';
+import { collectPolicy, type OrcaClassPolicy } from '../../shared/orca/policy';
 import type { Env } from '../../env';
 
 export const COLLECT_ENDPOINT = '/cron/collect';
+export const KEYWORDS_ENDPOINT = '/bff/keywords';
 
 /** 推測で足す略語の下限。プロンプトに書く */
 export const MIN_INFERRED_ABBR = 20;
@@ -210,5 +211,80 @@ export async function buildSearchQuery(env: Env, summary: string): Promise<Searc
     generated: true,
     usage: result,
     combo: inferred,
+  };
+}
+
+const KEYWORD_SYSTEM = [
+  'You extract search keywords from a research problem statement.',
+  'Reply with ONLY a JSON array of strings. No prose, no code fence.',
+  `At least ${MIN_INFERRED_ABBR} items, at most ${MAX_INFERRED_ABBR}.`,
+  'Each item is a short keyword used in the SAME subfield: abbreviations (DPDK, XDP) or short technical terms (2-24 characters).',
+  'Japanese short nouns are OK when the topic is Japanese. No sentences. No URLs. No paper titles.',
+  'Do not jump to another field.',
+].join(' ');
+
+/** 設定画面の確認用。略語に限らず短いキーワードを残す */
+export function parseKeywordTags(raw: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, ''));
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of parsed) {
+    if (typeof item !== 'string') continue;
+    const t = item.trim().replace(/\s+/g, ' ');
+    if (!t || t.length > 24) continue;
+    if (/https?:\/\//i.test(t) || t.includes('://')) continue;
+    if ((t.match(/ /g) ?? []).length > 2) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t);
+    if (out.length >= MAX_INFERRED_ABBR) break;
+  }
+  return out;
+}
+
+export function mergeKeywordTags(base: string[], extra: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of [...base, ...extra]) {
+    const x = t.trim().replace(/\s+/g, ' ');
+    if (!x) continue;
+    const key = x.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(x);
+    if (out.length >= MAX_INFERRED_ABBR) break;
+  }
+  return out;
+}
+
+/** 課題意識からキーワード。利用者が設定で確認する（C-07）。原稿は載せない */
+export async function inferKeywords(
+  apiKey: string,
+  policy: OrcaClassPolicy,
+  summary: string,
+): Promise<{ terms: string[]; usage: OrcaChatOk | null }> {
+  const seeds = extractLatinTerms(summary);
+  const result = await chatCompletion(
+    apiKey,
+    [
+      { role: 'system', content: KEYWORD_SYSTEM },
+      { role: 'user', content: summary },
+    ],
+    { ...policy, maxTokens: Math.max(policy.maxTokens ?? 0, 400) },
+  );
+  if (!result.ok) {
+    return { terms: seeds, usage: null };
+  }
+  const inferred = parseKeywordTags(result.text);
+  return {
+    terms: mergeKeywordTags(seeds, inferred.length ? inferred : parseInferredAbbreviations(result.text)),
+    usage: result,
   };
 }
