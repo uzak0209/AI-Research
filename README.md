@@ -14,17 +14,6 @@
 | [docs/requirements.md](docs/requirements.md) | 何を・なぜ（関連の二軸） |
 | [docs/adr/](docs/adr/) | どう作るか（0001〜0005） |
 | [docs/er-diagram.md](docs/er-diagram.md) | データ配置（ER 図） |
-| [docs/metrics-trend.md](docs/metrics-trend.md) | トークン/論文・点数の推移（グラフ＋Claude まとめ） |
-
-### 指標の推移
-
-![トークン/論文](docs/metrics-tokens.svg)
-
-![点数 (coarse_score 平均)](docs/metrics-score.svg)
-
-![取得論文数](docs/metrics-papers.svg)
-
-詳細・Claude まとめ: [docs/metrics-trend.md](docs/metrics-trend.md)
 
 ## 何ができるか（初版の目標）
 
