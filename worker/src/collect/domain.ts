@@ -59,4 +59,6 @@ export type ScoredPaper = {
   pdf_url?: string | null;
   coarse_score: number;
   problem_excerpt: string | null;
+  /** abstract に逐語で実在するかの照合結果。未照合/excerpt 無しは null（C-07） */
+  problem_excerpt_verified?: boolean | null;
 };

@@ -10,6 +10,8 @@ export type TrendLlmOk = {
   model: string;
   requestedModel: string;
   tokens: number;
+  tokensIn: number;
+  tokensOut: number;
   costUsd: number | null;
   latencyMs: number;
   fallbackUsed: boolean;

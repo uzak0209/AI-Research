@@ -63,10 +63,26 @@ function addUsage(a: OrcaChatOk | null, b: OrcaChatOk): OrcaChatOk {
   return {
     ...b,
     tokens: a.tokens + b.tokens,
+    tokensIn: a.tokensIn + b.tokensIn,
+    tokensOut: a.tokensOut + b.tokensOut,
     costUsd: a.costUsd == null || b.costUsd == null ? null : a.costUsd + b.costUsd,
     latencyMs: a.latencyMs + b.latencyMs,
     fallbackUsed: a.fallbackUsed || b.fallbackUsed,
   };
+}
+
+/**
+ * problem_excerpt が abstract に逐語で実在するかの照合（捏造検知。C-07, FR-16, ADR-0005 §10）。
+ * ローカルの文字列比較のみ。外部 LLM を再度呼ばない。
+ * 空白の連続・前後の省略記号だけを正規化する。パラフレーズは検出できない前提（逐語一致のみ判定）。
+ */
+export function verifyProblemExcerpt(excerpt: string | null, abstract: string | null): boolean | null {
+  if (!excerpt) return null;
+  if (!abstract) return false;
+  const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+  const quote = normalize(excerpt).replace(/^[…"'“”]+|[…"'“”]+$/g, '');
+  if (!quote) return null;
+  return normalize(abstract).includes(quote);
 }
 
 export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Promise<ProblemExcerptResult> {
@@ -76,7 +92,10 @@ export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Pr
   const policy = reviewPolicy(env);
   const apiKey = orcaKey(env, policy.slot);
   if (!apiKey) {
-    return { papers: papers.map((p) => ({ ...p, problem_excerpt: null })), usage: null };
+    return {
+      papers: papers.map((p) => ({ ...p, problem_excerpt: null, problem_excerpt_verified: null })),
+      usage: null,
+    };
   }
 
   let usage: OrcaChatOk | null = null;
@@ -107,10 +126,14 @@ export async function attachProblemExcerpts(env: Env, papers: ScoredPaper[]): Pr
   }
 
   return {
-    papers: papers.map((p) => ({
-      ...p,
-      problem_excerpt: excerpts.get(p.external_id) ?? null,
-    })),
+    papers: papers.map((p) => {
+      const problem_excerpt = excerpts.get(p.external_id) ?? null;
+      return {
+        ...p,
+        problem_excerpt,
+        problem_excerpt_verified: verifyProblemExcerpt(problem_excerpt, p.abstract),
+      };
+    }),
     usage,
   };
 }

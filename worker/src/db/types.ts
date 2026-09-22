@@ -47,6 +47,8 @@ export interface RunPapers {
   pdf_url: string | null;
   coarse_score: number | null;
   problem_excerpt: string | null;
+  /** abstract との逐語照合。null=excerpt 無し／1=一致／0=不一致（捏造の疑い） */
+  problem_excerpt_verified: number | null;
 }
 
 export interface LlmUsage {
@@ -66,10 +68,40 @@ export interface LlmUsage {
   fallback_calls: number;
 }
 
+/**
+ * ADR-0005 §9・§10: 収集パイプラインの LLM 呼び出し。1 呼び出し 1 行。
+ * run_id に外部キー制約は無い（1 段目の呼び出しは runs 行の確定より前に起きるため）。
+ */
+export interface LlmCalls {
+  call_id: string;
+  /** 対話専用 endpoint は runs に紐付かないため null */
+  run_id: string | null;
+  endpoint: string;
+  classification: string;
+  /** 1段目 | 2段目 | retro */
+  stage: string;
+  /** Named Router 名。C1 直指定は null */
+  router: string | null;
+  requested_model: string | null;
+  resolved_model: string | null;
+  /** 受け皿へ落ちた先。落ちていなければ null */
+  fallback_target: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number | null;
+  duration_ms: number | null;
+  /** コード側の出力検査結果。未実装の間は null（C-07） */
+  guardrail_result: string | null;
+  /** 失敗時のみ: 5xx | 429 | timeout | invalid_format */
+  failure_reason: string | null;
+  created_at: string;
+}
+
 export interface DB {
   users: Users;
   projects: Projects;
   runs: Runs;
   run_papers: RunPapers;
   llm_usage: LlmUsage;
+  llm_calls: LlmCalls;
 }
