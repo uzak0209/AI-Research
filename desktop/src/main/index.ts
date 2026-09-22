@@ -262,29 +262,7 @@ function restartRefWatch(): void {
     // 監視できなくても起動は続ける
   }
   refWatch = watchReferences(p.root_path, p.project_id, biblio, notifyLibrary);
-  mypaperWatch = watchMypaper(p.root_path, p.project_id, biblio, () => {
-    notifyMypaper();
-    notifyLibrary();
-  });
-  void ingestExistingMypaperPdfs(p.project_id, p.root_path);
-}
-
-async function ingestExistingMypaperPdfs(projectId: string, root: string): Promise<void> {
-  if (!biblio) return;
-  let added = false;
-  for (const f of listMypaperEntries(root).filter((e) => e.kind === 'pdf' && e.bytes > 0)) {
-    if (biblio.refs.findByPath(f.path)) continue;
-    try {
-      await biblio.ingestFile(projectId, f.path);
-      added = true;
-    } catch {
-      // 1 件失敗しても残りは続ける。欠けは一覧で分かる（C-07）
-    }
-  }
-  if (added) {
-    notifyMypaper();
-    notifyLibrary();
-  }
+  mypaperWatch = watchMypaper(p.root_path, notifyMypaper);
 }
 
 /** 過去の収集でトレンドが無い報告を、手元の公開論文だけで埋める。原稿は送らない */
@@ -791,15 +769,11 @@ function registerIpc(): void {
       try {
         const got = copyIntoMypaper(project.root_path, src);
         imported.push(got);
-        if (extname(got.path).toLowerCase() === '.pdf' && biblio) {
-          await biblio.ingestFile(projectId, got.path);
-        }
       } catch (e) {
         failed.push({ path: src, error: e instanceof Error ? e.message : String(e) });
       }
     }
     notifyMypaper();
-    notifyLibrary();
     return { imported, failed };
   });
 
