@@ -120,7 +120,7 @@ erDiagram
         text title
         text embed_model
         text last_run_id "同期位置"
-        text last_search_terms "分解した主題語＋関連語 JSON。見せる"
+        text last_search_terms "設定で確定した検索語 JSON。次の収集がそのまま使う。未確定なら関連技術タグにフォールバック"
         text root_path "作業フォルダ。未設定可"
     }
     papers {
@@ -235,7 +235,7 @@ erDiagram
 
 ### 各表の意味
 
-- **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`last_search_terms` は直近の収集で LLM が分解した主題語＋関連語。隠さず見せる（C-07）。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）。`root_path` は作業フォルダ（`references` / `mypaper` / `claims`）。未設定のままでもプロジェクト行は作れる。索引の正本は SQLite
+- **`projects`**: クラウドと同じ `project_id` で対応づける。`last_run_id` は同期位置で、起動時はこれ以降だけ取得。`last_search_terms` は設定で確定した検索語で、次の収集がそのままクエリに使う。未確定なら関連技術タグにフォールバックする。`embed_model` はプロジェクトに 1 つ固定（別モデルのベクトルは比較できないため）。`root_path` は作業フォルダ（`references` / `mypaper` / `claims`）。未設定のままでもプロジェクト行は作れる。索引の正本は SQLite
 - **`survey_reports`**: 収集 1 回の報告。クラウド `runs` のいつ・状態・検索語・トレンド・次テーマを手元に残す。論文は `papers.run_id` で辿る
 - **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 課題意識 cos × 0.7 ＋ 最近傍の関連技術 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_chunk_id` は最も近い関連技術で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
 - **`references`**: アプリ内参考文献ライブラリの本体（FR-05）。日次候補から入れた場合は `paper_id` で辿れる。手で足した文献は `paper_id` が空。GUI と CLI が同じこの表を読み書きする（FR-11）。`bibtex_key` は `\cite{}` に使う識別子で、**プロジェクト内で一意**。著者姓＋年で自動生成し、衝突時は英字サフィックスを付ける（FR-12）。この表が引用ファイルの書き出し内容の唯一の元になる
