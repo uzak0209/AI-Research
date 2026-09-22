@@ -19,8 +19,8 @@
  *
  * LLM 失敗時は絞った種語だけ。日本語全文は OpenAlex に投げない（C-07）。
  */
-import { chatCompletion, orcaKey, type OrcaChatOk } from '../../shared/orca/chat';
-import { collectPolicy, type OrcaClassPolicy } from '../../shared/orca/policy';
+import { chatCompletion, combineUsage, orcaKey, type OrcaChatOk } from '../../shared/orca/chat';
+import { collectPolicy, collectSelfFallbackModel, type OrcaClassPolicy } from '../../shared/orca/policy';
 import type { Env } from '../../env';
 
 export const COLLECT_ENDPOINT = '/cron/collect';
@@ -187,18 +187,22 @@ function stripFence(raw: string): string {
   return raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
 }
 
-export type Decomposed = { core: string[]; related: string[] };
+export type Decomposed = { core: string[]; related: string[]; ok: boolean };
 
-/** 課題意識の分解。core は検索の軸にできる語だけ。形が違えば空（C-07） */
+/**
+ * 課題意識の分解。core は検索の軸にできる語だけ。
+ * `ok: false` は JSON が壊れている・形が違う（＝形式不正。ADR-0005 §5）。
+ * `ok: true` で core/related が空なのは内容側の足切りで、形式不正とは区別する（C-07）。
+ */
 export function parseSearchDecomposition(raw: string): Decomposed {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripFence(raw));
   } catch {
-    return { core: [], related: [] };
+    return { core: [], related: [], ok: false };
   }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { core: [], related: [] };
+    return { core: [], related: [], ok: false };
   }
   const o = parsed as { core?: unknown; related?: unknown };
 
@@ -216,7 +220,7 @@ export function parseSearchDecomposition(raw: string): Decomposed {
     }
   }
 
-  return { core, related: parseInferredAbbreviations(JSON.stringify(o.related ?? [])) };
+  return { core, related: parseInferredAbbreviations(JSON.stringify(o.related ?? [])), ok: true };
 }
 
 export type SearchTerms = {
@@ -274,13 +278,18 @@ const EMPTY_TERMS: SearchTerms = {
 };
 
 /**
- * 分解は LLM に任せる。落ちたときの受け皿も LLM——**それは Named Router の仕事**。
+ * 分解は LLM に任せる。HTTP レベルの失敗（429・上流障害）の受け皿は Named Router の仕事。
  *
  * `rs-collect` が候補 3 本と受け皿 1 本を持ち、`extra_body.route=fallback` で
  * 別ベンダーへも落ちる（`routers/rs-collect.yaml`, ADR-0005 §3 / §5）。
- * だからここでモデルを段積みしない。呼ぶのは 1 回。
+ * その手前で `!result.ok` ならここでは段積みしない。
  *
- * その受け皿ごと全滅したら、**機械的な語の切り出しには落とさない**——
+ * **構造化出力のパース失敗（HTTP 200 だが JSON が壊れている）だけは別**——
+ * ゲートウェイはこれを失敗と見なさないため、ゲートウェイ側の受け皿では拾えない
+ * （ADR-0005 §5「形式不正」）。同じモデルに投げ直しても同じ形で返る見込みが高いので、
+ * ここで別モデルへ 1 回だけ自前で投げ直す（同 §5「試行回数」＝1 次 + 自前 1 本の計 2 回まで）。
+ *
+ * その 2 回とも壊れていたら、**機械的な語の切り出しには落とさない**——
  * `The` のような機能語が検索の軸になり、関係の無い論文を集めてしまう。
  * 空で返し、収集を失敗として残す（C-07）。
  */
@@ -296,26 +305,44 @@ export async function buildSearchQuery(
   const apiKey = orcaKey(env, policy.slot);
   if (!apiKey) return EMPTY_TERMS;
 
-  const result = await chatCompletion(
-    apiKey,
-    [
-      { role: 'system', content: SYSTEM },
-      { role: 'user', content: summary },
-    ],
-    policy,
-    true,
-  );
+  const messages = [
+    { role: 'system' as const, content: SYSTEM },
+    { role: 'user' as const, content: summary },
+  ];
+
+  const result = await chatCompletion(apiKey, messages, policy, true);
   if (!result.ok) return EMPTY_TERMS;
 
-  const { core, related } = parseSearchDecomposition(result.text);
+  let usage: OrcaChatOk = result;
+  let decomposition = parseSearchDecomposition(result.text);
+
+  if (!decomposition.ok) {
+    const fallbackModel = collectSelfFallbackModel(result.model);
+    if (fallbackModel) {
+      const retry = await chatCompletion(
+        apiKey,
+        messages,
+        { ...policy, model: fallbackModel, fallbacks: [] },
+        true,
+      );
+      if (retry.ok) {
+        usage = combineUsage(usage, retry);
+        decomposition = parseSearchDecomposition(retry.text);
+      }
+    }
+  }
+
+  if (!decomposition.ok) return { ...EMPTY_TERMS, usage };
+
+  const { core, related } = decomposition;
   const queries = preciseSearchQueries(core, related);
-  if (queries.length === 0) return { ...EMPTY_TERMS, usage: result };
+  if (queries.length === 0) return { ...EMPTY_TERMS, usage };
 
   return {
     query: queries[0] ?? '',
     queries,
     generated: true,
-    usage: result,
+    usage,
     combo: mergeKeywordTags(core, related),
   };
 }
