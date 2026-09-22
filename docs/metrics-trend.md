@@ -8,7 +8,7 @@
 
 ## 今回なにをしたか
 
-PR [#54](https://github.com/uzak0209/AI-Research/pull/54): fix: 引用ファイル書き出しがマーカー削除後に復元し手編集を上書きする問題を修正
+PR [#53](https://github.com/uzak0209/AI-Research/pull/53): docs: ADR README の「（提案）」注記を ADR-0004 に付け替え
 
 ## 指標はどう動いたか
 
