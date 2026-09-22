@@ -1,6 +1,6 @@
 # ADR-0004: クラウド側インフラ全体構成（無料枠前提）
 
-- **ステータス**: 提案 / **日付**: 2026-09-20（同日改訂: 148行目の陳腐化した「ローカル LLM で競合／重複検査」記述を訂正／改訂 2026-09-21: 上流は GitHub OAuth／同日: 書誌補完 BFF を責務から外さない／同日: 上流を Google OAuth に変更／同日: Claude scan 用に `test` 環境を `dev`/`prod` から分離）
+- **ステータス**: 提案 / **日付**: 2026-09-20（同日改訂: 148行目の陳腐化した「ローカル LLM で競合／重複検査」記述を訂正／改訂 2026-09-21: 上流は GitHub OAuth／同日: 書誌補完 BFF を責務から外さない／同日: 上流を Google OAuth に変更／同日: Claude scan 用に `test` 環境を `dev`/`prod` から分離／改訂 2026-09-22: ローカル〜ゾーン〜Worker の防御図）
 - **要件**: FR-01, FR-02, FR-08, FR-10, C-02, C-04, C-06, NFR-01, NFR-04
 - **前提**: [ADR-0001](0001-runtime-local-data-extensibility.md)（二層・データ配置）、[ADR-0002](0002-external-llm-bff-classification.md)（BFF・分類）
 
@@ -187,6 +187,77 @@ flowchart LR
    - **正規表現は使えない**（Business 以上）ため `starts_with` 等の文字列演算子で書く
 4. **レート制限（1 本）** — 認証前の入口に限る。IP 基準・10 秒窓で NAT 配下を巻き込むため緩い閾値から
 5. **Worker 内** — JWT 検証 → 入力検証 → 利用者単位の上限 → 処理
+
+#### ローカル〜クラウドの通信と防御
+
+トークンと未公開はデスクトップに残す。公開面だけがゾーンを通り、Worker で本人確認してから触る。
+
+```mermaid
+flowchart TB
+    subgraph client["デスクトップ"]
+        ui["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='36' height='36' /><br/>レンダラ<br/>トークン無し・IPC のみ"]
+        main["<img src='https://cf-icons.pages.dev/ssl.svg' width='36' height='36' /><br/>メイン<br/>短命 JWT はメモリ"]
+        key["<img src='https://cf-icons.pages.dev/security-fingerprint-privacy.svg' width='36' height='36' /><br/>safeStorage<br/>更新トークン"]
+        hold["<img src='https://cf-icons.pages.dev/server-database.svg' width='36' height='36' /><br/>原稿 / PDF / 注釈 / 採点<br/>クラウドへ出さない"]
+    end
+
+    subgraph zone["Cloudflare ゾーン（Free）"]
+        dns["<img src='https://cf-icons.pages.dev/dns.svg' width='32' height='32' /><br/>独自ドメイン HTTPS"]
+        ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='32' height='32' /><br/>DDoS"]
+        waf["<img src='https://cf-icons.pages.dev/waf.svg' width='32' height='32' /><br/>WAF Free + カスタム 5"]
+        rl["<img src='https://cf-icons.pages.dev/rules.svg' width='32' height='32' /><br/>Rate Limit<br/>認証前・IP・10s ×1"]
+    end
+
+    subgraph worker["Workers"]
+        jwt["<img src='https://cf-icons.pages.dev/ssl.svg' width='32' height='32' /><br/>JWT 検証"]
+        gate["<img src='https://cf-icons.pages.dev/api.svg' width='32' height='32' /><br/>入力検証 → 利用者上限"]
+        sync["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>同期 GET /runs"]
+        bff["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>BFF C1/C3"]
+        cron["<img src='https://cf-icons.pages.dev/time-services.svg' width='32' height='32' /><br/>cron 投入のみ"]
+    end
+
+    subgraph store["公開面・堅牢性"]
+        d1["<img src='https://cf-icons.pages.dev/d1.svg' width='40' height='40' /><br/>D1 公開のみ<br/>判定の書き戻しなし"]
+        secrets["<img src='https://cf-icons.pages.dev/security-fingerprint-privacy.svg' width='32' height='32' /><br/>Workers Secrets"]
+        llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='32' height='32' /><br/>OrcaRouter → 上流<br/>本文は残さない"]
+        kv["<img src='https://cf-icons.pages.dev/kv.svg' width='32' height='32' /><br/>KV 冪等 run_id"]
+        q["<img src='https://cf-icons.pages.dev/queues.svg' width='32' height='32' /><br/>Queues<br/>at-least-once"]
+        obs["<img src='https://cf-icons.pages.dev/analytics.svg' width='32' height='32' /><br/>empty ≠ failed<br/>本文は残さない"]
+    end
+
+    ui --> main
+    main --> key
+    main -.-> hold
+    main -->|HTTPS Bearer| dns --> ddos --> waf --> rl --> jwt
+    jwt --> gate
+    gate --> sync --> d1
+    gate --> bff --> secrets --> llm
+    cron --> kv
+    cron --> q --> d1
+    worker -.-> obs
+```
+
+PNG: [08-security-robustness.png](../diagrams/08-security-robustness.png) / リクエスト1本: [08-request-defense.png](../diagrams/08-request-defense.png)
+
+```mermaid
+flowchart LR
+    ui["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='32' height='32' /><br/>レンダラ<br/>トークン無し"]
+    main["<img src='https://cf-icons.pages.dev/ssl.svg' width='32' height='32' /><br/>メイン<br/>JWT メモリ<br/>更新は safeStorage"]
+    dns["<img src='https://cf-icons.pages.dev/dns.svg' width='32' height='32' /><br/>独自ドメイン<br/>HTTPS"]
+    ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='32' height='32' /><br/>DDoS"]
+    waf["<img src='https://cf-icons.pages.dev/waf.svg' width='32' height='32' /><br/>WAF"]
+    rl["<img src='https://cf-icons.pages.dev/rules.svg' width='32' height='32' /><br/>Rate Limit"]
+    w["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>Worker<br/>JWT → 入力 → 上限"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1<br/>公開のみ"]
+    llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='32' height='32' /><br/>LLM<br/>via Secrets"]
+    hold["<img src='https://cf-icons.pages.dev/server-database.svg' width='32' height='32' /><br/>原稿・採点<br/>出さない"]
+
+    ui -->|IPC| main
+    main -.-> hold
+    main -->|Bearer| dns --> ddos --> waf --> rl --> w
+    w -->|GET /runs| d1
+    w -->|BFF| llm
+```
 
 ### 監視（FR-08 の裏付け）
 

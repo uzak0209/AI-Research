@@ -1,0 +1,17 @@
+flowchart LR
+    ui["<img src='https://cf-icons.pages.dev/internet-globe.svg' width='32' height='32' /><br/>レンダラ<br/>トークン無し"]
+    main["<img src='https://cf-icons.pages.dev/ssl.svg' width='32' height='32' /><br/>メイン<br/>JWT メモリ<br/>更新は safeStorage"]
+    dns["<img src='https://cf-icons.pages.dev/dns.svg' width='32' height='32' /><br/>独自ドメイン<br/>HTTPS"]
+    ddos["<img src='https://cf-icons.pages.dev/ddos-protection.svg' width='32' height='32' /><br/>DDoS"]
+    waf["<img src='https://cf-icons.pages.dev/waf.svg' width='32' height='32' /><br/>WAF"]
+    rl["<img src='https://cf-icons.pages.dev/rules.svg' width='32' height='32' /><br/>Rate Limit"]
+    w["<img src='https://cf-icons.pages.dev/workers.svg' width='32' height='32' /><br/>Worker<br/>JWT → 入力 → 上限"]
+    d1["<img src='https://cf-icons.pages.dev/d1.svg' width='32' height='32' /><br/>D1<br/>公開のみ"]
+    llm["<img src='https://cf-icons.pages.dev/ai-gateway.svg' width='32' height='32' /><br/>LLM<br/>via Secrets"]
+    hold["<img src='https://cf-icons.pages.dev/server-database.svg' width='32' height='32' /><br/>原稿・採点<br/>出さない"]
+
+    ui -->|IPC| main
+    main -.-> hold
+    main -->|Bearer| dns --> ddos --> waf --> rl --> w
+    w -->|GET /runs| d1
+    w -->|BFF| llm
