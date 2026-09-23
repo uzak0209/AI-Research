@@ -91,6 +91,8 @@ let cloud: ReturnType<typeof createCloud> | null = null;
 let biblio: BibliographyApp | null = null;
 let refWatch: FSWatcher | null = null;
 let mypaperWatch: FSWatcher | null = null;
+/** いま開いているプロジェクト。未設定（起動直後など）は最新作成のものへ後退する */
+let activeProjectId: string | null = null;
 
 const dbPath = () => join(app.getPath('userData'), 'ai-research.db');
 const modelCacheDir = () => join(app.getPath('userData'), 'models');
@@ -236,6 +238,10 @@ type WorkspaceFail = { ok: false; canceled?: true; error?: string };
 type WorkspaceResult = WorkspaceOk | WorkspaceFail;
 
 function currentProject() {
+  if (activeProjectId) {
+    const p = getProject(db, activeProjectId);
+    if (p) return p;
+  }
   return listProjects(db)[0] ?? null;
 }
 
@@ -327,6 +333,7 @@ function attachWorkspace(root: string, title: string, action: 'create' | 'open')
   } catch {
     // 開けた作業フォルダで candidates が作れなくても落とさない
   }
+  activeProjectId = p.project_id;
   restartRefWatch();
   return { ok: true, root, title, action };
 }
