@@ -1,6 +1,6 @@
 # ADR-0005: クラウド側トレンド調査・競合収集と Named Router によるモデル使い分け
 
-- **ステータス**: 承認済み / **日付**: 2026-09-21（**2026-09-22 改訂: 収集は精度優先。略語 20 件以上を推測して見せ、種語×各略語の AND を順に当てて最新を取る。内部プールから粗い一致の上位 5 件だけを渡す。時間はかけてよい（NFR-01）**／同日改訂: 公開書誌 C1 を利用者起点の LLM 経路に明記／同日: router-retro は `test` D1 の集計 JSON を読む。トークンは Claude に渡さない／同日: 2 段目を課題文抜粋に再定義。関連の二軸に合わせて承認／**同日再改訂: §4 以下、再定義前の `relation`/`reason`/`evidence` 設計を残していた箇所を `problem_excerpt` のみに揃え、依存改訂の要否を見直した（#40）**／**同日: 収集で残した公開論文からトレンドと次テーマを出し、実行行に残す（FR-09）。`POST /theme` は閉じたまま**）
+- **ステータス**: 承認済み / **日付**: 2026-09-21（**2026-09-22 改訂: 収集は精度優先。略語 20 件以上を推測して見せ、種語×各略語の AND を順に当てて最新を取る。内部プールから粗い一致の上位 5 件だけを渡す。時間はかけてよい（NFR-01）**／同日改訂: 公開書誌 C1 を利用者起点の LLM 経路に明記／同日: router-retro は `test` D1 の集計 JSON を読む。トークンは Claude に渡さない／同日: 2 段目を課題文抜粋に再定義。関連の二軸に合わせて承認／**同日再改訂: §4 以下、再定義前の `relation`/`reason`/`evidence` 設計を残していた箇所を `problem_excerpt` のみに揃え、依存改訂の要否を見直した（#40）**／**同日: 収集で残した公開論文からトレンドと次テーマを出し、実行行に残す（FR-09）。`POST /theme` は閉じたまま**／**2026-09-23 改訂: `POST /bff/keywords`（設定画面のキーワード推測。C-07 の「分解した語を見せて確認させる」の対話版）を利用者起点 LLM の 4 経路目として明記。1 段目専用の Named Router（`rs-collect`）を HTTP ハンドラから叩いていた実装を、書誌補完と同じ「ルーターを使わない安価直指定」に直した（#100）**）
 - **要件**: FR-01, FR-08, FR-09, FR-10, FR-15, FR-16, C-01, C-04, C-06, C-07, C-09, NFR-01, NFR-03, NFR-04
 - **前提**: [ADR-0001](0001-runtime-local-data-extensibility.md)（データ境界・ローカル採点）、
   [ADR-0002](0002-external-llm-bff-classification.md)（BFF・C1/C2/C3）、
@@ -79,8 +79,11 @@ flowchart LR
 
 - **利用者起点はエッジ防御と JWT を通る。cron 起点は通らない**——外から叩ける入口を持たないため
 - **1 段目・2 段目の本体は HTTP で動かさない。**Queue consumer のみ。自発調査の HTTP は **認証付き enqueue まで**（FR-17）。Orca / 論文 API を HTTP ハンドラから直接叩かない
-- 利用者起点で LLM を使うのは**公開書誌の穴埋め（C1）**、**収集論文からのトレンド／次テーマ（C1・`POST /bff/trends` と Queue ingest）**、ファクトチェック（C3）。テーマ専用の C2（`POST /theme`）は閉じたまま。
-  同期 API は D1 を読むだけで LLM を通らない。書誌は Named Router を使わない（`ORCA_POLICY.C1`。ADR-0002）
+- 利用者起点で LLM を使うのは**公開書誌の穴埋め（C1）**、**収集論文からのトレンド／次テーマ（C1・`POST /bff/trends` と Queue ingest）**、**キーワード推測（C1・`POST /bff/keywords`。設定画面の対話操作）**、ファクトチェック（C3）。テーマ専用の C2（`POST /theme`）は閉じたまま。
+  同期 API は D1 を読むだけで LLM を通らない。書誌とキーワード推測は Named Router を使わない（`ORCA_POLICY.C1` / `ORCA_POLICY.KEYWORDS`。ADR-0002）。
+  キーワード推測は 1 段目（収集）と同じ「`summary` → 検索語」の仕事を対話で先出しして利用者に見せる（C-07）が、
+  1 段目専用の `rs-collect`（Queue consumer 専用。§2）は使わない。安価モデル直指定に留め、Queue 専用ルーターを
+  HTTP ハンドラから届く経路に置かない（#100）
 
 ### エンドポイントごとの経路
 
@@ -89,6 +92,7 @@ flowchart LR
 | 同期プル | `GET /runs` | 通る／JWT | — | **LLM を通らない** | — | ADR-0004 |
 | 自発調査 | `POST /projects/{id}/collect` | 通る／JWT | — | **LLM を通らない**（enqueue のみ） | — | ADR-0004, 本 ADR |
 | 公開書誌 | `POST /bff/bibliography` | 通る／JWT | **C1** | **ルーターを使わない・安価直指定** | `ORCA_POLICY.C1` | ADR-0002 |
+| キーワード推測 | `POST /bff/keywords` | 通る／JWT | **C1** | **ルーターを使わない・安価直指定**（`rs-collect` は使わない） | `ORCA_POLICY.KEYWORDS` | 本 ADR（#100） |
 | トレンド／次テーマ | `POST /bff/trends` | 通る／JWT | **C1** | `orcarouter/rs-review` | あり | 本 ADR・ADR-0001 |
 | テーマ候補（C2） | `POST /theme` | 通る／JWT | **C2** | 閉じる（501） | — | ADR-0002 |
 | ファクトチェック | `POST /factcheck` | 通る／JWT | **C3** | **ルーターを使わない・直指定** | **無効** | ADR-0002 |
