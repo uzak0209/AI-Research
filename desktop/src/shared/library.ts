@@ -93,7 +93,11 @@ export function addReference(db: Db, projectId: string, item: ReferenceInput): s
 
 const EDITABLE = ['title', 'authors', 'year', 'doi', 'url', 'venue', 'abstract', 'item_type'] as const;
 
-export function updateReference(db: Db, referenceId: string, patch: Partial<ReferenceInput>): void {
+/**
+ * 更新。書誌が変わるので呼び出し側は引用ファイルの再書き出し（FR-12）を促すこと。
+ * 戻り値は再書き出しに使う project_id（何も変えなかった／行が無ければ null）。
+ */
+export function updateReference(db: Db, referenceId: string, patch: Partial<ReferenceInput>): string | null {
   const sets: string[] = [];
   const vals: SqlValue[] = [];
   for (const k of EDITABLE) {
@@ -102,27 +106,33 @@ export function updateReference(db: Db, referenceId: string, patch: Partial<Refe
       vals.push(((patch as Record<string, unknown>)[k] ?? null) as SqlValue);
     }
   }
-  if (sets.length === 0) return;
+  if (sets.length === 0) return null;
   sets.push("updated_at = datetime('now')");
   vals.push(referenceId);
+  const row = db
+    .prepare('SELECT project_id FROM reference_items WHERE reference_id = ?')
+    .get(referenceId) as { project_id: string } | undefined;
   db.prepare(`UPDATE reference_items SET ${sets.join(', ')} WHERE reference_id = ?`).run(...vals);
+  return row?.project_id ?? null;
 }
 
 /**
  * 削除。**メモも注釈も一緒に消える。**
  * 呼び出し側で確認を取ること（取り消せない）。
+ * 戻り値は引用ファイルの再書き出し（FR-12）に使う project_id（行が無ければ null）。
  */
-export function deleteReference(db: Db, referenceId: string): void {
+export function deleteReference(db: Db, referenceId: string): string | null {
   db.exec('BEGIN');
   try {
     const row = db
-      .prepare('SELECT paper_id FROM reference_items WHERE reference_id = ?')
-      .get(referenceId) as { paper_id: string | null } | undefined;
+      .prepare('SELECT project_id, paper_id FROM reference_items WHERE reference_id = ?')
+      .get(referenceId) as { project_id: string; paper_id: string | null } | undefined;
     db.prepare('DELETE FROM reference_items WHERE reference_id = ?').run(referenceId);
     if (row?.paper_id) {
       db.prepare('UPDATE papers SET in_library = 0 WHERE paper_id = ?').run(row.paper_id);
     }
     db.exec('COMMIT');
+    return row?.project_id ?? null;
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;

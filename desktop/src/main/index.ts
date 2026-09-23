@@ -834,10 +834,14 @@ function registerIpc(): void {
     if (!biblio) throw new Error('書誌パイプラインが無い');
     return biblio.follow(projectId, referenceId);
   });
-  ipcMain.handle('lib:update', (_e, referenceId: string, patch: Partial<ReferenceInput>) =>
-    updateReference(db, referenceId, patch),
-  );
-  ipcMain.handle('lib:delete', (_e, referenceId: string) => deleteReference(db, referenceId));
+  ipcMain.handle('lib:update', (_e, referenceId: string, patch: Partial<ReferenceInput>) => {
+    const projectId = updateReference(db, referenceId, patch);
+    if (projectId && biblio) biblio.resyncCites(projectId);
+  });
+  ipcMain.handle('lib:delete', (_e, referenceId: string) => {
+    const projectId = deleteReference(db, referenceId);
+    if (projectId && biblio) biblio.resyncCites(projectId);
+  });
 
   ipcMain.handle('lib:star', (_e, referenceId: string, starred: boolean) =>
     setStarred(db, referenceId, starred),

@@ -65,6 +65,14 @@ describe('保存と編集', () => {
     expect(getReference(db, id)!.title).toMatch(/Graph neural/);
   });
 
+  it('更新・削除は引用ファイル再書き出し（FR-12）用に project_id を返す', () => {
+    const id = addReference(db, PROJ, sample());
+    expect(updateReference(db, id, { year: 2025 })).toBe(PROJ);
+    expect(updateReference(db, id, {})).toBeNull();
+    expect(deleteReference(db, id)).toBe(PROJ);
+    expect(deleteReference(db, id)).toBeNull();
+  });
+
   it('削除するとメモも消える', () => {
     const id = addReference(db, PROJ, sample());
     saveNote(db, id, 'あとで読む');

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { NotSignedInError, type CloudClient } from '@ai-research/core';
+import { createBibliographyApp } from '../src/bibliography/compose.js';
 import { followReference } from '../src/bibliography/application/follow-reference.js';
 import { ingestPdf } from '../src/bibliography/application/ingest-pdf.js';
 import type { BibliographyDeps, ReferenceRepo } from '../src/bibliography/application/ports.js';
@@ -27,6 +28,7 @@ import { candidatePdfPath } from '../src/shared/workspace.js';
 import { bffBibliographyGateway, fsCiteFiles } from '../src/bibliography/infrastructure/adapters.js';
 import { openDb } from '../src/shared/db.js';
 import { createProject, setProjectRoot } from '../src/shared/repo.js';
+import { addReference, deleteReference, updateReference } from '../src/shared/library.js';
 
 function client(res: Response | Error): CloudClient {
   return {
@@ -375,6 +377,65 @@ describe('fsCiteFiles.exportAll (C-08)', () => {
       const cites = fsCiteFiles(db);
       expect(cites.exportAll(projectId, [item])).toBe('ok');
       expect(cites.exportAll(projectId, [{ ...item, year: 2025 }])).toBe('ok');
+      expect(readFileSync(bibPath, 'utf8')).toContain('year = {2025}');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('createBibliographyApp.resyncCites（FR-12: 削除・更新も書き出し契機。issue #93）', () => {
+  function setup() {
+    const dir = mkdtempSync(join(tmpdir(), 'biblio-resync-'));
+    mkdirSync(join(dir, 'mypaper'), { recursive: true });
+    const bibPath = join(dir, 'mypaper', 'refs.bib');
+    writeFileSync(bibPath, '');
+    const db = openDb({ path: ':memory:' });
+    const project = createProject(db, { title: 't', summary: 's', embed_model: 'm' });
+    setProjectRoot(db, project.project_id, dir);
+    return { dir, bibPath, db, projectId: project.project_id };
+  }
+
+  it('ライブラリから削除すると .bib からもエントリが消える', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const app = createBibliographyApp(db, () => null);
+      const id = addReference(db, projectId, {
+        title: 'GNN',
+        authors: 'Ada Lovelace',
+        year: 2024,
+        venue: 'SIGCOMM',
+      });
+      app.resyncCites(projectId);
+      expect(readFileSync(bibPath, 'utf8')).toContain('@article{');
+
+      const returnedProjectId = deleteReference(db, id);
+      expect(returnedProjectId).toBe(projectId);
+      app.resyncCites(returnedProjectId!);
+      expect(readFileSync(bibPath, 'utf8')).not.toContain('@article{');
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('ライブラリで更新すると .bib の内容も更新される', () => {
+    const { dir, bibPath, db, projectId } = setup();
+    try {
+      const app = createBibliographyApp(db, () => null);
+      const id = addReference(db, projectId, {
+        title: 'GNN',
+        authors: 'Ada Lovelace',
+        year: 2024,
+        venue: 'SIGCOMM',
+      });
+      app.resyncCites(projectId);
+      expect(readFileSync(bibPath, 'utf8')).toContain('year = {2024}');
+
+      const returnedProjectId = updateReference(db, id, { year: 2025 });
+      expect(returnedProjectId).toBe(projectId);
+      app.resyncCites(returnedProjectId!);
       expect(readFileSync(bibPath, 'utf8')).toContain('year = {2025}');
     } finally {
       db.close();
