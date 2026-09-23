@@ -371,6 +371,8 @@ describe('POST /bff/keywords（C1）', () => {
     expect(JSON.stringify(orca?.init?.body)).not.toContain('manuscript');
     expect(JSON.stringify(orca?.init?.body)).not.toContain('unpublished');
     expect(JSON.stringify(orca?.init?.body)).not.toContain('json_object');
+    // #100: 1 段目専用の Named Router（rs-collect）を HTTP から叩かない。安価直指定
+    expect(JSON.stringify(orca?.init?.body)).not.toContain('rs-collect');
   });
 
   it('Orca が落ちたら 502', async () => {

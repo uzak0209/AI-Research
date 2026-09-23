@@ -27,7 +27,7 @@ import { TREND_ENDPOINT, createTrendApp } from '../trend';
 import { parseThemesJson } from '../trend/domain';
 import { BIBLIOGRAPHY_ENDPOINT, bibliographyHintSchema, createBibliographyApp } from '../bibliography';
 import { orcaKey } from '../shared/orca/chat';
-import { ORCA_POLICY, collectPolicy, trendPolicy } from '../shared/orca/policy';
+import { ORCA_POLICY, trendPolicy } from '../shared/orca/policy';
 import { createUsage } from '../usage';
 import { enqueueManualCollect } from '../collect/application/schedule';
 import { inferKeywords, KEYWORDS_ENDPOINT, parseSearchTermsJson } from '../collect/application/search-terms';
@@ -655,8 +655,7 @@ app.openapi(
     const auth = await createAuth(c.env).requireAccess(c.req.raw);
     if (!auth.ok) abort(auth);
 
-    const policy = collectPolicy(c.env);
-    const apiKey = orcaKey(c.env, 'interactive') ?? orcaKey(c.env, policy.slot);
+    const apiKey = orcaKey(c.env, ORCA_POLICY.KEYWORDS.slot);
     if (!apiKey) {
       fail(501, { error: 'not_implemented', detail: 'ORCAROUTER_API_KEY が未設定' });
     }
@@ -669,7 +668,7 @@ app.openapi(
     }
 
     const { topic } = c.req.valid('json');
-    const got = await inferKeywords(apiKey, { ...policy, slot: 'interactive' }, topic);
+    const got = await inferKeywords(apiKey, ORCA_POLICY.KEYWORDS, topic);
     if (!got.usage) {
       fail(502, { error: 'upstream_failed', detail: 'orcarouter' });
     }

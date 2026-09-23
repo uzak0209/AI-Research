@@ -34,13 +34,18 @@ const REVIEW_CHAIN = ['google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'] a
 export const COLLECT_MAX_TOKENS = 200;
 export const REVIEW_MAX_TOKENS = 700;
 export const BIBLIOGRAPHY_MAX_TOKENS = 600;
+export const KEYWORDS_MAX_TOKENS = 600;
 /**
  * トレンドは本文 2〜6 文＋次テーマ 5 件を 1 回で返す。
  * 日本語は 1 文字 1 トークン前後で、700 だと途中で切れて JSON が壊れる。
  */
 export const TREND_MAX_TOKENS = 1600;
 
-/** 書誌補完（C1）。Named Router に載せない */
+/**
+ * 書誌補完（C1）／設定画面のキーワード推測（C1）。どちらも Named Router に載せない。
+ * 1 段目専用の `rs-collect`（Queue consumer 専用。§2）を HTTP ハンドラから叩かないための直指定
+ * （#100）。安価モデル直指定は書誌補完と同じ形（ADR-0002）。
+ */
 export const ORCA_POLICY = {
   C1: {
     slot: 'interactive',
@@ -50,7 +55,15 @@ export const ORCA_POLICY = {
     failOpen: false,
     maxTokens: BIBLIOGRAPHY_MAX_TOKENS,
   },
-} as const satisfies Record<'C1', OrcaClassPolicy>;
+  KEYWORDS: {
+    slot: 'interactive',
+    model: 'openai/gpt-4o-mini',
+    fallbacks: ['openai/gpt-4o-mini', 'google/gemini-2.5-flash', 'anthropic/claude-haiku-4.5'],
+    temperature: 0,
+    failOpen: false,
+    maxTokens: KEYWORDS_MAX_TOKENS,
+  },
+} as const satisfies Record<'C1' | 'KEYWORDS', OrcaClassPolicy>;
 
 /** ルーターがコンソールに無い間は var で素のモデルへ逃がせる（ADR-0004: 手動設定を正にしない） */
 export const DEFAULT_COLLECT_ROUTER = 'orcarouter/rs-collect';
