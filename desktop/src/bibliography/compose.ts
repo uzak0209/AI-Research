@@ -16,6 +16,7 @@ import {
 export function createBibliographyApp(db: Db, getClient: () => CloudClient | null): BibliographyDeps & {
   follow(projectId: string, referenceId: string): ReturnType<typeof followReference>;
   ingestFile(projectId: string, filePath: string): ReturnType<typeof ingestPdf>;
+  resyncCites(projectId: string): ReturnType<BibliographyDeps['cites']['exportAll']>;
 } {
   const deps: BibliographyDeps = {
     refs: sqliteReferenceRepo(db),
@@ -30,6 +31,8 @@ export function createBibliographyApp(db: Db, getClient: () => CloudClient | nul
     follow: (projectId, referenceId) => followReference(deps, projectId, referenceId),
     ingestFile: (projectId, filePath) =>
       ingestPdf(deps, projectId, filePath, new Uint8Array(readFileSync(filePath))),
+    // ライブラリの更新・削除も書き出し契機（ADR-0003）。追加時は followReference が呼ぶ
+    resyncCites: (projectId) => deps.cites.exportAll(projectId, deps.refs.citeItems(projectId)),
   };
 }
 
