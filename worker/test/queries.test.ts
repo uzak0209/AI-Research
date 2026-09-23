@@ -241,6 +241,21 @@ describe('queriesFromConfirmedTerms', () => {
   it('空白入りの術語もクエリにする', () => {
     expect(queriesFromConfirmedTerms(['zero-copy', 'DPDK'])).toEqual(['zero-copy DPDK', 'zero-copy']);
   });
+
+  it('語の形でない先頭語を軸にしない。後続の軸語を先頭に採る', () => {
+    const longSentence =
+      'The goal of this project is to investigate how packet processing latency can be reduced significantly';
+    expect(queriesFromConfirmedTerms([longSentence, 'DPDK', 'XDP'])).toEqual([
+      'DPDK XDP',
+      'DPDK',
+      `DPDK ${longSentence}`,
+    ]);
+  });
+
+  it('軸にできる語が 1 つも無ければ空を返す（収集 run を落とさない）', () => {
+    const url = 'https://example.com/a-very-long-path-that-is-not-a-search-term';
+    expect(queriesFromConfirmedTerms([url, 'この文章は日本語で語の形ではない'])).toEqual([]);
+  });
 });
 
 describe('searchTermsFromConfirmed', () => {
