@@ -339,6 +339,20 @@ describe('POST /bff/trends（C1）', () => {
   });
 });
 
+describe('POST /theme（C2。ADR-0001/0002/0005: 閉じたまま）', () => {
+  it('Bearer 無しなら 401。認証を経ずに 404 へ落とさない', async () => {
+    const res = await handleFetch(new Request('https://api.test/theme', { method: 'POST' }), env);
+    expect(res.status).toBe(401);
+  });
+
+  it('JWT を通した上で 501', async () => {
+    const res = await authed('/theme', { method: 'POST' });
+    expect(res.status).toBe(501);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe('not_implemented');
+  });
+});
+
 describe('POST /bff/keywords（C1）', () => {
   it('Bearer 無しなら 401', async () => {
     const res = await handleFetch(

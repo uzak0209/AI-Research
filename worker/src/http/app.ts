@@ -770,6 +770,19 @@ app.openapi(
 
 app.openapi(
   createRoute({
+    method: 'post',
+    path: '/theme',
+    responses: { ...unauthorized, ...notImplemented },
+  }),
+  async (c) => {
+    const auth = await createAuth(c.env).requireAccess(c.req.raw);
+    if (!auth.ok) abort(auth);
+    abort({ ok: false, status: 501, body: bffBody });
+  },
+);
+
+app.openapi(
+  createRoute({
     method: 'get',
     path: '/bff/{name}',
     request: { params: z.object({ name: z.string() }) },
