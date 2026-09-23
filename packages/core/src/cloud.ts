@@ -149,7 +149,20 @@ export class CloudClient {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
     });
-    if (!res.ok) throw new Error(`putProject failed: ${res.status}`);
+    if (!res.ok) {
+      // 原因が分からない番号だけを UI に出さない（C-07）
+      let detail = '';
+      try {
+        const body = (await res.json()) as { detail?: string; error?: string };
+        detail = body.detail ?? body.error ?? '';
+      } catch {
+        // status で足りる
+      }
+      if (res.status === 400) {
+        throw new Error(`課題意識のクラウド同期に失敗しました${detail ? `: ${detail}` : '（送る内容が空です）'}`);
+      }
+      throw new Error(`課題意識のクラウド同期に失敗しました (${res.status}${detail ? `: ${detail}` : ''})`);
+    }
     return (await res.json()) as {
       project_id: string;
       title: string;

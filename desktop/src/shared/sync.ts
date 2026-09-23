@@ -41,12 +41,16 @@ export async function syncProjectFromCloud(
   const project = getProject(db, projectId);
   if (!project) throw new Error(`project not found: ${projectId}`);
 
+  // 課題意識も関連技術も空なら送る中身が無い。空 summary は必ず 400 になるので送らない。
+  // 失敗ではなく「まだ同期対象が無い」状態（C-07）。プルは続ける
   const summary = cloudSummaryFromLocal(project.summary, listChunks(db, projectId));
-  await client.putProject(projectId, {
-    title: project.title,
-    summary,
-    search_terms: localSearchTerms(db, projectId),
-  });
+  if (summary.trim()) {
+    await client.putProject(projectId, {
+      title: project.title,
+      summary,
+      search_terms: localSearchTerms(db, projectId),
+    });
+  }
 
   const { runs } = await client.pullRuns(projectId, project.last_run_id);
 
