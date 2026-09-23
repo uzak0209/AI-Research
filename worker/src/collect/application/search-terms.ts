@@ -229,20 +229,26 @@ export type SearchTerms = {
 
 /**
  * 設定で確定した語を OpenAlex のクエリ列にする。
- * 先頭を軸にし、残りは軸×各語の AND。空白入りの術語はそのまま 1 クエリにする。
+ * 軸（`isQueryAxisTerm`）にできる語だけを先頭候補にし、残りは軸×各語の AND。
+ * 軸にできる語が無ければ空を返す——長い語・URL・日本語などが 1 語紛れても
+ * それが軸になって収集 run ごと落ちることはない（ADR-0005 §7）。
+ * 空白入りの術語はそのまま 1 クエリにする。
  */
 export function queriesFromConfirmedTerms(terms: string[]): string[] {
   const combo = mergeKeywordTags([], terms);
   if (combo.length === 0) return [];
 
-  const primary = combo[0]!;
-  const queries: string[] = [primary];
   const axes = combo.filter(isQueryAxisTerm);
+  const primary = axes[0];
+  if (!primary) return [];
+
+  const queries: string[] = [primary];
   if (axes.length > 1) {
     const together = andSearchQuery(axes.slice(0, MAX_CORE_TERMS));
     if (together && !queries.includes(together)) queries.unshift(together);
   }
-  for (const t of combo.slice(1)) {
+  for (const t of combo) {
+    if (t === primary) continue;
     const q = `${primary} ${t}`.replace(/\s+/g, ' ').trim();
     if (q && !queries.includes(q)) queries.push(q);
     if (queries.length >= MAX_COMBO_QUERIES) break;
