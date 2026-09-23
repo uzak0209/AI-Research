@@ -4,3 +4,9 @@ node_modules/
 worker-configuration.d.ts
 coverage/
 tmp/
+
+# terraform/（ゾーンの WAF・レート制限）のローカル状態。値に秘密は入れないが state は共有しない
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars

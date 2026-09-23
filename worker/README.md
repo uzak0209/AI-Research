@@ -55,6 +55,20 @@ local の `secret put` や D1 操作が別アカウントに向かい、`ai-rese
 `prod` の公開面は `ai-research.streeeak.link`（`custom_domain`）。`api.streeeak.link` は別プロジェクトのトンネルなので使わない。
 `workers.dev` のままだとゾーンの WAF とレート制限が効かない（ADR-0004）。
 
+### WAF・レート制限（`worker/terraform/`。prod のみ・人が一度だけ）
+
+wrangler はゾーンの WAF・レート制限を管理できないため、`worker/terraform/`（`cloudflare` provider）で持つ
+（ADR-0004「コードで管理・手動設定を正にしない」）。`./scripts/bootstrap.sh prod` が手順を表示する。
+
+```bash
+cd worker/terraform
+terraform init
+terraform apply -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" -var="zone_id=<Zone ID>"
+```
+
+`dev` / `test` は `workers.dev` のままでゾーン防御の対象外なので実行しない。
+WAF Managed Ruleset の ID・レート制限の閾値は初期値。誤検知が出たら Terraform 側の値を調整する。
+
 ### GitHub 側
 
 Settings → Secrets and variables → Actions。**Secret と Variable はタブが違う。**
@@ -89,6 +103,10 @@ CI が `d1 migrations apply` と Queues のバインディング解決を行う�
 | Account | Workers KV Storage : Edit | KV バインディングの解決 |
 | Account | Account Settings : Read | アカウントの解決 |
 | Zone | Workers Routes : Edit | **prod のみ。**独自ドメイン（`custom_domain`） |
+| Zone | Firewall Services : Edit | **prod のみ・手元だけ（CI の Secret には不要）。** `worker/terraform/` で WAF を適用する（ADR-0004） |
+| Zone | Rate Limiting Rules : Edit | **prod のみ・手元だけ。** `worker/terraform/` でレート制限を適用する（ADR-0004） |
+
+権限グループの表示名は Cloudflare 側で変わることがあるため、トークン作成時に一致する名前をダッシュボードで確認する。
 
 #### 手元 wrangler（`.env`）
 

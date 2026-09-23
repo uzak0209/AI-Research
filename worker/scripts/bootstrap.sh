@@ -106,6 +106,13 @@ $( [ "$ENV_NAME" = "prod" ] && echo "     env.prod.routes[0].pattern            
      CLOUDFLARE_API_TOKEN   … Workers/D1/KV/Queues の編集権限を持つトークン
      CLOUDFLARE_ACCOUNT_ID  … アカウント ID
 
-注意: WAF・レート制限はゾーンの設定で、wrangler では管理できない。
-      ADR-0004 は「コードで管理」としているので、別途 Terraform が要る（未対応）。
+$( [ "$ENV_NAME" = "prod" ] && cat <<'EOS2'
+5. WAF・レート制限を適用する（ゾーンの設定で、wrangler では管理できない。ADR-0004）
+     cd terraform
+     terraform init
+     terraform apply -var="cloudflare_api_token=$CLOUDFLARE_API_TOKEN" -var="zone_id=<ai-research.streeeak.link の Zone ID>"
+   トークンに Zone: WAF: Edit / Zone: Rate Limiting: Edit が要る（worker/README.md）。
+   dev / test は workers.dev のままでゾーン防御の対象外なので実行しない（ADR-0004）。
+EOS2
+)
 EOS
