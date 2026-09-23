@@ -422,6 +422,8 @@ function pushProjectToCloud(projectId: string): void {
   const p = getProject(db, projectId);
   if (!p) return;
   const summary = cloudSummaryFromLocal(p.summary, listChunks(db, projectId));
+  // 中身が無いうちは送らない（空 summary は 400）。同期対象が出てから送る
+  if (!summary.trim()) return;
   void cloud.client
     .putProject(projectId, {
       title: p.title,

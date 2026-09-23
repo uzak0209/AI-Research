@@ -48,6 +48,42 @@ describe('syncProjectFromCloud', () => {
     await expect(syncProjectFromCloud(db, mockClient({}), 'missing')).rejects.toThrow(/not found/);
   });
 
+  it('課題意識も関連技術も空なら putProject を呼ばない（空 summary は 400 になる）', async () => {
+    createProject(db, {
+      project_id: 'proj-empty',
+      title: 'Title',
+      summary: '   ',
+      embed_model: 'Xenova/bge-small-en-v1.5',
+    });
+    const putProject = vi.fn(async () => ({ project_id: 'proj-empty', title: 'Title', summary: '' }));
+    const pullRuns = vi.fn(async () => ({ project_id: 'proj-empty', runs: [] }));
+
+    await syncProjectFromCloud(db, mockClient({ putProject, pullRuns }), 'proj-empty');
+
+    expect(putProject).not.toHaveBeenCalled();
+    // 送る中身が無いだけでプルは止めない
+    expect(pullRuns).toHaveBeenCalled();
+  });
+
+  it('関連技術だけあれば putProject を呼ぶ', async () => {
+    createProject(db, {
+      project_id: 'proj-tech',
+      title: 'Title',
+      summary: '',
+      embed_model: 'Xenova/bge-small-en-v1.5',
+    });
+    setManuscript(db, 'proj-tech', [{ text: 'DPDK' }]);
+    const putProject = vi.fn(async () => ({ project_id: 'proj-tech', title: 'Title', summary: 'DPDK' }));
+
+    await syncProjectFromCloud(db, mockClient({ putProject }), 'proj-tech');
+
+    expect(putProject).toHaveBeenCalledWith('proj-tech', {
+      title: 'Title',
+      summary: 'DPDK',
+      search_terms: ['DPDK'],
+    });
+  });
+
   it('pull した run の papers を upsert し last_run_id を進める', async () => {
     setManuscript(db, PROJ, [{ text: 'DPDK' }, { text: 'RSS' }]);
     const putProject = vi.fn(async () => ({

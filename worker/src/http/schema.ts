@@ -176,7 +176,11 @@ export const RunsResponseSchema = z
   })
   .openapi('RunsResponse');
 
-export const SearchTermsSchema = z.array(z.string().trim().min(1).max(24)).max(40);
+/**
+ * 受け口は語の形を問わない。長い語で同期ごと落とさない（C-07）。
+ * 検索語として使えるかの判定は収集側（`parseKeywordTags` / `queriesFromConfirmedTerms`）が持つ。
+ */
+export const SearchTermsSchema = z.array(z.string().trim().min(1)).max(40);
 
 export const ProjectPutBodySchema = z
   .object({
