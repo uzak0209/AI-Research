@@ -3,6 +3,10 @@
 #
 # 公開論文の要約。auto は使わない。prefer_free は OFF（C1 以外の無料プールに載せない）。
 # 受け皿は同格のみ。完了トークンを抑えるため Default は flash 級。
+#
+# 暫定値: allowed/default/fallback は ADR-0005 §4-1 の決定手順（捏造率→形式適合率→コストを
+# `prototypes/review-bench` で実測してから固定する）を経ていない。実測が済むまでの仮の値であり、
+# 実測後に差し替える前提で置いている（issue #101）。
 
 name: rs-review
 enabled: true

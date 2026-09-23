@@ -575,7 +575,9 @@ shared.md の「未確認は書かない・水増し禁止」をそのまま引�
 ## 未決
 
 - **Allowed に並べる具体的なモデル。**候補の列挙と固定は `prototypes/review-bench` の実測後に決める。
-  現時点で根拠となる数字がないため、モデル名を ADR に書かない
+  現時点で根拠となる数字がないため、モデル名を ADR に書かない。
+  **`worker/routers/rs-review.yaml` の allowed/default/fallback は実測前の暫定値**（`prototypes/review-bench`
+  は未着手。issue #101）。運用を止めないための仮置きであり、実測後に差し替える
 - **捏造率の合格基準**と、`problem_excerpt` の照合方法（完全一致か、正規化後の部分一致か）
 - **1 段目に順序ヒントを出させるか**（ローカル採点の体感速度を上げる案。requirements.md の候補機能
   「トリアージ」に相当する。候補を消さずに済むが、効果は未実測。
