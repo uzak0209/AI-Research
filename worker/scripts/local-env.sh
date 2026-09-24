@@ -31,9 +31,9 @@ has_value() {
 }
 
 echo "JWT_SIGNING_KEY: $(has_value JWT_SIGNING_KEY "$TARGET" && echo set || echo missing)"
-echo "ORCAROUTER_API_KEY: $(has_value ORCAROUTER_API_KEY "$TARGET" && echo set || echo empty→C1 trends は 501)"
+echo "ORCAROUTER_API_KEY: $(has_value ORCAROUTER_API_KEY "$TARGET" && echo set || echo empty→C1 trends/bibliography は 501)"
 echo "OPENALEX_API_KEY: $(has_value OPENALEX_API_KEY "$TARGET" && echo set || echo empty→OpenAlex は共有 IP で落ちうる)"
-echo "JEV_API_KEY: $(has_value JEV_API_KEY "$TARGET" && echo set || echo empty→bibliography は 501)"
+echo "JEV_API_KEY: $(has_value JEV_API_KEY "$TARGET" && echo set || echo empty)（使わない。ADR-0002 の残骸。製品の前提にしない）"
 echo "GOOGLE_OAUTH_CLIENT_ID: $(has_value GOOGLE_OAUTH_CLIENT_ID "$TARGET" && echo set || echo empty→Google ログインは 501)"
 
 # wrangler --env X は .env ではなく .env.X を読む。同じ CLI トークンを 3 つへ張る。
