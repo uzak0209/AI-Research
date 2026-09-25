@@ -148,6 +148,18 @@ describe('タグ', () => {
     const a = addReference(db, PROJ, sample());
     expect(() => addTag(db, PROJ, a, '   ')).toThrow(/タグ名が空/);
   });
+
+  it('2 文字以上のタグを複数付けても、名前が文字単位に壊れず外せる（#112）', () => {
+    const a = addReference(db, PROJ, sample());
+    addTag(db, PROJ, a, 'ML');
+    addTag(db, PROJ, a, 'AI');
+
+    const tags = getReference(db, a)!.tags;
+    expect(new Set(tags)).toEqual(new Set(['ML', 'AI']));
+
+    removeTag(db, a, 'ML');
+    expect(getReference(db, a)!.tags).toEqual(['AI']);
+  });
 });
 
 describe('メモ', () => {
