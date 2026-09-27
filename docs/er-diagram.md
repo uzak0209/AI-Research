@@ -15,8 +15,8 @@
 | FR-02 関連度順の提示 | 候補論文＋関連度 | `run_papers` / `papers` |
 | FR-03 手元データ検索 | 本文断片＋ベクトル | ローカル `chunks` / `vec_chunks` |
 | FR-04 ファクトチェック | 原稿（結果保存は未決） | ローカル `documents` |
-| FR-05 参考文献ライブラリ | 書誌＋整理 | ローカル `references` / `collections` |
-| FR-12 引用ファイル書き出し | 書き出し先と key | `settings` ＋ `references.bibtex_key` |
+| FR-05 参考文献ライブラリ | 書誌＋整理 | ローカル `references` / `collections` / `tags` |
+| FR-12 引用ファイル書き出し | 書き出し先と key | `settings` ＋ `references.bibtex_key` ＋ `cite_exports` |
 | FR-06 プロジェクト切替 | プロジェクト | 両方 `projects` |
 | FR-07 原稿取り込み | 原稿ファイル | ローカル `documents` |
 | FR-08 欠損≠成功 | 実行状態と欠けた依存 | クラウド `runs` |
@@ -45,6 +45,7 @@ erDiagram
         text user_id FK
         text title
         text summary "外に出す唯一のユーザー情報"
+        text search_terms_json "利用者が設定で確定した検索語。あれば1段目のLLM分解をスキップ"
     }
     runs {
         text run_id PK "=レポートID"
@@ -93,7 +94,7 @@ erDiagram
 ### 各表の意味
 
 - **`users`**: 使う人。`oauth_subject` は本人確認用（`google:{sub}`）。名前・メールは持たない
-- **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。FR-06 の切替はこの行の切替
+- **`projects`**: 追いかけている対象。`summary` は日次収集が何を集めるか判断する唯一の材料であり、同時にクラウドに出る唯一のユーザー情報。`search_terms_json` は利用者が設定画面で確定した検索語で、あれば収集 1 段目の LLM 分解をやり直さない（`PUT /projects/{project_id}` が upsert）。FR-06 の切替はこの行の切替
 - **`runs`**: 収集 1 回の記録。`run_id` がそのままレポート ID（日次は `{project_id}:{日付}`、自発は `{project_id}:manual:{unix}`）。一意は `run_id` のみで同日複数可（FR-17）。`status` で `empty`（新着なし）と `failed`（取得不能）を区別（FR-01）。`failed_sources_json` により一部失敗時に欠けた部分だけを表示。`search_terms_json` は課題意識を LLM が分解した主題語＋関連語で、隠さず同期して見せる（C-07）。`trend_summary` / `themes_json` はその回の公開論文から出した今のトレンドと次テーマ（FR-09）。利用者に渡す論文は粗い順位の上位 5 件
 - **`run_papers`**: その実行で見つかった論文。タイトル・著者・要旨も行に直接持つ（クラウドに `papers` を作らない）。`venue` / `item_type` は引用を書くのに要るので**候補の時点で OpenAlex から取る**——後から 1 件ずつ書誌補完（C1）を呼ぶと、自動処理が利用者の 1 日の LLM 上限（NFR-04）を食い潰す（ADR-0003）。`pdf_url` は OpenAlex の location から選んだ https の直 PDF で、**複数あれば arXiv 等の全文リポジトリを優先**する。無ければ null＝未取得で、PDF バイトはクラウドに置かない。`coarse_score` は `summary` と照らした粗い絞り込み。`problem_excerpt` は要旨から抜いた課題・問題の文（順位ではない。FR-16）。`problem_excerpt_verified` は `problem_excerpt` が `abstract` に字面で存在するかの照合結果で、捏造率の算出に使う（ADR-0005 §10）。候補論文との精密な順位はローカル（ADR-0001）
 - **`llm_calls`**: 1 段目・2 段目・`retro`（内省ループ自身）を含む外部 LLM 呼び出し 1 回の記録（ADR-0005 §8〜§10）。`resolved_model` は Named Router が解決した実モデル、`fallback_target` は自前フォールバックが発生した場合の落とし先。`cost_usd` は `X-OrcaRouter-Include-Cost` で受け取る実額で、OrcaRouter の Request Logs と突合する基礎データ。`failure_reason` はガードレール・形式不正を含む失敗分類
@@ -109,6 +110,8 @@ erDiagram
     papers |o--o| references : saved_as
     references ||--o{ collection_items : in
     collections ||--o{ collection_items : has
+    references ||--o{ reference_tags : tagged
+    tags ||--o{ reference_tags : has
     references ||--o{ attachments : files
     references ||--o{ notes : has
     attachments ||--o{ annotations : marks
@@ -165,6 +168,16 @@ erDiagram
         text project_id FK
         text name
     }
+    tags {
+        text tag_id PK
+        text project_id FK
+        text name
+        text color
+    }
+    reference_tags {
+        text reference_id FK
+        text tag_id FK
+    }
     attachments {
         text attachment_id PK
         text reference_id FK
@@ -213,6 +226,11 @@ erDiagram
         text value
         bool encrypted "safeStorageで暗号化済みか"
     }
+    cite_exports {
+        text path PK "書き出し先ファイルパス"
+        text inner_hash "前回書き出したマーカー内ハッシュ"
+        text updated_at
+    }
 ```
 
 ### `settings` に置くキー
@@ -240,6 +258,7 @@ erDiagram
 - **`papers`**: `run_papers` を取り込み、手元でしか出せない情報を足した表。`relevance` が FR-02 の中身で、順位はこれだけで付ける（`blend` = 課題意識 cos × 0.7 ＋ 最近傍の関連技術 cos × 0.3）。**有効／除外の列を持たない**——実データで閾値が引けなかったため、引けないものを持たない（`C-07`）。`nearest_chunk_id` は最も近い関連技術で、最近傍という事実であって判定ではない。採点は 1 件ずつ確定して `scored_at` を入れるので、途中終了しても済んだ分は残り、未採点分が次回の対象になる（再開用のキュー表は要らない。`NFR-06`）。`embed_model` はモデルを替えたら採点し直す必要があることを示す。`in_library` はライブラリ収録済みかの目印
 - **`references`**: アプリ内参考文献ライブラリの本体（FR-05）。日次候補から入れた場合は `paper_id` で辿れる。手で足した文献は `paper_id` が空。GUI と CLI が同じこの表を読み書きする（FR-11）。`bibtex_key` は `\cite{}` に使う識別子で、**プロジェクト内で一意**。著者姓＋年で自動生成し、衝突時は英字サフィックスを付ける（FR-12）。この表が引用ファイルの書き出し内容の唯一の元になる
 - **`collections` / `collection_items`**: コレクション相当の整理。1 文献を複数コレクションに入れられるよう中間表にする
+- **`tags` / `reference_tags`**: コレクションより軽いタグ分類（FR-05）。1 文献に複数タグを付けられるよう中間表にする。`tags.name` はプロジェクト内で一意
 - **`attachments`**: 文献に添付した PDF の実体への参照（FR-14）。`hash` は原本が外部で差し替えられたときに注釈の位置がずれることを検知するために持つ
 - **`annotations`**: ハイライト・注釈。**PDF 本体には書き戻さず DB にだけ持つ**ので、ユーザーが置いた原本のバイト列は変わらない（`C-08`）
 - **`notes`**: 文献ごとの自由記述。未公開の思考なので外に出さない（`C-01`）
@@ -248,6 +267,7 @@ erDiagram
 - **`vec_chunks`**: `chunks` と 1 対 1 のベクトル。sqlite-vec により同一ファイル・同一トランザクションで扱え、片方だけ更新される食い違いが起きない。中身は外に出さない（C-01）
 - **`settings`**: キーと値。クラウド接続（ユーザー識別とトークン）、機能の完全オフ（C-03）、同意。秘密の値は Electron `safeStorage` で暗号化して入れ、`encrypted` で示す。追加のネイティブ依存を増やさないため（NFR-05）
   - DB ファイル自体は暗号化されない。`safeStorage` は「ファイルを見ただけでは読めない」保護であり、同じ PC の同じユーザー権限で動くプログラムからは復号できる
+- **`cite_exports`**: 引用ファイル書き出し先（`export.bib_path`）ごとの前回書き出し記録（FR-12, C-08）。`inner_hash` はマーカー内の前回ハッシュで、消えたときの「初回」と手編集を区別する。この表を持たないと、初回判定とマーカー内手編集の検知ができない
 
 ## 流れ
 
