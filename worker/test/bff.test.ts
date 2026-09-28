@@ -106,6 +106,15 @@ describe('POST /bff/trends（C1）', () => {
     expect(body.error).toBe('not_implemented');
   });
 
+  it('topic が 200 文字を超えても 400 にしない（KeywordsBodySchema と同じ上限。#118）', async () => {
+    mockUpstream({ papers: [] });
+    const res = await authed('/bff/trends', {
+      method: 'POST',
+      body: JSON.stringify({ topic: '研究の概要'.repeat(100) }),
+    });
+    expect(res.status).not.toBe(400);
+  });
+
   it('公開論文が 0 件なら summary は null。Orca を呼ばない（C-07）', async () => {
     const calls = mockUpstream({ papers: [] });
     const res = await authed('/bff/trends', {

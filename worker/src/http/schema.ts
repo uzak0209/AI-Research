@@ -51,7 +51,8 @@ export const GoogleLoginBodySchema = z
 
 export const TrendBodySchema = z
   .object({
-    topic: z.string().trim().min(1).max(200),
+    // KeywordsBodySchema と同じ「研究の概要」が入る（#118）。200 だと同じ理由で落ちる
+    topic: z.string().trim().min(1).max(12000),
     // 収集済みの公開論文。あれば OpenAlex を取り直さない
     papers: z
       .array(
