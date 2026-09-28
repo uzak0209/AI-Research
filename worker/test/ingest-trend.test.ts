@@ -48,6 +48,7 @@ function deps(overrides: Partial<IngestDeps> = {}): IngestDeps & { saved: unknow
       attach: async (papers) => ({ papers, usage: null }),
     },
     usage: {
+      checkLimit: async () => true,
       recordSearch: async () => {},
       recordReview: async () => {},
       recordTrend: async () => {},
@@ -81,6 +82,32 @@ describe('ingestCollect の検索語', () => {
     });
     await ingestCollect(d, { ...MSG, search_terms: ['DPDK', 'XDP'] });
     expect(seen).toEqual([{ summary: 'DPDK latency', confirmed: ['DPDK', 'XDP'] }]);
+  });
+});
+
+describe('ingestCollect の利用者単位の上限（NFR-04・ADR-0005 §7）', () => {
+  it('上限超過なら LLM を呼ばずに failed で記録する', async () => {
+    const searchCalls: unknown[] = [];
+    const d = deps({
+      usage: {
+        checkLimit: async () => false,
+        recordSearch: async () => {},
+        recordReview: async () => {},
+        recordTrend: async () => {},
+      },
+      search: {
+        build: async (...args) => {
+          searchCalls.push(args);
+          return { query: 'DPDK', queries: ['DPDK'], generated: false, usage: null, combo: ['DPDK'] };
+        },
+      },
+    });
+    await ingestCollect(d, MSG);
+    expect(searchCalls).toHaveLength(0);
+    expect(d.saved).toHaveLength(1);
+    const [, papers, failure] = d.saved[0] as [unknown, unknown[], string | null];
+    expect(papers).toEqual([]);
+    expect(failure).toContain('上限');
   });
 });
 

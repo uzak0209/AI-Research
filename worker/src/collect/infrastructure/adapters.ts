@@ -173,6 +173,13 @@ export function ingestDeps(env: Env): IngestDeps {
       attach: (papers) => attachProblemExcerpts(env, papers),
     },
     usage: {
+      async checkLimit(msg) {
+        const userId = await resolveUserId(env.DB, msg);
+        if (!userId) return true;
+        const usage = createUsage(env);
+        const used = await usage.dailyCallCount(userId);
+        return used < usage.limit;
+      },
       async recordSearch(msg, usage) {
         await recordCollectLlm(env, msg, COLLECT_ENDPOINT, usage);
       },
@@ -218,7 +225,7 @@ async function recordCollectLlm(
   endpoint: string,
   usage: OrcaChatOk,
 ): Promise<void> {
-  const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
+  const userId = await resolveUserId(env.DB, msg);
   if (!userId) return;
   await createUsage(env).record({
     userId,
@@ -233,11 +240,12 @@ async function recordCollectLlm(
   });
 }
 
-/** 配送中の古いメッセージに user_id が無いときだけ引く */
-async function projectUserId(d1: D1Database, projectId: string): Promise<string | null> {
+/** 配送中の古いメッセージに user_id が無いときだけ project から引く */
+async function resolveUserId(d1: D1Database, msg: CollectMessage): Promise<string | null> {
+  if (msg.user_id) return msg.user_id;
   const rows = await execute<{ user_id: string }>(
     d1,
-    db.selectFrom('projects').select('user_id').where('project_id', '=', projectId).compile(),
+    db.selectFrom('projects').select('user_id').where('project_id', '=', msg.project_id).compile(),
   );
   return rows[0]?.user_id ?? null;
 }

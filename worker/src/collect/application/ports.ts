@@ -67,6 +67,8 @@ export type SearchQueryBuilder = {
 };
 
 export type CollectUsage = {
+  /** 利用者単位の1日あたり上限（NFR-04・ADR-0005 §7）を LLM 呼び出し前に見る。true なら呼び出してよい */
+  checkLimit(msg: CollectMessage): Promise<boolean>;
   recordSearch(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
   recordReview(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
   recordTrend?(msg: CollectMessage, usage: OrcaChatOk): Promise<void>;
