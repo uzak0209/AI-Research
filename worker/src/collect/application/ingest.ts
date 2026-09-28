@@ -41,6 +41,16 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   if (!parsed.success) throw new Error('invalid collect message');
   const msg = parsed.data;
 
+  // 利用者単位の実額上限（NFR-04・ADR-0005 §7）。cron・自発調査とも収集本体はここを通る。
+  // 上限超過は明日にならないと解けないので、再試行はせず記録だけして返す
+  if (!(await deps.usage.checkLimit(msg))) {
+    await deps.runs.save(msg, [], '利用者単位の1日あたり LLM 呼び出し上限に達した（NFR-04）', [], {
+      trend: null,
+      themes: [],
+    });
+    return;
+  }
+
   const search = await deps.search.build(msg.summary, msg.search_terms);
   if (search.usage) await deps.usage.recordSearch(msg, search.usage);
 

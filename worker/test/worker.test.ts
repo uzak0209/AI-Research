@@ -15,6 +15,7 @@ import {
 import { openAlexWorksUrl, collectFromPublicationDate, fetchFromSource } from '../src/shared/openalex/adapter';
 import { itemTypeFromOpenAlex, pickOaPdfUrl, publicWorkUrl } from '../src/shared/papers/domain';
 import { pickTopPapers } from '../src/collect/application/ingest';
+import { dailyCallLimit } from '../src/usage';
 
 const RUN_DATE = '2026-09-20';
 const PROJECT = 'proj-1';
@@ -680,5 +681,27 @@ describe('収集の記録（FR-08 / C-07）', () => {
       .first<{ status: string; failed_sources_json: string | null }>();
     expect(run?.status).toBe('failed');
     expect(run?.failed_sources_json).toContain('unknown-src');
+  });
+
+  it('利用者単位の1日上限に達していたら LLM を呼ばず failed で記録する（NFR-04・ADR-0005 §7）', async () => {
+    // cron・自発調査とも ingestCollect を通る。上限は BFF と同じ llm_usage を見る
+    await env.DB.prepare(
+      `INSERT INTO llm_usage (user_id, usage_date, endpoint, classification, model, calls, tokens)
+       VALUES (?, ?, 'rs-collect', 'C1', 'openai/gpt-4o-mini', ?, 0)`,
+    )
+      .bind('u1', utcDate(), dailyCallLimit(env.LLM_DAILY_CALL_LIMIT))
+      .run();
+
+    const spy = mockOpenAlex([{ id: 'https://openalex.org/W1', display_name: 'GNN', publication_date: '2026-09-01' }]);
+    await handleQueueMessage(message(), env);
+
+    // 上限超過は明日にならないと解けないので再試行しない（投げない）
+    expect(spy).not.toHaveBeenCalled();
+
+    const run = await env.DB.prepare('SELECT status, search_terms_json FROM runs WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ status: string; search_terms_json: string }>();
+    expect(run?.status).toBe('failed');
+    expect(JSON.parse(run?.search_terms_json ?? '[]')).toEqual([]);
   });
 });
