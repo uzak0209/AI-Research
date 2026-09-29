@@ -15,6 +15,8 @@ import {
   listChunks,
   listUnscored,
   saveScore,
+  searchChunks,
+  type ChunkHit,
   setChunkEmbedding,
 } from './repo.js';
 import { chunkText } from './text-chunk.js';
@@ -202,4 +204,23 @@ async function scoreWithBlend(
   }
 
   return done;
+}
+
+/**
+ * 手元データの検索（FR-03）。クエリも本文もローカルの埋め込みだけで扱い、外へ出さない（C-01）。
+ * まだ埋め込んでいない断片はここで埋める（採点と同じ保存先）。
+ */
+export async function searchLocal(
+  db: Db,
+  projectId: string,
+  embedder: Embedder,
+  query: string,
+  limit = 10,
+): Promise<ChunkHit[]> {
+  const q = query.trim();
+  if (!q) return [];
+  for (const c of listChunks(db, projectId)) {
+    if (!getChunkEmbedding(db, c.chunk_id)) setChunkEmbedding(db, c.chunk_id, await embedder.embed(c.text));
+  }
+  return searchChunks(db, projectId, await embedder.embed(q), limit);
 }

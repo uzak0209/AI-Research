@@ -8,8 +8,8 @@
 // 途中で殺されても済んだ分は残る。
 
 import { openDb } from '../shared/db.js';
-import { scoreProject } from '../shared/scorer.js';
-import { createEmbedder } from '../shared/scorer.js';
+import { createEmbedder, scoreProject, searchLocal } from '../shared/scorer.js';
+import type { ChunkHit } from '../shared/repo.js';
 
 export interface ScoreRequest {
   type: 'score';
@@ -20,21 +20,51 @@ export interface ScoreRequest {
   limit?: number;
 }
 
+export interface SearchRequest {
+  type: 'search';
+  id: number;
+  dbPath: string;
+  projectId: string;
+  model: string;
+  cacheDir?: string;
+  query: string;
+  limit?: number;
+}
+
+export type SearchEvent =
+  | { type: 'search-result'; id: number; hits: ChunkHit[] }
+  | { type: 'search-error'; id: number; message: string };
+
 export type ScoreEvent =
   | { type: 'progress'; done: number; total: number }
   | { type: 'done'; scored: number }
   // 失敗を握りつぶして「0 件採点した」に見せない（C-07）
   | { type: 'error'; message: string };
 
-const send = (e: ScoreEvent) => process.parentPort?.postMessage(e);
+const send = (e: ScoreEvent | SearchEvent) => process.parentPort?.postMessage(e);
 
 let aborter: AbortController | null = null;
 
 process.parentPort?.on('message', async (ev) => {
-  const msg = ev.data as ScoreRequest | { type: 'cancel' };
+  const msg = ev.data as ScoreRequest | SearchRequest | { type: 'cancel' };
 
   if (msg.type === 'cancel') {
     aborter?.abort();
+    return;
+  }
+
+  if (msg.type === 'search') {
+    let sdb;
+    try {
+      sdb = openDb({ path: msg.dbPath });
+      const embedder = await createEmbedder(msg.model, msg.cacheDir);
+      const hits = await searchLocal(sdb, msg.projectId, embedder, msg.query, msg.limit);
+      send({ type: 'search-result', id: msg.id, hits });
+    } catch (e) {
+      send({ type: 'search-error', id: msg.id, message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      sdb?.close();
+    }
     return;
   }
 
