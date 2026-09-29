@@ -75,6 +75,8 @@ const api = {
   importPapers: (projectId: string, papers: unknown[]) =>
     ipcRenderer.invoke('papers:import', projectId, papers),
 
+  searchLocal: (projectId: string, query: string, limit?: number) =>
+    ipcRenderer.invoke('local:search', projectId, query, limit),
   startScoring: (projectId: string) => ipcRenderer.invoke('score:start', projectId),
   cancelScoring: () => ipcRenderer.invoke('score:cancel'),
   onScoreEvent: (cb: (e: unknown) => void) => {

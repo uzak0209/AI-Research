@@ -80,7 +80,7 @@ import {
 import { describeApiError } from '../shared/api-error.js';
 import { cloudSignedIn, createCloud } from './cloud.js';
 import { runGoogleLogin } from './google-login.js';
-import type { ScoreEvent, ScoreRequest } from './score-worker.js';
+import type { ScoreEvent, ScoreRequest, SearchEvent, SearchRequest } from './score-worker.js';
 
 const DEFAULT_MODEL = 'Xenova/bge-small-en-v1.5';
 
@@ -229,6 +229,38 @@ function startScoring(projectId: string, model: string): void {
     cacheDir: modelCacheDir(),
   };
   scorer.postMessage(req);
+}
+
+// 手元検索（FR-03）。採点と別の使い捨てプロセスで回し、採点を止めない
+let searchSeq = 0;
+function searchLocalData(projectId: string, query: string, limit?: number) {
+  return new Promise<{ ok: true; hits: unknown[] } | { ok: false; error: string }>((resolve) => {
+    const id = ++searchSeq;
+    const w = utilityProcess.fork(join(import.meta.dirname, 'score-worker.js'));
+    let settled = false;
+    const finish = (r: { ok: true; hits: unknown[] } | { ok: false; error: string }) => {
+      if (settled) return;
+      settled = true;
+      w.kill();
+      resolve(r);
+    };
+    w.on('message', (e: SearchEvent) => {
+      if (e.id !== id) return;
+      finish(e.type === 'search-result' ? { ok: true, hits: e.hits } : { ok: false, error: e.message });
+    });
+    w.on('exit', (code) => finish({ ok: false, error: `検索プロセスが終了した (code=${code})` }));
+    const req: SearchRequest = {
+      type: 'search',
+      id,
+      dbPath: dbPath(),
+      projectId,
+      model: DEFAULT_MODEL,
+      cacheDir: modelCacheDir(),
+      query,
+      limit,
+    };
+    w.postMessage(req);
+  });
 }
 
 type WorkspaceOk = { ok: true; root: string; title: string; action: 'create' | 'open' };
@@ -795,6 +827,10 @@ function registerIpc(): void {
     const err = await shell.openPath(dir);
     return err ? { ok: false as const, error: err } : { ok: true as const };
   });
+
+  ipcMain.handle('local:search', (_e, projectId: string, query: string, limit?: number) =>
+    searchLocalData(projectId, query, limit),
+  );
 
   ipcMain.handle('score:start', (_e, projectId: string) => {
     void prepareAndStartScoring(projectId, DEFAULT_MODEL);

@@ -222,6 +222,45 @@ export function getChunkEmbedding(db: Db, chunkId: number): Float32Array | null 
   return blobToVec(row.embedding);
 }
 
+export interface ChunkHit {
+  chunk_id: number;
+  text: string;
+  section: string | null;
+  /** 内積（正規化済みなので cos）。大きいほど近い */
+  score: number;
+}
+
+/**
+ * 手元データ（chunks）の KNN 検索（FR-03）。プロジェクト内の document だけを対象にする。
+ * vec0 の MATCH は全体から k 件を取るので、プロジェクトで絞る分だけ多めに引いてから絞る。
+ */
+export function searchChunks(db: Db, projectId: string, query: Float32Array, limit = 10): ChunkHit[] {
+  const total = (db.prepare('SELECT COUNT(*) AS n FROM vec_chunks').get() as { n: number }).n;
+  if (total === 0 || limit <= 0) return [];
+  const rows = db
+    .prepare(
+      `SELECT v.rowid AS chunk_id, v.distance AS distance, c.text, c.section, d.project_id
+       FROM (SELECT rowid, distance FROM vec_chunks WHERE embedding MATCH ? AND k = ?) v
+       JOIN chunks c ON c.chunk_id = v.rowid
+       JOIN documents d ON d.document_id = c.document_id
+       ORDER BY v.distance`,
+    )
+    .all(toVectorBlob(query), total) as unknown as (Omit<ChunkHit, 'score'> & {
+    distance: number;
+    project_id: string;
+  })[];
+  return rows
+    .filter((r) => r.project_id === projectId)
+    .slice(0, limit)
+    // vec0 の既定距離は L2。正規化済みベクトルでは cos = 1 - d^2 / 2
+    .map((r) => ({
+      chunk_id: Number(r.chunk_id),
+      text: r.text,
+      section: r.section,
+      score: 1 - (r.distance * r.distance) / 2,
+    }));
+}
+
 /**
  * sqlite-vec の vec0 は INSERT OR REPLACE / UPDATE を受け付けない。
  * 同じ rowid をもう一度 INSERT すると UNIQUE constraint で落ちるので、消してから入れる。
