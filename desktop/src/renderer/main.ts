@@ -1310,20 +1310,18 @@ function renderPaperDetailInto(pane: HTMLElement, p: RankedPaper) {
     );
   }
 
-  if (p.problem_excerpt) {
+  // 欠落は節ごと隠さず「未取得」と明示する（C-07。捏造しない）
+  for (const [label, value] of [
+    ['課題', p.problem_excerpt],
+    ['要旨', p.abstract],
+  ] as const) {
     pane.append(
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, '課題'),
-        el('p', { class: 'abstract' }, p.problem_excerpt),
+        el('h3', {}, label),
+        el('p', { class: 'abstract' }, value || '未取得'),
       ),
-    );
-  }
-
-  if (p.abstract) {
-    pane.append(
-      el('div', { class: 'detail-section' }, el('h3', {}, '要旨'), el('p', { class: 'abstract' }, p.abstract)),
     );
   }
 
