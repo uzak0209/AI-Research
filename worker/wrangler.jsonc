@@ -32,6 +32,8 @@
         "ENVIRONMENT": "dev",
         "CONSENT_VERSION": "1",
         "LLM_DAILY_CALL_LIMIT": "100",
+        // ADR-0005 §7: サーキットブレーカー。project × 当日の連続失敗がこの回数で当日停止（未決の初期値。運用で見直す）
+        "CIRCUIT_BREAKER_THRESHOLD": "3",
         // ADR-0005 §2: Named Router（正本は routers/*.yaml。コンソールへ適用済み）
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
@@ -72,6 +74,8 @@
         "ENVIRONMENT": "test",
         "CONSENT_VERSION": "1",
         "LLM_DAILY_CALL_LIMIT": "100",
+        // ADR-0005 §7: サーキットブレーカー。project × 当日の連続失敗がこの回数で当日停止（未決の初期値。運用で見直す）
+        "CIRCUIT_BREAKER_THRESHOLD": "3",
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"
       },
@@ -106,6 +110,8 @@
         "ENVIRONMENT": "prod",
         "CONSENT_VERSION": "1",
         "LLM_DAILY_CALL_LIMIT": "100",
+        // ADR-0005 §7: サーキットブレーカー。project × 当日の連続失敗がこの回数で当日停止（未決の初期値。運用で見直す）
+        "CIRCUIT_BREAKER_THRESHOLD": "3",
         // ADR-0005 §2: Named Router（正本は routers/*.yaml。コンソールへ適用済み）
         "ORCA_ROUTER_COLLECT": "orcarouter/rs-collect",
         "ORCA_ROUTER_REVIEW": "orcarouter/rs-review"

@@ -12,6 +12,7 @@ import { orcaKey } from '../../shared/orca/chat';
 import { trendPolicy } from '../../shared/orca/policy';
 import { TREND_ENDPOINT, createTrendApp } from '../../trend';
 import type {
+  CircuitBreaker,
   CollectClock,
   CollectIdempotency,
   CollectQueue,
@@ -21,6 +22,7 @@ import type {
   RunStore,
   ScheduleDeps,
 } from '../application/ports';
+import { circuitBreakerThreshold } from '../domain';
 import type { ScoredPaper } from '../domain';
 
 /** D1 の 1 文あたりのバインド変数の上限 */
@@ -32,6 +34,31 @@ export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
   return {
     get: (key) => kv.get(key),
     put: (key, value, ttlSec) => kv.put(key, value, { expirationTtl: ttlSec }),
+  };
+}
+
+/** 冪等キーと同じ KV を使う。新規のバインディングは要らない */
+const BREAKER_KEY_PREFIX = 'breaker:';
+/** 「当日」で区切るだけの値。scope に run_date が入るので日をまたげば自然に別キーになる */
+const BREAKER_TTL_SEC = 60 * 60 * 24 * 3;
+
+export function kvCircuitBreaker(kv: KVNamespace, threshold: number): CircuitBreaker {
+  const key = (scope: string) => `${BREAKER_KEY_PREFIX}${scope}`;
+  return {
+    async isOpen(scope) {
+      const raw = await kv.get(key(scope));
+      const count = raw ? Number.parseInt(raw, 10) : 0;
+      return Number.isFinite(count) && count >= threshold;
+    },
+    async recordFailure(scope) {
+      const raw = await kv.get(key(scope));
+      const count = raw ? Number.parseInt(raw, 10) : 0;
+      const next = (Number.isFinite(count) ? count : 0) + 1;
+      await kv.put(key(scope), String(next), { expirationTtl: BREAKER_TTL_SEC });
+    },
+    async recordSuccess(scope) {
+      await kv.delete(key(scope));
+    },
   };
 }
 
@@ -166,6 +193,7 @@ export function ingestDeps(env: Env): IngestDeps {
   return {
     papers: openAlexFetcher(env.OPENALEX_API_KEY),
     runs: d1Runs(env.DB),
+    breaker: kvCircuitBreaker(env.IDEMPOTENCY, circuitBreakerThreshold(env.CIRCUIT_BREAKER_THRESHOLD)),
     search: {
       build: (summary, confirmed) => buildSearchQuery(env, summary, confirmed),
     },

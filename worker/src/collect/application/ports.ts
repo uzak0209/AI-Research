@@ -20,6 +20,16 @@ export type CollectIdempotency = {
   put(key: string, value: string, ttlSec: number): Promise<void>;
 };
 
+/**
+ * 連続失敗の空回りを止める（ADR-0005 §7）。scope は呼び出し側が決める単位
+ * （本実装は `project_id:run_date`）。開いている間は Named Router を呼ばない
+ */
+export type CircuitBreaker = {
+  isOpen(scope: string): Promise<boolean>;
+  recordFailure(scope: string): Promise<void>;
+  recordSuccess(scope: string): Promise<void>;
+};
+
 export type CollectQueue = {
   sendBatch(messages: { body: CollectMessage }[]): Promise<void>;
 };
@@ -90,4 +100,5 @@ export type IngestDeps = {
   problemExcerpt: ProblemExcerptPort;
   usage: CollectUsage;
   trend: CollectTrendPort;
+  breaker: CircuitBreaker;
 };

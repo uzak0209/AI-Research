@@ -41,6 +41,15 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   if (!parsed.success) throw new Error('invalid collect message');
   const msg = parsed.data;
 
+  // 連続失敗の空回りを止める（ADR-0005 §7）。project × 当日の単位で見る。
+  // 開いていれば Named Router を一切呼ばずに当日停止として残す
+  const breakerScope = `${msg.project_id}:${msg.run_date}`;
+  if (await deps.breaker.isOpen(breakerScope)) {
+    const failure = 'サーキットブレーカー開放中: 当日のこの project は停止';
+    await deps.runs.save(msg, [], failure, [], { trend: null, themes: [] });
+    throw new Error(failure);
+  }
+
   const search = await deps.search.build(msg.summary, msg.search_terms);
   if (search.usage) await deps.usage.recordSearch(msg, search.usage);
 
@@ -83,6 +92,9 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
   } catch (e) {
     failure = e instanceof Error ? e.message : String(e);
   }
+
+  if (failure) await deps.breaker.recordFailure(breakerScope);
+  else await deps.breaker.recordSuccess(breakerScope);
 
   let report = { trend: null as string | null, themes: [] as string[] };
   if (!failure && papers.length > 0) {
