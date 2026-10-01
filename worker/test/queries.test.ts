@@ -167,10 +167,10 @@ describe('parseSearchDecomposition', () => {
     expect(got.core).toEqual(['DPDK']);
   });
 
-  it('フェンス付きでも読む。形が違えば空', () => {
+  it('フェンス付きでも読む。形が違えば形式不正扱いで空', () => {
     expect(parseSearchDecomposition('```json\n{"core":["DPDK"],"related":[]}\n```').core).toEqual(['DPDK']);
-    expect(parseSearchDecomposition('not json')).toEqual({ core: [], related: [] });
-    expect(parseSearchDecomposition('["DPDK"]')).toEqual({ core: [], related: [] });
+    expect(parseSearchDecomposition('not json')).toEqual({ core: [], related: [], ok: false });
+    expect(parseSearchDecomposition('["DPDK"]')).toEqual({ core: [], related: [], ok: false });
   });
 });
 

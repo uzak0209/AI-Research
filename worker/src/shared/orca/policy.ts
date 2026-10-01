@@ -68,6 +68,27 @@ export function fallbackChain(primary: string, rest: readonly string[]): string[
 }
 
 /**
+ * 形式不正（構造化出力のパース失敗）時の自前フォールバック先を選ぶ（ADR-0005 §5「形式不正」）。
+ * 実際に応答したモデルと違う候補を chain の先頭から返す。同じモデルには投げ直さない。
+ * 具体的な落とし先は `review-bench` の実測後に決める（同 ADR「未決」）。
+ * それまでは段ごとに既に宣言済みの候補チェーンを暫定の宛先として使う。
+ */
+function pickFallbackModel(chain: readonly string[], served: string): string | null {
+  const servedKey = served.toLowerCase();
+  return chain.find((m) => m.toLowerCase() !== servedKey) ?? null;
+}
+
+/** 収集段（1 次失敗の受け皿は安価モデルでよい。ADR-0005 §5） */
+export function collectSelfFallbackModel(served: string): string | null {
+  return pickFallbackModel(COLLECT_CHAIN, served);
+}
+
+/** レビュー段（同格のみ。安価モデルへ落とさない。ADR-0005 §5） */
+export function reviewSelfFallbackModel(served: string): string | null {
+  return pickFallbackModel(REVIEW_CHAIN, served);
+}
+
+/**
  * 1 段目（収集）: `summary` から検索語を作るだけ。無料プール優先。
  * 回数が最も出る段なので、ここを $0 に寄せる（ADR-0005 §3）。
  */

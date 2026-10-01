@@ -22,4 +22,7 @@ export {
   type Decomposed,
   type SearchTerms,
 } from './collect/application/search-terms';
-export { parseProblemExcerpts } from './collect/application/problem-excerpt';
+export {
+  parseProblemExcerpts,
+  type ParsedProblemExcerpts,
+} from './collect/application/problem-excerpt';

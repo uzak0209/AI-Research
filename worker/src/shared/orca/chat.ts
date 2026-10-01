@@ -42,6 +42,21 @@ export type OrcaChatOk = {
 export type OrcaChatFail = { ok: false; status: number };
 export type OrcaChatResult = OrcaChatOk | OrcaChatFail;
 
+/**
+ * 複数呼び出しの使用量を合算する。形式不正時の自前フォールバック（ADR-0005 §5）で
+ * 1 次 + 別モデルへの投げ直しの 2 回叩いたとき、両方のコストを usage に残すため。
+ */
+export function combineUsage(a: OrcaChatOk | null, b: OrcaChatOk): OrcaChatOk {
+  if (!a) return b;
+  return {
+    ...b,
+    tokens: a.tokens + b.tokens,
+    costUsd: a.costUsd == null || b.costUsd == null ? null : a.costUsd + b.costUsd,
+    latencyMs: a.latencyMs + b.latencyMs,
+    fallbackUsed: a.fallbackUsed || b.fallbackUsed,
+  };
+}
+
 export function orcaKey(env: Env, slot: OrcaKeySlot): string | undefined {
   if (slot === 'interactive') return env.ORCAROUTER_API_KEY_INTERACTIVE ?? env.ORCAROUTER_API_KEY;
   if (slot === 'cron') return env.ORCAROUTER_API_KEY_CRON ?? env.ORCAROUTER_API_KEY;
