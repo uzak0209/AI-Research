@@ -17,6 +17,7 @@ describe("buildSeries score_mean", () => {
       [{ d: "2026-09-20", calls: 2, tokens: 200, cost_usd: 0, latency_ms_sum: 0, fallback_calls: 0 }],
       [{ d: "2026-09-20", papers: 4, score_mean: 0.5, scored_papers: 4 }],
       [{ d: "2026-09-20", status: "ok", n: 1 }],
+      [],
       "2026-09-20",
     );
     assert.equal(series.length, 1);
@@ -30,10 +31,31 @@ describe("buildSeries score_mean", () => {
       [{ d: "2026-09-21", calls: 1, tokens: 10, cost_usd: 0, latency_ms_sum: 0, fallback_calls: 0 }],
       [{ d: "2026-09-21", papers: 2, score_mean: null, scored_papers: 0 }],
       [],
+      [],
       "2026-09-21",
     );
     assert.equal(series[0].score_mean, null);
     assert.equal(series[0].tokens_per_paper, 5);
+  });
+});
+
+describe("buildSeries fabrication_rate", () => {
+  it("抜粋のうち abstract に見つからなかった割合を日別に持つ（ADR-0005 §4-1）", () => {
+    const series = buildSeries(
+      [],
+      [],
+      [],
+      [{ d: "2026-09-22", excerpts: 4, unverified: 1 }],
+      "2026-09-22",
+    );
+    assert.equal(series[0].excerpts, 4);
+    assert.equal(series[0].unverified_excerpts, 1);
+    assert.equal(series[0].fabrication_rate, 0.25);
+  });
+
+  it("抜粋が無い日は null（0 割りを断定に使わない。C-07）", () => {
+    const series = buildSeries([], [], [], [{ d: "2026-09-22", excerpts: 0, unverified: 0 }], "2026-09-22");
+    assert.equal(series[0].fabrication_rate, null);
   });
 });
 

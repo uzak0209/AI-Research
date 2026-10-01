@@ -35,6 +35,8 @@ export function orcaTrendLlm(apiKey: string, policy: OrcaClassPolicy): TrendLlm 
         model: result.model,
         requestedModel: result.requestedModel,
         tokens: result.tokens,
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
         costUsd: result.costUsd,
         latencyMs: result.latencyMs,
         fallbackUsed: result.fallbackUsed,

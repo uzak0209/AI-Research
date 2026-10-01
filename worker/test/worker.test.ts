@@ -572,6 +572,33 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(parsed).toContain('GAT');
   });
 
+  it('llm_calls に 1 段目・2 段目それぞれ run_id 付きで 1 呼び出し 1 行残る（ADR-0005 §9・§10）', async () => {
+    mockOpenAlex([
+      {
+        id: 'https://openalex.org/W1',
+        doi: 'https://doi.org/10.1234/a',
+        display_name: 'GNN for molecular property prediction',
+        publication_date: '2026-09-01',
+        abstract_inverted_index: { graph: [0], neural: [1], networks: [2] },
+      },
+    ]);
+
+    await handleQueueMessage(message(), env);
+
+    const runId = `${PROJECT}:${RUN_DATE}`;
+    const calls = await env.DB.prepare(
+      'SELECT stage, run_id, endpoint, requested_model, classification FROM llm_calls ORDER BY stage',
+    ).all<{ stage: string; run_id: string; endpoint: string; requested_model: string; classification: string }>();
+    const stages = calls.results.map((c) => c.stage).sort();
+    expect(stages).toContain('1段目');
+    expect(stages).toContain('2段目');
+    for (const c of calls.results) {
+      expect(c.run_id).toBe(runId);
+      expect(c.classification).toBe('C1');
+      expect(c.requested_model).toBeTruthy();
+    }
+  });
+
   it('検索語を作れなければ failed。0 件と混ぜない（C-07）', async () => {
     // Orca が全滅。機械的な語の切り出しには落とさない
     mockOpenAlex([{ id: 'https://openalex.org/W1', display_name: 'GNN', publication_date: '2026-09-01' }], 200, null);

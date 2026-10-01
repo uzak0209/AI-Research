@@ -85,5 +85,32 @@ export function d1UsageStore(d1: D1Database): UsageStore {
           .compile(),
       );
     },
+
+    async recordCall(row) {
+      await execute(
+        d1,
+        db
+          .insertInto('llm_calls')
+          .values({
+            call_id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+            run_id: row.runId,
+            endpoint: row.endpoint,
+            classification: row.classification,
+            stage: row.stage,
+            router: row.router,
+            requested_model: row.requestedModel,
+            resolved_model: row.resolvedModel,
+            fallback_target: row.fallbackTarget,
+            tokens_in: row.tokensIn,
+            tokens_out: row.tokensOut,
+            cost_usd: row.costUsd ?? null,
+            duration_ms: row.durationMs ?? null,
+            guardrail_result: row.guardrailResult ?? null,
+            failure_reason: row.failureReason ?? null,
+          })
+          .compile(),
+      );
+    },
   };
 }

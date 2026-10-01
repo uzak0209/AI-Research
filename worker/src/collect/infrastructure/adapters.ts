@@ -4,7 +4,7 @@ import { utcDate } from '../../shared/date';
 import { batch, execute } from '../../db/execute';
 import { db } from '../../db/kysely';
 import { fetchFromSource } from '../../shared/openalex/adapter';
-import { createUsage } from '../../usage';
+import { createUsage, type CallStage } from '../../usage';
 import { attachProblemExcerpts, REVIEW_ENDPOINT } from '../application/problem-excerpt';
 import { COLLECT_ENDPOINT, buildSearchQuery, parseSearchTermsJson } from '../application/search-terms';
 import type { OrcaChatOk } from '../../shared/orca/chat';
@@ -26,7 +26,7 @@ import type { ScoredPaper } from '../domain';
 /** D1 の 1 文あたりのバインド変数の上限 */
 const D1_MAX_BIND_PARAMS = 100;
 /** run_papers に 1 行あたり入れる列数 */
-const RUN_PAPER_COLUMNS = 13;
+const RUN_PAPER_COLUMNS = 14;
 
 export function kvIdempotency(kv: KVNamespace): CollectIdempotency {
   return {
@@ -140,6 +140,12 @@ export function d1Runs(d1: D1Database): RunStore {
                   pdf_url: p.pdf_url ?? null,
                   coarse_score: p.coarse_score,
                   problem_excerpt: p.problem_excerpt,
+                  problem_excerpt_verified:
+                    p.problem_excerpt_verified === null || p.problem_excerpt_verified === undefined
+                      ? null
+                      : p.problem_excerpt_verified
+                        ? 1
+                        : 0,
                 })),
               )
               .onConflict((oc) => oc.columns(['run_id', 'external_id']).doNothing())
@@ -201,6 +207,8 @@ export function ingestDeps(env: Env): IngestDeps {
               model: got.model,
               requestedModel: got.requestedModel ?? got.model,
               tokens: got.tokens,
+              tokensIn: got.tokensIn,
+              tokensOut: got.tokensOut,
               costUsd: got.costUsd,
               latencyMs: got.latencyMs,
               fallbackUsed: got.fallbackUsed,
@@ -212,15 +220,39 @@ export function ingestDeps(env: Env): IngestDeps {
   };
 }
 
+/** endpoint → ADR-0005 §1 の段。トレンドはレビューと同じ Named Router を使う（§2 の表） */
+function stageForEndpoint(endpoint: string): CallStage {
+  return endpoint === COLLECT_ENDPOINT ? '1段目' : '2段目';
+}
+
 async function recordCollectLlm(
   env: Env,
   msg: CollectMessage,
   endpoint: string,
   usage: OrcaChatOk,
 ): Promise<void> {
+  const usageStore = createUsage(env);
+
+  // llm_calls: run に紐付く 1 呼び出し 1 行の記録（ADR-0005 §9・§10）。userId が引けなくても残す
+  await usageStore.recordCall({
+    runId: msg.run_id,
+    endpoint,
+    classification: 'C1',
+    stage: stageForEndpoint(endpoint),
+    router: usage.requestedModel,
+    requestedModel: usage.requestedModel,
+    resolvedModel: usage.model,
+    fallbackTarget: usage.fallbackUsed ? usage.model : null,
+    tokensIn: usage.tokensIn,
+    tokensOut: usage.tokensOut,
+    costUsd: usage.costUsd,
+    durationMs: usage.latencyMs,
+  });
+
+  // llm_usage: 利用者単位の日次上限判定用の集計行（NFR-04）。user_id が引けなければ数えない
   const userId = msg.user_id ?? (await projectUserId(env.DB, msg.project_id));
   if (!userId) return;
-  await createUsage(env).record({
+  await usageStore.record({
     userId,
     endpoint,
     classification: 'C1',

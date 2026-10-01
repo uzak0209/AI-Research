@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { chatBody, orcaKey } from '../src/shared/orca/chat';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { chatBody, chatCompletion, orcaKey } from '../src/shared/orca/chat';
 import {
   ORCA_POLICY,
   collectPolicy,
@@ -98,5 +98,58 @@ describe('段ごとのルーター（ADR-0005 §2）', () => {
       [{ role: 'user', content: 'x' }],
     );
     expect(body.extra_body).toBeUndefined();
+  });
+});
+
+describe('chatCompletion の失敗理由（ADR-0005 §10: 5xx / 429 / timeout / invalid_format）', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('429 は reason=429', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('slow down', { status: 429 }));
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: false, status: 429, reason: '429' });
+  });
+
+  it('5xx は reason=5xx', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('boom', { status: 503 }));
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: false, status: 503, reason: '5xx' });
+  });
+
+  it('ネットワーク例外（AbortSignal 含む）は reason=timeout', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new DOMException('aborted', 'AbortError'));
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: false, status: 504, reason: 'timeout' });
+  });
+
+  it('本文が空 JSON なら reason=invalid_format', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ choices: [{ message: { content: '' } }] }), { status: 200 }),
+    );
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: false, status: 502, reason: 'invalid_format' });
+  });
+
+  it('スキーマに合わない応答も reason=invalid_format', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not json', { status: 200 }));
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: false, status: 502, reason: 'invalid_format' });
+  });
+
+  it('成功時は tokensIn / tokensOut を usage から分けて持つ', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          model: 'gpt',
+          choices: [{ message: { content: 'ok' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 },
+        }),
+        { status: 200 },
+      ),
+    );
+    const got = await chatCompletion('key', [{ role: 'user', content: 'x' }], ORCA_POLICY.C1);
+    expect(got).toMatchObject({ ok: true, tokensIn: 10, tokensOut: 4, tokens: 14 });
   });
 });
