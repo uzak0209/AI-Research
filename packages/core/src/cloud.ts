@@ -238,7 +238,7 @@ export type SyncRun = {
   papers: SyncPaper[];
 };
 
-export type SyncRunsResponse = { project_id: string; runs: SyncRun[] };
+export type SyncRunsResponse = { project_id: string; runs: SyncRun[]; has_more?: boolean };
 
 export type CollectAccepted = {
   project_id: string;

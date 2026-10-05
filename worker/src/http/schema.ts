@@ -173,6 +173,8 @@ export const RunsResponseSchema = z
   .object({
     project_id: z.string(),
     runs: z.array(RunSchema),
+    /** 続きがある。クライアントは最後の run_id を after にして再取得する */
+    has_more: z.boolean(),
   })
   .openapi('RunsResponse');
 
