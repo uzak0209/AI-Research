@@ -1,7 +1,7 @@
 // クラウドから run をプルしてローカル papers に載せる（FR-02 / ADR-0001）。
 // 採点はここではしない。メインが utilityProcess を起動する。
 
-import type { CloudClient } from '@ai-research/core';
+import type { CloudClient, SyncRun } from '@ai-research/core';
 import type { Db } from './db.js';
 import { getProject, listChunks, parseSearchTerms, setLastRunId, setLastSearchTerms, upsertPapers, upsertSurveyReport } from './repo.js';
 
@@ -52,13 +52,22 @@ export async function syncProjectFromCloud(
     });
   }
 
-  const { runs } = await client.pullRuns(projectId, project.last_run_id);
+  // 1 ページで打ち切られても続きを取り切る（FR-15）。has_more が無い旧 worker は 1 回で止める
+  const runs: SyncRun[] = [];
+  let cursor = project.last_run_id;
+  for (;;) {
+    const page = await client.pullRuns(projectId, cursor);
+    const got = page.runs ?? [];
+    runs.push(...got);
+    if (!page.has_more || got.length === 0) break;
+    cursor = got[got.length - 1]!.run_id;
+  }
 
   let inserted = 0;
   let pulled = 0;
   const statuses: string[] = [];
   let searchTerms: string[] = parseSearchTerms(project.last_search_terms);
-  for (const run of runs ?? []) {
+  for (const run of runs) {
     statuses.push(run.status);
     if (run.search_terms?.length) searchTerms = run.search_terms;
     const papers = run.papers ?? [];

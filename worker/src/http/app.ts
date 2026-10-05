@@ -208,6 +208,9 @@ app.openapi(
   },
 );
 
+/** GET /runs の 1 ページ件数 */
+const RUNS_PAGE_SIZE = 50;
+
 app.openapi(
   createRoute({
     method: 'get',
@@ -245,7 +248,7 @@ app.openapi(
       fail(403, { error: 'forbidden', detail: 'project not owned by user' });
     }
 
-    let afterCreatedAt: string | null = null;
+    let afterAnchor: { created_at: string; run_id: string } | null = null;
     if (after) {
       const anchor = await execute<{ created_at: string }>(
         c.env.DB,
@@ -256,7 +259,7 @@ app.openapi(
           .where('project_id', '=', project_id)
           .compile(),
       );
-      afterCreatedAt = anchor[0]?.created_at ?? null;
+      afterAnchor = anchor[0] ? { created_at: anchor[0].created_at, run_id: after } : null;
     }
 
     let runQuery = db
@@ -264,10 +267,18 @@ app.openapi(
       .select(['run_id', 'run_date', 'status', 'failed_sources_json', 'search_terms_json', 'trend_summary', 'themes_json', 'created_at'])
       .where('project_id', '=', project_id)
       .orderBy('created_at', 'asc')
-      .limit(50);
+      .orderBy('run_id', 'asc')
+      .limit(RUNS_PAGE_SIZE + 1);
 
-    if (afterCreatedAt) {
-      runQuery = runQuery.where('created_at', '>', afterCreatedAt);
+    // created_at が同値でも飛ばさない（created_at, run_id の複合順）
+    if (afterAnchor) {
+      const { created_at, run_id } = afterAnchor;
+      runQuery = runQuery.where((eb) =>
+        eb.or([
+          eb('created_at', '>', created_at),
+          eb.and([eb('created_at', '=', created_at), eb('run_id', '>', run_id)]),
+        ]),
+      );
     }
 
     const runs = await execute<{
@@ -280,6 +291,9 @@ app.openapi(
       themes_json: string | null;
       created_at: string;
     }>(c.env.DB, runQuery.compile());
+
+    const hasMore = runs.length > RUNS_PAGE_SIZE;
+    if (hasMore) runs.length = RUNS_PAGE_SIZE;
 
     const runIds = runs.map((r) => r.run_id);
     const paperRows =
@@ -332,6 +346,7 @@ app.openapi(
     return c.json(
       {
         project_id,
+        has_more: hasMore,
         runs: runs.map((r) => ({
           run_id: r.run_id,
           run_date: r.run_date,

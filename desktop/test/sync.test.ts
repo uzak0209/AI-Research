@@ -84,6 +84,28 @@ describe('syncProjectFromCloud', () => {
     });
   });
 
+  it('has_more の間は last_run_id を進めて続きを取り切る', async () => {
+    const mk = (id: string) => ({
+      run_id: id,
+      run_date: '2026-01-01',
+      status: 'ok',
+      failed_sources_json: null,
+      created_at: `2026-01-01T00:00:${id.slice(-2)}Z`,
+      papers: [],
+    });
+    const pullRuns = vi.fn(async (_id: string, after?: string | null) =>
+      after === 'run-01'
+        ? { project_id: PROJ, runs: [mk('run-02')], has_more: false }
+        : { project_id: PROJ, runs: [mk('run-01')], has_more: true },
+    );
+
+    const { lastRunId } = await syncProjectFromCloud(db, mockClient({ pullRuns }), PROJ);
+
+    expect(pullRuns).toHaveBeenCalledTimes(2);
+    expect(lastRunId).toBe('run-02');
+    expect(getProject(db, PROJ)?.last_run_id).toBe('run-02');
+  });
+
   it('pull した run の papers を upsert し last_run_id を進める', async () => {
     setManuscript(db, PROJ, [{ text: 'DPDK' }, { text: 'RSS' }]);
     const putProject = vi.fn(async () => ({
