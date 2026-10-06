@@ -179,8 +179,12 @@ export const RunsResponseSchema = z
 /**
  * 受け口は語の形を問わない。長い語で同期ごと落とさない（C-07）。
  * 検索語として使えるかの判定は収集側（`parseKeywordTags` / `queriesFromConfirmedTerms`）が持つ。
+ * 個数も同じ扱いで、41 語目以降は 400 にせず切り捨てる（FR-15 / FR-17 を止めない）。
  */
-export const SearchTermsSchema = z.array(z.string().trim().min(1)).max(40);
+export const MAX_SEARCH_TERMS = 40;
+export const SearchTermsSchema = z
+  .array(z.string().trim().min(1))
+  .transform((terms) => terms.slice(0, MAX_SEARCH_TERMS));
 
 export const ProjectPutBodySchema = z
   .object({

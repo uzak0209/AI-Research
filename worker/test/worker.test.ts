@@ -173,6 +173,26 @@ describe('HTTP', () => {
     expect(JSON.parse(row?.search_terms_json ?? '[]')).toEqual(['DPDK', 'XDP']);
   });
 
+  it('PUT /projects は 41 語以上でも 400 にせず 40 語に切る', async () => {
+    const { signAccessToken } = await import('../src/auth');
+    const token = await signAccessToken(env.JWT_SIGNING_KEY!, 'sub-1');
+    const terms = Array.from({ length: 45 }, (_, i) => `term${i}`);
+    const res = await handleFetch(
+      new Request('https://api.test/projects/terms-cap', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ title: 'T', summary: 'DPDK latency', search_terms: terms }),
+      }),
+      env,
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { search_terms: string[] };
+    expect(body.search_terms).toEqual(terms.slice(0, 40));
+  });
+
   it('refresh から新しい access を出せる', async () => {
     const { signRefreshToken, verifyToken } = await import('../src/auth');
     const refresh = await signRefreshToken(env.JWT_SIGNING_KEY!, 'sub-1');
