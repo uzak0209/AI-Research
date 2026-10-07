@@ -171,6 +171,11 @@ describe('hintFromReference', () => {
       }),
     ).toEqual({ title: 'GNN', year: 2024, doi: '10.1234/foo' });
   });
+
+  it('abstract は Worker の上限 2000 で切る。超えると 400 で書誌補完が落ちる', () => {
+    const hint = hintFromReference({ title: 'T', abstract: 'a'.repeat(5000) });
+    expect(hint.abstract).toHaveLength(2000);
+  });
 });
 
 describe('needsCompletion', () => {
