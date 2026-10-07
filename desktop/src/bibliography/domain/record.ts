@@ -64,6 +64,9 @@ export function mergeRecord(current: ReferenceSnapshot, incoming: BibliographicR
   };
 }
 
+// Worker の bibliographyHintSchema.abstract の上限。超えると 400 で補完が落ちる
+const ABSTRACT_MAX = 2000;
+
 export function hintFromReference(r: {
   title: string;
   authors?: string | null;
@@ -81,7 +84,7 @@ export function hintFromReference(r: {
   if (r.doi?.trim()) hint.doi = r.doi.trim();
   if (r.url?.trim()) hint.url = r.url.trim();
   if (r.venue?.trim()) hint.venue = r.venue.trim();
-  if (r.abstract?.trim()) hint.abstract = r.abstract.trim();
+  if (r.abstract?.trim()) hint.abstract = r.abstract.trim().slice(0, ABSTRACT_MAX);
   if (r.first_page?.trim()) hint.first_page = r.first_page.trim().slice(0, 4000);
   return hint;
 }
