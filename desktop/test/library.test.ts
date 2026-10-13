@@ -229,3 +229,26 @@ describe('検索と絞り込み', () => {
     expect(listReferences(db, PROJ, { query: 'そんな語は無い' })).toEqual([]);
   });
 });
+
+describe('ライブラリ済の候補を新着から外す（FR-13）', () => {
+  const paper = (external_id: string, source = 'openalex') => ({ external_id, source, title: 'T ' + external_id });
+
+  it('paper_id なしで追加しても、同じ DOI の候補は届いた時点で in_library になる', () => {
+    addReference(db, PROJ, sample({ doi: '10.1000/abc' }));
+    upsertPapers(db, PROJ, [paper('https://doi.org/10.1000/ABC'), paper('10.1000/other')]);
+    const rows = db.prepare('SELECT external_id, in_library FROM papers ORDER BY external_id').all() as {
+      external_id: string;
+      in_library: number;
+    }[];
+    expect(rows.map((r) => r.in_library)).toEqual([0, 1]);
+    expect(listUnscored(db, PROJ)).toHaveLength(1);
+  });
+
+  it('先に届いていた候補も、後から DOI 付きで追加すれば外れ、削除すれば戻る', () => {
+    upsertPapers(db, PROJ, [paper('10.1000/abc', 'crossref')]);
+    const id = addReference(db, PROJ, sample({ doi: '10.1000/abc' }));
+    expect(listUnscored(db, PROJ)).toHaveLength(0);
+    deleteReference(db, id);
+    expect(listUnscored(db, PROJ)).toHaveLength(1);
+  });
+});

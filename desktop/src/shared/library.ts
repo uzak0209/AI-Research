@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
-import { makeBibtexKey } from './repo.js';
+import { makeBibtexKey, refreshInLibrary } from './repo.js';
 
 export type ReadStatus = 'unread' | 'reading' | 'read';
 
@@ -83,6 +83,7 @@ export function addReference(db: Db, projectId: string, item: ReferenceInput): s
     if (item.paper_id) {
       db.prepare('UPDATE papers SET in_library = 1 WHERE paper_id = ?').run(item.paper_id);
     }
+    refreshInLibrary(db, projectId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
@@ -106,6 +107,12 @@ export function updateReference(db: Db, referenceId: string, patch: Partial<Refe
   sets.push("updated_at = datetime('now')");
   vals.push(referenceId);
   db.prepare(`UPDATE reference_items SET ${sets.join(', ')} WHERE reference_id = ?`).run(...vals);
+  if ('doi' in patch) {
+    const row = db.prepare('SELECT project_id FROM reference_items WHERE reference_id = ?').get(referenceId) as
+      | { project_id: string }
+      | undefined;
+    if (row) refreshInLibrary(db, row.project_id);
+  }
 }
 
 /**
@@ -116,12 +123,13 @@ export function deleteReference(db: Db, referenceId: string): void {
   db.exec('BEGIN');
   try {
     const row = db
-      .prepare('SELECT paper_id FROM reference_items WHERE reference_id = ?')
-      .get(referenceId) as { paper_id: string | null } | undefined;
+      .prepare('SELECT paper_id, project_id FROM reference_items WHERE reference_id = ?')
+      .get(referenceId) as { paper_id: string | null; project_id: string } | undefined;
     db.prepare('DELETE FROM reference_items WHERE reference_id = ?').run(referenceId);
     if (row?.paper_id) {
       db.prepare('UPDATE papers SET in_library = 0 WHERE paper_id = ?').run(row.paper_id);
     }
+    if (row) refreshInLibrary(db, row.project_id);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');

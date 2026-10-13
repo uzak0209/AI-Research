@@ -7,6 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from './db.js';
 import { EMBED_DIM, toVectorBlob } from './db.js';
+import { normalizeDoi } from '../bibliography/domain/doi.js';
 
 export interface Project {
   project_id: string;
@@ -303,12 +304,41 @@ export function upsertPapers(db: Db, projectId: string, papers: PaperInput[]): n
         fillPdfUrl.run(p.pdf_url.trim(), projectId, p.source, p.external_id);
       }
     }
+    refreshInLibrary(db, projectId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
   }
   return inserted;
+}
+
+/**
+ * 「ライブラリ済」を再計算する（FR-13）。paper_id で保存したもの、または
+ * 候補の DOI（external_id が DOI のとき）がライブラリの doi と一致するものを 1 にする。
+ * 手動追加・PDF 取り込み・別 source の再収集でも新着から外すため。
+ */
+export function refreshInLibrary(db: Db, projectId: string): void {
+  const dois = new Set<string>();
+  for (const r of db
+    .prepare('SELECT doi FROM reference_items WHERE project_id = ? AND doi IS NOT NULL')
+    .all(projectId) as { doi: string }[]) {
+    const d = normalizeDoi(r.doi);
+    if (d) dois.add(d.toLowerCase());
+  }
+  const rows = db
+    .prepare(
+      `SELECT p.paper_id, p.external_id, p.in_library,
+              EXISTS (SELECT 1 FROM reference_items r WHERE r.paper_id = p.paper_id) AS by_id
+         FROM papers p WHERE p.project_id = ?`,
+    )
+    .all(projectId) as { paper_id: string; external_id: string | null; in_library: number; by_id: number }[];
+  const set = db.prepare('UPDATE papers SET in_library = ? WHERE paper_id = ?');
+  for (const p of rows) {
+    const d = normalizeDoi(p.external_id);
+    const want = p.by_id || (d && dois.has(d.toLowerCase())) ? 1 : 0;
+    if (want !== p.in_library) set.run(want, p.paper_id);
+  }
 }
 
 /** 未採点の論文。採点キュー表を作らずこれで再開する（NFR-06） */
@@ -323,7 +353,7 @@ export function listUnscored(
     .prepare(
       `SELECT paper_id, title, abstract, fulltext, fulltext_path
        FROM papers
-       WHERE project_id = ? AND scored_at IS NULL
+       WHERE project_id = ? AND scored_at IS NULL AND in_library = 0
          ${requireFulltext ? "AND fulltext IS NOT NULL AND trim(fulltext) != ''" : ''}
        ORDER BY published_at DESC NULLS LAST, rowid
        LIMIT ?`,
@@ -540,6 +570,7 @@ export function addToLibrary(
     if (item.paper_id) {
       db.prepare('UPDATE papers SET in_library = 1 WHERE paper_id = ?').run(item.paper_id);
     }
+    refreshInLibrary(db, projectId);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
