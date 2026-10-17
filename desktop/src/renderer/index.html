@@ -267,6 +267,16 @@
           </div>
         </div>
 
+        <div class="field">
+          <p class="side-label">引用ファイルの書き出し先</p>
+          <p class="hint">ライブラリの文献を <code>\cite{}</code> できるよう、既存の .bib（TeX）/ .yml（Typst）の自分のマーカー内だけを更新します。ファイルは作りません。</p>
+          <p class="statusbar-path" id="export-target"></p>
+          <div class="actions" data-align="start">
+            <button type="button" class="btn" data-variant="secondary" id="export-pick">ファイルを選ぶ</button>
+            <button type="button" class="btn" data-variant="tertiary" id="export-clear">解除</button>
+          </div>
+        </div>
+
         <footer class="settings-foot">
           <button type="button" class="btn" data-variant="primary" id="proj-save">保存</button>
         </footer>

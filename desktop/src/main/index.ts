@@ -5,9 +5,9 @@
 //   - レンダラに Node を渡さない。contextIsolation を切らない
 //   - 失敗を握りつぶさない。UI とログに出す（C-07）
 
-import { NotSignedInError } from '@ai-research/core';
+import { EXPORT_BIB_PATH_KEY, EXPORT_FORMAT_KEY, NotSignedInError, createSettingsStore } from '@ai-research/core';
 import { BrowserWindow, Menu, app, dialog, ipcMain, nativeTheme, shell, utilityProcess, type BrowserWindowConstructorOptions, type MenuItemConstructorOptions, type UtilityProcess } from 'electron';
-import { appendFileSync, mkdirSync, readFileSync, type FSWatcher } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, type FSWatcher } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import { EOL } from 'node:os';
 import { createBibliographyApp, type BibliographyApp } from '../bibliography/compose.js';
@@ -794,6 +794,34 @@ function registerIpc(): void {
     mkdirSync(dir, { recursive: true });
     const err = await shell.openPath(dir);
     return err ? { ok: false as const, error: err } : { ok: true as const };
+  });
+
+  // 引用ファイルの書き出し先（FR-12）。既存ファイルだけを選ばせ、ファイルは作らない（ADR-0003）
+  const exportTarget = () => {
+    const store = createSettingsStore(db);
+    const path = store.get(EXPORT_BIB_PATH_KEY)?.value ?? null;
+    const format = store.get(EXPORT_FORMAT_KEY)?.value === 'hayagriva' ? 'hayagriva' : 'bibtex';
+    return { path, format, exists: path ? existsSync(path) : false } as const;
+  };
+  ipcMain.handle('export:get', () => exportTarget());
+  ipcMain.handle('export:pick', async () => {
+    const picked = await dialog.showOpenDialog({
+      title: '引用ファイルを選ぶ（.bib / .yml）',
+      filters: [{ name: '引用ファイル', extensions: ['bib', 'yml', 'yaml'] }],
+      properties: ['openFile'],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return exportTarget();
+    const path = picked.filePaths[0];
+    const store = createSettingsStore(db);
+    store.set(EXPORT_BIB_PATH_KEY, path, false);
+    store.set(EXPORT_FORMAT_KEY, extname(path).toLowerCase() === '.bib' ? 'bibtex' : 'hayagriva', false);
+    return exportTarget();
+  });
+  ipcMain.handle('export:clear', () => {
+    const store = createSettingsStore(db);
+    store.delete(EXPORT_BIB_PATH_KEY);
+    store.delete(EXPORT_FORMAT_KEY);
+    return exportTarget();
   });
 
   ipcMain.handle('score:start', (_e, projectId: string) => {
