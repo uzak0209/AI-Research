@@ -1,6 +1,8 @@
 // レンダラへ渡す窓口。Node をそのまま渡さない（contextIsolation は切らない）。
 import { contextBridge, ipcRenderer } from 'electron';
 
+type ExportTarget = { path: string | null; format: 'bibtex' | 'hayagriva'; exists: boolean };
+
 const api = {
   platform: process.platform,
   // --- プロジェクト ---
@@ -95,6 +97,11 @@ const api = {
     get: (projectId: string, runId: string) => ipcRenderer.invoke('reports:get', projectId, runId),
   },
 
+  exportTarget: {
+    get: () => ipcRenderer.invoke('export:get') as Promise<ExportTarget>,
+    pick: () => ipcRenderer.invoke('export:pick') as Promise<ExportTarget>,
+    clear: () => ipcRenderer.invoke('export:clear') as Promise<ExportTarget>,
+  },
   mypaper: {
     list: (projectId: string) => ipcRenderer.invoke('mypaper:list', projectId),
     import: (projectId: string) =>

@@ -260,6 +260,7 @@ function settingsDialog(): HTMLDialogElement {
 function openSettings(): void {
   if ($('shell').hidden) return;
   const dlg = settingsDialog();
+  void refreshExportTarget();
   const show = () => {
     if (dlg.open) dlg.close();
     dlg.showModal();
@@ -1631,6 +1632,28 @@ function showWorkspace(root: string | null): void {
     settingsPath.textContent = '';
   }
 }
+
+function showExportTarget(t: { path: string | null; format: string; exists: boolean }): void {
+  const node = document.getElementById('export-target');
+  if (!node) return;
+  const label = t.format === 'hayagriva' ? 'Hayagriva' : 'BibTeX';
+  node.textContent = !t.path
+    ? '未設定（引用ファイルへは書き出されません。mypaper/ に 1 つだけある場合のみ自動で使います）'
+    : t.exists
+      ? `${t.path}（${label}）`
+      : `${t.path}（${label}）— ファイルが見つかりません。書き出されません`;
+  node.setAttribute('data-tone', !t.path || !t.exists ? 'error' : 'info');
+}
+async function refreshExportTarget(): Promise<void> {
+  try {
+    showExportTarget(await window.api.exportTarget.get());
+  } catch {
+    // preload が古いときは欄を出さないだけ
+  }
+}
+on('export-pick', 'click', async () => showExportTarget(await window.api.exportTarget.pick()));
+on('export-clear', 'click', async () => showExportTarget(await window.api.exportTarget.clear()));
+void refreshExportTarget();
 
 on('keyword-infer', 'click', (e) => {
   e.preventDefault();
