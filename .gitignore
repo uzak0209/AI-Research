@@ -33,6 +33,9 @@ manuscripts/
 notes/
 papers-pdf/
 
+# CI が展開する D1 集計 artifact（live の利用量・run 集計を含みうる）
+d1-retro/
+
 # OS / エディタ
 .DS_Store
 Thumbs.db
