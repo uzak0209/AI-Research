@@ -160,6 +160,11 @@ export function updateSummary(db: Db, projectId: string, summary: string): void 
   }
 }
 
+/** 採点の前提（mypaper の有無・内容）が変わったとき、全候補を未採点に戻す */
+export function resetScores(db: Db, projectId: string): void {
+  db.prepare('UPDATE papers SET scored_at = NULL WHERE project_id = ?').run(projectId);
+}
+
 // --- 関連技術（プロフィール chunks） ------------------------------------------------
 
 /** 関連技術を 1 本の document として入れ替える。既存の同一 document は置き換える */
