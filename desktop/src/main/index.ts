@@ -17,6 +17,7 @@ import { hintFromReference } from '../bibliography/domain/record.js';
 import { openDb, VectorExtensionError, type Db } from '../shared/db.js';
 import {
   countUnscored,
+  resetScores,
   countUnscoredMissingFulltext,
   createProject,
   getProject,
@@ -244,6 +245,13 @@ function notifyLibrary(): void {
 }
 
 function notifyMypaper(): void {
+  // mypaper の有無・内容で採点式が変わる（blend ↔ max cos）。
+  // 旧式の値を「原稿との近さ」として残さないため、未採点に戻して再採点する（C-07）
+  const p = currentProject();
+  if (p) {
+    resetScores(db, p.project_id);
+    void prepareAndStartScoring(p.project_id, DEFAULT_MODEL);
+  }
   win?.webContents.send('mypaper:changed');
 }
 
