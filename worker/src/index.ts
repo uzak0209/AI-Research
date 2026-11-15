@@ -17,6 +17,9 @@ export { handleQueueMessage, handleScheduled, SOURCES, coarseScore } from './col
 export { utcDate } from './shared/date';
 export { rebuildAbstract } from './shared/papers/domain';
 
+// wrangler.jsonc の max_retries と揃える
+const MAX_RETRIES = 3;
+
 export default {
   fetch: handleFetch,
 
@@ -27,7 +30,8 @@ export default {
   async queue(batch: MessageBatch<CollectMessage>, env: Env) {
     for (const message of batch.messages) {
       try {
-        await handleQueueMessage(message.body, env);
+        // 最後の試行でだけ失敗 run を保存する（確定前の run を pull させない。FR-15）
+        await handleQueueMessage(message.body, env, message.attempts > MAX_RETRIES);
         message.ack();
       } catch {
         message.retry();

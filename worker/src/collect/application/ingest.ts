@@ -36,7 +36,13 @@ export function pickTopPapers(papers: ScoredPaper[], take: number): ScoredPaper[
     .slice(0, take);
 }
 
-export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Promise<void> {
+/**
+ * `final=false`（まだ Queue の再試行が残る）で失敗したら、run を保存せず投げ直す。
+ * 失敗 run を先に保存すると、クライアントが pull して `last_run_id` を進めた後に
+ * 再試行が成功しても、同じ run_id への追記が `GET /runs?after` で届かない（FR-15）。
+ * run は確定（成功・0 件・最終試行の失敗）してから一度だけ書く（ADR-0004）。
+ */
+export async function ingestCollect(deps: IngestDeps, raw: CollectMessage, final = true): Promise<void> {
   const parsed = collectMessageSchema.safeParse(raw);
   if (!parsed.success) throw new Error('invalid collect message');
   const msg = parsed.data;
@@ -94,6 +100,8 @@ export async function ingestCollect(deps: IngestDeps, raw: CollectMessage): Prom
       // 論文は残す。トレンドが欠けたことは報告で見せる（C-07）
     }
   }
+
+  if (failure && !final) throw new Error(failure);
 
   await deps.runs.save(msg, papers, failure, search.combo, report);
   if (failure) throw new Error(failure);
