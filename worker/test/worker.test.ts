@@ -614,6 +614,16 @@ describe('収集の記録（FR-08 / C-07）', () => {
     expect(run?.failed_sources_json).toContain('openalex');
   });
 
+  it('再試行が残る失敗は run を保存しない。成功後に ok で一度だけ現れる（FR-15）', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('boom', { status: 503 }));
+    await expect(handleQueueMessage(message(), env, false)).rejects.toThrow();
+
+    const none = await env.DB.prepare('SELECT COUNT(*) AS n FROM runs WHERE run_id = ?')
+      .bind(`${PROJECT}:${RUN_DATE}`)
+      .first<{ n: number }>();
+    expect(none?.n).toBe(0);
+  });
+
   it('同じ日の再実行で status が変わったら partial になる', async () => {
     mockOpenAlex([]); // 1 回目: empty
     await handleQueueMessage(message(), env);

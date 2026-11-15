@@ -141,6 +141,7 @@ flowchart LR
 - **UTC のみ**。夏時間の影響を受けない時刻を選ぶ
 - **cron・Queues とも at-least-once**。`runs.run_id` を一意キーにする（日次は `{project_id}:{YYYY-MM-DD}`、自発は `{project_id}:manual:{unix}`）。同じ `run_id` の再配送は無視／統合する
 - 失敗と 0 件は `runs.status`、ソース単位の失敗は `failed_sources_json`（FR-08）
+- **失敗 run は確定してから保存する**。Queue の再試行が残る失敗では `runs` を書かず投げ直し、成功・0 件・最終試行の失敗だけを一度書く。確定前の run を pull されると、同じ `run_id` への追記が `GET /runs?after`（`created_at` カーソル）に届かず、status も `partial` に化ける（FR-15）
 - **cron はアカウントで 5 本まで（Free）**。日次収集に使うのは `dev` / `prod` の各 1 本。`test` には付けない。プロジェクトごとに cron を増やす設計にしない
 - **自発調査（FR-17）**: 認証済み `POST /projects/{project_id}/collect` は **Queue への投入だけ**（OpenAlex / Orca は HTTP 内で回さない）。対象は所有者の **1 プロジェクト**。`summary` 空は 400。短時間の連打は抑止する
 
