@@ -1130,7 +1130,7 @@ async function refreshFeed() {
       el(
         'span',
         { class: 'row-meta' },
-        el('span', { class: 'chip', 'data-tone': r.status === 'ok' ? 'score' : r.status === 'failed' ? 'reading' : undefined }, runStatusLabel(r.status)),
+        el('span', { class: 'chip', 'data-tone': r.status === 'ok' ? 'score' : r.status === 'failed' || r.status === 'partial' ? 'reading' : undefined }, runStatusLabel(r.status)),
         el('span', {}, `論文 ${r.paper_count} 件`),
         el('span', {}, r.trend ? 'トレンドあり' : r.paper_count > 0 ? 'トレンド未着' : ''),
       ),
@@ -1202,12 +1202,12 @@ async function renderReportDetail(runId: string) {
     ),
   );
 
-  if (r.status === 'failed') {
+  if (r.status === 'failed' || r.status === 'partial') {
     pane.append(
       el(
         'div',
         { class: 'detail-section' },
-        el('h3', {}, '失敗した理由'),
+        el('h3', {}, r.status === 'partial' ? '一部のソースが失敗した理由' : '失敗した理由'),
         el('p', { class: 'note-info' }, collectFailureReason(r.failed_sources) ?? '理由は記録されていない。'),
       ),
     );
@@ -1407,8 +1407,10 @@ function collectOutcomeMessage(res: {
   if (statuses.includes('failed')) {
     return '収集は失敗した。報告を開くと理由が出ます。キーワードを足してから「収集開始」し直してください';
   }
-  if (inserted > 0) return `上位 ${inserted} 件を取り込んだ。解析しています…${kw}`;
-  if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった${kw}`;
+  const partial = statuses.includes('partial') ? '（一部のソースが失敗した。報告を開くと理由が出ます）' : '';
+  if (inserted > 0) return `上位 ${inserted} 件を取り込んだ。解析しています…${kw}${partial}`;
+  if (pulled > 0) return `クラウドでは ${pulled} 件あったが、既に手元にある候補だった${kw}${partial}`;
+  if (partial) return `一部のソースが失敗したため、新しい候補が無かったとは言い切れない。報告を開くと理由が出ます${kw}`;
   if (statuses.includes('empty')) return `収集は終わったが、検索ヒットが 0 件だった${kw}`;
   return `収集が終わったが、新しい候補は無かった${kw}`;
 }
@@ -1424,7 +1426,7 @@ on('feed-collect', 'click', async () => {
     const text = collectOutcomeMessage(res);
     const inserted = res.inserted ?? 0;
     const statuses = Array.isArray(res.statuses) ? res.statuses : [];
-    const tone = inserted > 0 ? 'busy' : statuses.includes('failed') ? 'error' : 'info';
+    const tone = inserted > 0 ? 'busy' : statuses.includes('failed') ? 'error' : statuses.includes('partial') ? 'error' : 'info';
     setStatus(text, tone);
     await refreshFeed();
   } catch (e) {
