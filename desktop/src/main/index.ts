@@ -651,7 +651,8 @@ function registerIpc(): void {
       if (result.statuses?.length) statuses = result.statuses;
       if (result.searchTerms?.length) searchTerms = result.searchTerms;
       const current = getProject(db, projectId);
-      if (current?.last_run_id === accepted.run_id || result.inserted > 0 || result.pulled > 0) {
+      // 完了は今回の run_id が届いたことだけで判定する。別 run（未取得の日次 cron 等）の取り込みでは打ち切らない（C-07）
+      if (current?.last_run_id === accepted.run_id) {
         timedOut = false;
         break;
       }
