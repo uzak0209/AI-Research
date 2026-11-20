@@ -1401,7 +1401,7 @@ function collectOutcomeMessage(res: {
   const statuses = Array.isArray(res.statuses) ? res.statuses : [];
   const terms = Array.isArray(res.searchTerms) ? res.searchTerms.filter((t) => t.trim()) : [];
   const kw = terms.length ? ` キーワード: ${terms.join(' · ')}` : '';
-  if (res.timedOut && inserted === 0 && pulled === 0) {
+  if (res.timedOut) {
     return '収集を投入した。まだ結果が無いので、しばらくして「収集結果を受け取る」を押してください';
   }
   if (statuses.includes('failed')) {
